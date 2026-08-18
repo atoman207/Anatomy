@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Scratch scripts and rendered previews are not part of the app.
+    "tmp/**",
   ]),
 ]);
 

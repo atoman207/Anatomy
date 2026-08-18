@@ -1,0 +1,134 @@
+import { NextResponse } from "next/server";
+import { createAdminSupabase, isSupabaseConfigured, readSupabaseEnv } from "@/lib/supabase/server";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+/** Tables the app expects; a missing one means migrations have not been run. */
+const EXPECTED_TABLES = [
+  "profiles", "laboratories", "lab_members", "projects", "experiments",
+  "notebook_templates", "notebook_entries", "raw_files", "sample_sheets",
+  "rename_operations", "datasets", "analyses", "figures", "audit_logs",
+] as const;
+
+export interface HealthReport {
+  ok: boolean;
+  configured: boolean;
+  url: string | null;
+  auth: { ok: boolean; detail: string };
+  rest: { ok: boolean; detail: string };
+  schema: { ok: boolean; present: string[]; missing: string[]; detail: string };
+  checkedAt: string;
+}
+
+/**
+ * Reports whether the Supabase project is reachable and the schema applied.
+ *
+ * Used by the dashboard so a missing migration shows up as a clear setup step
+ * rather than a runtime error on the first query.
+ */
+export async function GET() {
+  const checkedAt = new Date().toISOString();
+
+  if (!isSupabaseConfigured()) {
+    return NextResponse.json<HealthReport>({
+      ok: false,
+      configured: false,
+      url: null,
+      auth: { ok: false, detail: "Not configured" },
+      rest: { ok: false, detail: "Not configured" },
+      schema: { ok: false, present: [], missing: [...EXPECTED_TABLES], detail: "Not configured" },
+      checkedAt,
+    });
+  }
+
+  const { url } = readSupabaseEnv();
+  const report: HealthReport = {
+    ok: false,
+    configured: true,
+    url,
+    auth: { ok: false, detail: "" },
+    rest: { ok: false, detail: "" },
+    schema: { ok: false, present: [], missing: [], detail: "" },
+    checkedAt,
+  };
+
+  // --- Auth service ---
+  try {
+    const res = await fetch(`${url}/auth/v1/health`, {
+      headers: { apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY! },
+      cache: "no-store",
+    });
+    report.auth = res.ok
+      ? { ok: true, detail: "GoTrue reachable" }
+      : { ok: false, detail: `HTTP ${res.status}` };
+  } catch (e) {
+    report.auth = { ok: false, detail: e instanceof Error ? e.message : "unreachable" };
+  }
+
+  // --- REST + schema ---
+  // The service key is needed because an empty schema returns nothing useful
+  // through the anon role, and RLS would hide tables from an unauthenticated call.
+  let admin: ReturnType<typeof createAdminSupabase> | null = null;
+  try {
+    admin = createAdminSupabase();
+  } catch (e) {
+    report.rest = {
+      ok: false,
+      detail: e instanceof Error ? e.message : "service key missing",
+    };
+  }
+
+  if (admin) {
+    const present: string[] = [];
+    const missing: string[] = [];
+    let restOk = true;
+    let restDetail = "REST reachable";
+
+    for (const table of EXPECTED_TABLES) {
+      // A HEAD request (`head: true`) comes back 204 with no body even when
+      // the relation is missing, so the error never surfaces and every table
+      // looks present. A normal select returns PGRST205 as it should.
+      const { error } = await admin
+        .from(table as never)
+        .select("*")
+        .limit(1);
+      if (!error) {
+        present.push(table);
+        continue;
+      }
+      // PGRST205 / 42P01 both mean "relation does not exist".
+      if (
+        error.code === "PGRST205" ||
+        error.code === "42P01" ||
+        /does not exist|Could not find the table/i.test(error.message)
+      ) {
+        missing.push(table);
+      } else {
+        restOk = false;
+        restDetail = `${error.code ?? ""} ${error.message}`.trim();
+        missing.push(table);
+      }
+    }
+
+    report.rest = { ok: restOk, detail: restDetail };
+    report.schema = {
+      ok: missing.length === 0,
+      present,
+      missing,
+      detail:
+        missing.length === 0
+          ? `All ${present.length} tables present`
+          : `${missing.length} table(s) missing — run: npm run db:push`,
+    };
+  }
+
+  report.ok = report.auth.ok && report.rest.ok && report.schema.ok;
+  // Always 200: the endpoint itself succeeded, and "schema not applied yet" is
+  // a setup state the dashboard renders, not a server failure. Returning 503
+  // would log a console error on a page that is working correctly.
+  return NextResponse.json(report, {
+    status: 200,
+    headers: { "Cache-Control": "no-store" },
+  });
+}
