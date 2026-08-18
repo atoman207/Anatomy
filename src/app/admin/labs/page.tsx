@@ -1,4 +1,5 @@
 import { Badge, Callout, Card, DataTable, EmptyState, Field, TextArea, TextInput } from "@/components/ui";
+import { PageHeader } from "@/components/shell/PageHeader";
 import { requireAdmin } from "@/lib/auth/guards";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { LAB_ROLE_LABELS } from "@/lib/auth/roles";
@@ -69,6 +70,7 @@ export default async function LabsPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      <PageHeader title="研究室" description="研究室の作成・設定・削除を行います。" />
       <Card
         title={ctx.isPlatformAdmin ? "全研究室" : "研究室"}
         subtitle={`${views.length} 件`}

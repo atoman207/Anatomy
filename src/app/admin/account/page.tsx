@@ -1,4 +1,5 @@
 import { Badge, Card, DataTable, Field, TextInput } from "@/components/ui";
+import { PageHeader } from "@/components/shell/PageHeader";
 import { requireUser } from "@/lib/auth/guards";
 import { ActionForm } from "@/components/admin/ActionForm";
 import { updateDisplayNameAction, changePasswordAction } from "@/lib/auth/actions";
@@ -20,6 +21,7 @@ export default async function AccountPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      <PageHeader title="アカウント" description="表示名、パスワード、所属研究室を確認・変更します。" />
       <Card
         title="アカウント"
         subtitle={ctx.email}

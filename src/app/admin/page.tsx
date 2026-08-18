@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PageHeader } from "@/components/shell/PageHeader";
 import { Badge, Callout, Card, EmptyState, StatTile } from "@/components/ui";
 import { requireAdmin } from "@/lib/auth/guards";
 import { createAdminSupabase } from "@/lib/supabase/server";
@@ -62,6 +63,20 @@ export default async function AdminOverviewPage(props: PageProps<"/admin">) {
 
   return (
     <div className="flex flex-col gap-4">
+      <PageHeader
+        title="管理"
+        description={`${ctx.displayName}（${ctx.email}）`}
+        meta={
+          <>
+            {ctx.isPlatformAdmin && <Badge tone="accent">システム管理者</Badge>}
+            {ctx.adminLabs.map((l) => (
+              <Badge key={l.labId} tone="neutral">
+                {l.labName}: {LAB_ROLE_LABELS[l.role].ja}
+              </Badge>
+            ))}
+          </>
+        }
+      />
       {denied === "platform" && (
         <Callout tone="warn" title="システム管理者専用">
           そのセクションはシステム管理者のみ利用できます。研究室の管理はこちらから行えます。

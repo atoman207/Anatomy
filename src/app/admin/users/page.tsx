@@ -1,4 +1,5 @@
 import { Badge, Callout, Card, Field, StatTile, TextInput } from "@/components/ui";
+import { PageHeader } from "@/components/shell/PageHeader";
 import { requirePlatformAdmin } from "@/lib/auth/guards";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { LAB_ROLE_LABELS } from "@/lib/auth/roles";
@@ -79,6 +80,7 @@ export default async function UsersPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      <PageHeader title="ユーザー" description="この環境のすべてのアカウントを管理します。システム管理者のみ。" />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile label="ユーザー" value={users.length} tone="accent" />
         <StatTile label="未確認" value={unconfirmed} tone={unconfirmed ? "warn" : "good"} />

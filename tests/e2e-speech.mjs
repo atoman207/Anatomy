@@ -224,11 +224,13 @@ try {
     delete window.webkitSpeechRecognition;
   });
   await bare.goto(`${BASE}/voice`, { waitUntil: "networkidle" });
+  // The server renders the optimistic "supported" case; the real answer
+  // arrives on the first client read, so wait for it rather than sampling
+  // the DOM at whatever moment networkidle happens to fire.
+  await bare
+    .waitForSelector("text=対応していません", { timeout: 15000 })
+    .catch(() => problems.push("An unsupported browser was not told so"));
   const unsupported = await bare.locator("body").innerText();
-  check(
-    unsupported.includes("対応していません"),
-    "An unsupported browser was not told so",
-  );
   check(
     unsupported.includes("OpenAI"),
     "No alternative offered to an unsupported browser",

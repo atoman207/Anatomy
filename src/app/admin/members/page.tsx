@@ -1,4 +1,5 @@
 import { Badge, Callout, Card, EmptyState, Field, Select, TextInput } from "@/components/ui";
+import { PageHeader } from "@/components/shell/PageHeader";
 import { requireAdmin } from "@/lib/auth/guards";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { LAB_ROLE_LABELS } from "@/lib/auth/roles";
@@ -90,6 +91,7 @@ export default async function MembersPage(props: PageProps<"/admin/members">) {
 
   return (
     <div className="flex flex-col gap-4">
+      <PageHeader title="メンバー" description="研究室のメンバーと権限を管理します。権限はデータベース側で強制されます。" />
       {manageable.length > 1 && (
         <LabPicker labs={manageable} current={labId} basePath="/admin/members" />
       )}

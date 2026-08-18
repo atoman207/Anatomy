@@ -50,9 +50,12 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-10">
       <header className="animate-fade-in-up border-b border-line pb-8">
+        {/* The page title is a real h1 rather than a styled span: it is the
+            document's top-level landmark, and assistive technology uses it to
+            announce which page was opened. */}
         <div className="section-label">
           <span className="section-label-en">Research workbench</span>
-          <span className="section-label-ja">研究データ管理</span>
+          <h1 className="section-label-ja">研究データ管理</h1>
         </div>
         <p className="max-w-3xl text-[16px] leading-relaxed text-ink-2">
           Rawファイルの整理、標準統計解析、論文用図の作成、実験ノートの更新を一貫して行えます。
@@ -70,7 +73,7 @@ export default function DashboardPage() {
           <span className="section-label-ja">機能一覧</span>
         </div>
         <div className="grid gap-5 sm:grid-cols-2">
-          {FEATURES.map((f, i) => (
+          {FEATURES.map((f) => (
             <Link key={f.title} href={f.href} className="group">
               <Card
                 className="card-hover h-full border-t-[3px] border-t-accent"

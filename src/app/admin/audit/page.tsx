@@ -1,4 +1,5 @@
 import { Badge, Card, DataTable, EmptyState } from "@/components/ui";
+import { PageHeader } from "@/components/shell/PageHeader";
 import { requireAdmin } from "@/lib/auth/guards";
 import { createAdminSupabase } from "@/lib/supabase/server";
 
@@ -69,7 +70,9 @@ export default async function AuditPage(props: PageProps<"/admin/audit">) {
   const labById = new Map((labs ?? []).map((l) => [l.id, l.name]));
 
   return (
-    <Card
+    <div className="flex flex-col gap-4">
+      <PageHeader title="監査ログ" description="管理操作の記録です。追記のみで、編集・削除はできません。" />
+      <Card
       title="監査ログ"
       subtitle={`直近 ${logs?.length ?? 0} 件。追記のみ — 編集・削除はできません。`}
     >
@@ -99,6 +102,7 @@ export default async function AuditPage(props: PageProps<"/admin/audit">) {
         />
       )}
     </Card>
+    </div>
   );
 }
 

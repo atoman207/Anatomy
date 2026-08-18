@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Noto_Sans_JP, Noto_Serif_JP, Roboto } from "next/font/google";
 import "./globals.css";
-import { Nav } from "@/components/Nav";
+import { AppShell } from "@/components/shell/AppShell";
 import { WorkspaceProvider } from "@/components/workspace";
 
 const notoSans = Noto_Sans_JP({
@@ -40,16 +40,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="ja"
       className={`${notoSans.variable} ${notoSerif.variable} ${roboto.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col font-sans text-base">
+      <body className="min-h-dvh font-sans">
         <WorkspaceProvider>
-          <Nav />
-          <main className="mx-auto w-full max-w-[1200px] flex-1 px-4 py-8 sm:px-6 sm:py-10">
-            {children}
-          </main>
+          <AppShell>{children}</AppShell>
         </WorkspaceProvider>
-        <footer className="bg-[var(--footer-bg)] px-4 py-6 text-center text-[13px] leading-relaxed text-[var(--footer-text)] sm:px-6">
-          統計解析はブラウザ内で実行されます。保存しない限りデータはアップロードされません。
-        </footer>
       </body>
     </html>
   );

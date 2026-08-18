@@ -96,6 +96,15 @@
 }
 
 @theme inline {
+  --color-shell-bg: var(--shell-bg);
+  --color-shell-raised: var(--shell-bg-raised);
+  --color-shell-line: var(--shell-border);
+  --color-shell-ink: var(--shell-text);
+  --color-shell-ink-2: var(--shell-text-dim);
+  --color-shell-ink-3: var(--shell-text-faint);
+  --color-shell-hover: var(--shell-hover);
+  --color-shell-active: var(--shell-active-bg);
+  --color-shell-active-ink: var(--shell-active-text);
   --color-surface-0: var(--surface-0);
   --color-surface-1: var(--surface-1);
   --color-surface-2: var(--surface-2);
@@ -351,5 +360,54 @@ textarea::placeholder {
 
   .btn-hatme::before {
     transition: none;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Application shell                                                   */
+/*                                                                     */
+/* The sidebar and header keep a fixed dark palette in both themes.    */
+/* That is the standard admin-console pattern: the chrome stays a      */
+/* stable frame the eye can ignore, while the content area follows the */
+/* light/dark preference. The brand green carries through as the       */
+/* active-state accent so identity survives the darker surface.        */
+/* ------------------------------------------------------------------ */
+:root {
+  --shell-bg: #14161c;
+  --shell-bg-raised: #1b1e26;
+  --shell-border: #262a34;
+  --shell-text: #e6e8ec;
+  --shell-text-dim: #9098a8;
+  --shell-text-faint: #6a7183;
+  --shell-hover: #232733;
+  --shell-active-bg: #16311f;
+  --shell-active-text: #2fd06a;
+  --shell-accent: #14d05f;
+  --sidebar-width: 248px;
+  --sidebar-width-collapsed: 68px;
+  --header-height: 60px;
+}
+
+/* Sidebar scrollbar, styled so it does not break the dark frame. */
+.shell-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--shell-border) transparent;
+}
+.shell-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.shell-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--shell-border);
+  border-radius: 4px;
+}
+.shell-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Respect a reduced-motion preference for the sidebar transition. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }
