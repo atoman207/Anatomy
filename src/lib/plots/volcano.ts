@@ -108,8 +108,8 @@ export function renderVolcano(
       axisColor: theme.axis,
       textColor: theme.textSecondary,
       labelColor: theme.textSecondary,
-      xLabel: `log2 fold change  (${result.groupA} / ${result.groupB})`,
-      yLabel: result.useAdjusted ? "-log10 adjusted p" : "-log10 p",
+      xLabel: `log2倍数変化（${result.groupA} / ${result.groupB}）`,
+      yLabel: result.useAdjusted ? "-log10 調整p" : "-log10 p",
     }),
   );
 
@@ -138,7 +138,7 @@ export function renderVolcano(
   for (const p of ordered) {
     const isHit = p.direction !== "ns";
     const size = isHit ? pointSize + 1 : pointSize - 1.5;
-    const tip = `${p.label} — log2FC ${p.log2fc.toFixed(2)}, p ${fmtP(p.p)}, adj.p ${fmtP(p.padj)}`;
+    const tip = `${p.label} — log2FC ${p.log2fc.toFixed(2)}, p ${fmtP(p.p)}, 調整p ${fmtP(p.padj)}`;
     parts.push(
       marker(
         "circle", p.cx, p.cy, size,
@@ -167,28 +167,28 @@ export function renderVolcano(
   parts.push(
     `<text x="${n(plotLeft)}" y="${n(plotTop - 22)}" fill="${theme.textPrimary}" font-size="14" font-weight="600">${esc(title)}</text>`,
     `<text x="${n(plotLeft)}" y="${n(plotTop - 7)}" fill="${theme.textMuted}" font-size="11">` +
-      `${esc(testLabel(result))} · ${esc(correctionLabel(result))} · ${result.counts.tested} features tested</text>`,
+      `${esc(testLabel(result))} · ${esc(correctionLabel(result))} · ${result.counts.tested} 特徴量を検定</text>`,
   );
 
   parts.push(
     legend({
       items: [
-        { label: `Up (${result.counts.up})`, color: theme.divergingHigh },
-        { label: `Down (${result.counts.down})`, color: theme.divergingLow },
-        { label: `Not significant (${result.counts.ns})`, color: theme.neutral },
+        { label: `上昇（${result.counts.up}）`, color: theme.divergingHigh },
+        { label: `低下（${result.counts.down}）`, color: theme.divergingLow },
+        { label: `有意でない（${result.counts.ns}）`, color: theme.neutral },
       ],
       x: plotRight + 22,
       y: plotTop + 12,
       textColor: theme.textSecondary,
       titleColor: theme.textPrimary,
       ring: theme.surface,
-      title: "Direction",
+      title: "方向",
     }),
   );
 
   const thresholdNote =
     `|log2FC| ≥ ${result.fcThreshold}` +
-    `\n${result.useAdjusted ? "adj. p" : "p"} < ${result.pThreshold}`;
+    `\n${result.useAdjusted ? "調整p" : "p"} < ${result.pThreshold}`;
   thresholdNote.split("\n").forEach((line, i) => {
     parts.push(
       `<text x="${n(plotRight + 22)}" y="${n(plotTop + 108 + i * 15)}" fill="${theme.textMuted}" font-size="10.5">${esc(line)}</text>`,
@@ -201,7 +201,7 @@ export function renderVolcano(
     `</clipPath></defs>`;
 
   return {
-    svg: svgDocument(width, height, theme.surface, defs + parts.join(""), `Volcano plot: ${title}`),
+    svg: svgDocument(width, height, theme.surface, defs + parts.join(""), `ボルケーノプロット: ${title}`),
     width,
     height,
     points,
@@ -213,9 +213,9 @@ export function renderVolcano(
 
 function testLabel(r: DiffResult): string {
   switch (r.test) {
-    case "welch": return "Welch t-test";
-    case "student": return "Student t-test";
-    case "paired": return "Paired t-test";
+    case "welch": return "Welchのt検定";
+    case "student": return "Studentのt検定";
+    case "paired": return "対応のあるt検定";
     case "mannwhitney": return "Mann-Whitney U";
     default: return r.test;
   }
@@ -227,7 +227,7 @@ function correctionLabel(r: DiffResult): string {
     case "by": return "BY FDR";
     case "bonferroni": return "Bonferroni";
     case "holm": return "Holm";
-    default: return "no correction";
+    default: return "補正なし";
   }
 }
 

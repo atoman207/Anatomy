@@ -88,7 +88,7 @@ export async function readWorkbook(
     const body = truncated ? bodyAll.slice(0, maxRows) : bodyAll;
     if (truncated) {
       notes.push(
-        `Sheet "${worksheet.name}": showing the first ${maxRows} of ${bodyAll.length} rows.`,
+        `シート「${worksheet.name}」: ${bodyAll.length} 行中、先頭 ${maxRows} 行を表示しています。`,
       );
     }
 
@@ -103,10 +103,10 @@ export async function readWorkbook(
     });
   });
 
-  if (sheets.length === 0) notes.push("Workbook contained no readable sheets.");
+  if (sheets.length === 0) notes.push("ブックに読み取れるシートがありませんでした。");
   const nonEmpty = sheets.filter((s) => !s.empty);
   if (sheets.length > 1 && nonEmpty.length > 1) {
-    notes.push(`Workbook has ${nonEmpty.length} non-empty sheets; pick which one to import.`);
+    notes.push(`ブックに空でないシートが ${nonEmpty.length} あります。取り込むシートを選んでください。`);
   }
 
   return { sheets, notes };
@@ -121,7 +121,7 @@ export async function writeWorkbook(
   }[],
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "Research data workbench";
+  workbook.creator = "研究データワークベンチ";
   workbook.created = new Date();
 
   for (const t of tables) {

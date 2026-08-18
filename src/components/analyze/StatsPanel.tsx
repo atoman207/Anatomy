@@ -448,7 +448,7 @@ function AnovaSection({
           </Card>
 
           {anova.tukey.length > 0 && (
-            <Card title="Tukey HSD 事後検定" subtitle="すべてのペア比較。ファミリーwise誤差率を制御します。">
+            <Card title="Tukey HSD 事後検定" subtitle="すべてのペア比較。ファミリー単位の誤差率を制御します。">
               <DataTable
                 headers={["比較", "差", "95% CI", "q", "p", ""]}
                 align={["left", "right", "left", "right", "right", "left"]}
@@ -458,7 +458,7 @@ function AnovaSection({
                   `${num(t.ci95[0])} — ${num(t.ci95[1])}`,
                   num(t.q, 2),
                   formatP(t.p),
-                  t.significant ? <Badge key="s" tone="good">有意</Badge> : <span key="s" className="text-ink-3">ns</span>,
+                  t.significant ? <Badge key="s" tone="good">有意</Badge> : <span key="s" className="text-ink-3">非有意</span>,
                 ])}
               />
             </Card>
@@ -750,12 +750,12 @@ function ClusterSection({ matrix, groups }: { matrix: DataMatrix; groups: string
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <StatTile label="k" value={km.k} />
             <StatTile
-              label="Silhouette"
+              label="シルエット"
               value={num(km.silhouette, 3)}
               tone={km.silhouette > 0.5 ? "good" : km.silhouette > 0.25 ? "warn" : "danger"}
               hint={km.silhouette > 0.5 ? "よく分離" : km.silhouette > 0.25 ? "弱い構造" : "構造が乏しい"}
             />
-            <StatTile label="Inertia" value={num(km.inertia, 1)} />
+            <StatTile label="慣性" value={num(km.inertia, 1)} />
             <StatTile label="収束" value={km.converged ? "はい" : "いいえ"} tone={km.converged ? "good" : "warn"} />
           </div>
 
@@ -966,7 +966,7 @@ function DifferentialSection({
                     ? <Badge key="d" tone="danger">上昇</Badge>
                     : r.direction === "down"
                       ? <Badge key="d" tone="accent">低下</Badge>
-                      : <span key="d" className="text-ink-3">ns</span>,
+                      : <span key="d" className="text-ink-3">非有意</span>,
                 ])}
             />
           </Card>

@@ -83,6 +83,78 @@ than reusing a hue. Heatmaps and volcano plots use a diverging ramp with a
 neutral grey midpoint; every figure carries a legend and direct labels so
 identity is never colour-alone.
 
+
+---
+
+## Login and administration
+
+### Access model
+
+Two independent levels of authority:
+
+| Level | Source of truth | Grants |
+|---|---|---|
+| **Laboratory role** | `lab_members.role` in the database | Access to one laboratory's data, enforced by row-level security |
+| **Platform admin** | `PLATFORM_ADMIN_EMAILS` in the server environment | Every laboratory, plus user management |
+
+Platform access is deliberately **not** a database column. A row an attacker
+could flip would be a privilege-escalation path; an environment variable with no
+`NEXT_PUBLIC_` prefix never reaches the browser and cannot be changed by anyone
+who gains write access to the database.
+
+Laboratory roles, from least to most: **閲覧者** (read-only) → **メンバー**
+(create and edit) → **管理者** (manage members) → **オーナー** (also delete or
+transfer the laboratory).
+
+### Pages
+
+| Route | Who can reach it |
+|---|---|
+| `/login` | Anyone — sign in, sign up, request a password reset |
+| `/auth/callback` | Lands every emailed link (confirmation, recovery, invitation) |
+| `/auth/reset` | Set a new password after a recovery link |
+| `/admin` | Lab admins and owners; platform admins see every laboratory |
+| `/admin/members` | Add, re-role and remove members; transfer ownership |
+| `/admin/labs` | Create, rename and delete laboratories |
+| `/admin/users` | **Platform admins only** — every account on the deployment |
+| `/admin/audit` | Append-only record of every administrative action |
+| `/admin/account` | Any signed-in user — display name, password, memberships |
+
+Enforcement happens in three independent places: the proxy redirects signed-out
+visitors, the server layout refuses to render, and every server action
+re-derives the caller's role from the database before touching anything. A
+laboratory id posted from the browser is treated as a request, never as proof of
+authority.
+
+### First administrator
+
+This project requires email confirmation, and a new Supabase project's built-in
+mailer is rate-limited to a few messages an hour — which makes bootstrapping the
+very first account through the sign-up form unreliable. Create it directly:
+
+```bash
+npm run admin:create -- --email you@example.com --password 'your-password' \
+                        --name 'Your Name' --lab 'Cartilage Biology Lab'
+```
+
+The account is created already confirmed. Add the same address to
+`PLATFORM_ADMIN_EMAILS` in `.env.local` and restart to grant platform access.
+
+Once signed in, further accounts can be created from 管理 → ユーザー without
+touching email at all.
+
+### Testing it
+
+```bash
+npm run test:e2e:auth   # needs a server on :3210 and the seeded test accounts
+```
+
+The suite asserts both directions: that an admin can create a laboratory, add a
+member and read the audit trail, **and** that a plain member is refused the
+admin area and the platform pages. The second half is the point — it caught a
+real escalation bug where an unfiltered `lab_members` query let any member
+inherit the highest role present in their laboratory.
+
 ---
 
 ## Database
@@ -131,6 +203,8 @@ be audited or reversed months later.
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | for saving | Publishable key (browser-safe) |
 | `SUPABASE_SERVICE_ROLE_KEY` | server only | Health check and admin operations. **Never expose to the browser.** |
 | `SUPABASE_DB_URL` | migrations only | Direct Postgres URI for `npm run db:push` |
+| `PLATFORM_ADMIN_EMAILS` | for admin | Comma-separated addresses with platform-wide rights. **Server-only — never give it a `NEXT_PUBLIC_` prefix.** |
+| `NEXT_PUBLIC_SITE_URL` | for email links | Public origin used in confirmation, recovery and invitation links |
 | `OPENAI_API_KEY` | optional | AI features stay disabled while unset |
 | `OPENAI_MODEL_*` | optional | Model IDs are configurable rather than hard-coded |
 | `NCBI_API_KEY` / `NCBI_EMAIL` | optional | PubMed lookups |
@@ -140,12 +214,14 @@ be audited or reversed months later.
 ## Commands
 
 ```bash
-npm run dev        # development server
-npm run build      # production build
-npm run check      # typecheck + lint + unit tests
-npm test           # unit tests (98)
-npm run test:e2e   # browser smoke test; needs a server on :3210
-npm run db:push    # apply migrations (needs SUPABASE_DB_URL)
+npm run dev            # development server
+npm run build          # production build
+npm run check          # typecheck + lint + unit tests
+npm test               # unit tests (113)
+npm run test:e2e       # browser smoke test; needs a server on :3210
+npm run test:e2e:auth  # login, administration and permission denials
+npm run admin:create   # create the first administrator account
+npm run db:push        # apply migrations (needs SUPABASE_DB_URL)
 ```
 
 ### Testing
@@ -157,8 +233,13 @@ against `F = t²` for two groups, Benjamini-Hochberg against the original 1995
 worked example, Tukey's q against published tables and `q(2,df) = √2 · t`, and
 Welch against a fully worked example.
 
-`tests/e2e.mjs` drives the real UI in Chromium and fails on any console error,
-page error or failed request.
+`tests/auth.test.ts` pins the authorization rules: role ranking, the
+platform-admin allowlist (including that substring and prefix matches are
+refused), redirect-target sanitising, and that a user never inherits a role from
+someone else's row in the same laboratory.
+
+`tests/e2e.mjs` and `tests/e2e-auth.mjs` drive the real UI in Chromium and fail
+on any console error, page error or failed request.
 
 ---
 

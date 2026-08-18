@@ -127,12 +127,12 @@ export function profileTable(
   }
 
   if (valueColumns.length === 0) {
-    notes.push("No numeric measurement columns were detected - check the header row.");
+    notes.push("数値の測定列が検出されませんでした。ヘッダー行を確認してください。");
   } else if (valueColumns.length < 2) {
-    notes.push("Only one measurement column detected; most analyses need several.");
+    notes.push("測定列が1つだけです。多くの解析には複数列が必要です。");
   }
   if (featureIdColumn === null) {
-    notes.push("No feature id column detected; row numbers will be used instead.");
+    notes.push("特徴量ID列が検出されませんでした。行番号を代わりに使います。");
   }
 
   return {
@@ -214,11 +214,11 @@ export function buildMatrix(
     values.push(rowValues);
   });
 
-  if (skippedRows > 0) notes.push(`${skippedRows} empty row(s) skipped.`);
+  if (skippedRows > 0) notes.push(`${skippedRows} 件の空行をスキップしました。`);
   if (duplicateFeatures.length > 0) {
     const uniq = [...new Set(duplicateFeatures)];
     notes.push(
-      `${uniq.length} duplicated feature id(s) were suffixed to keep every row: ${uniq.slice(0, 3).join(", ")}${uniq.length > 3 ? "…" : ""}.`,
+      `重複した特徴量ID ${uniq.length} 件に接尾辞を付けて全行を残しました: ${uniq.slice(0, 3).join(", ")}${uniq.length > 3 ? "…" : ""}。`,
     );
   }
 
@@ -226,7 +226,7 @@ export function buildMatrix(
   const missing = values.flat().filter((v) => v === null).length;
   if (totalCells > 0 && missing / totalCells > 0.3) {
     notes.push(
-      `${((missing / totalCells) * 100).toFixed(0)}% of values are missing - consider filtering by completeness before analysis.`,
+      `値の ${((missing / totalCells) * 100).toFixed(0)}% が欠損です。解析前に完全性フィルタを検討してください。`,
     );
   }
 

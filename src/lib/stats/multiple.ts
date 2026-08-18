@@ -3,11 +3,11 @@
 export type CorrectionMethod = "none" | "bonferroni" | "holm" | "bh" | "by";
 
 export const CORRECTION_LABELS: Record<CorrectionMethod, string> = {
-  none: "None (raw p)",
-  bonferroni: "Bonferroni (FWER)",
-  holm: "Holm-Bonferroni (FWER)",
-  bh: "Benjamini-Hochberg (FDR)",
-  by: "Benjamini-Yekutieli (FDR)",
+  none: "なし（生のp）",
+  bonferroni: "Bonferroni（FWER）",
+  holm: "Holm-Bonferroni（FWER）",
+  bh: "Benjamini-Hochberg（FDR）",
+  by: "Benjamini-Yekutieli（FDR）",
 };
 
 /**

@@ -77,10 +77,10 @@ export function differentialAnalysis(
 
   const notes: string[] = [];
   if (groupAIndices.length < 2 || groupBIndices.length < 2) {
-    notes.push("At least 2 replicates per group are needed for a p-value.");
+    notes.push("p値には群あたり少なくとも2反復が必要です。");
   }
   if (test === "paired" && groupAIndices.length !== groupBIndices.length) {
-    notes.push("Paired test requires equal group sizes; falling back to Welch.");
+    notes.push("対応のある検定は群サイズが同じである必要があります。Welchに切り替えます。");
   }
   const effTest: DiffTest =
     test === "paired" && groupAIndices.length !== groupBIndices.length
@@ -184,13 +184,13 @@ export function differentialAnalysis(
   };
 
   if (skipped > 0) {
-    notes.push(`${skipped} feature(s) lacked enough replicates and have no p-value.`);
+    notes.push(`反復が足りず p値がない特徴量が ${skipped} 件あります。`);
   }
   if (counts.tested > 0 && counts.up + counts.down === 0) {
-    notes.push("Nothing passed both thresholds - try relaxing them or check normalization.");
+    notes.push("両方の閾値を満たすものはありません。閾値を緩めるか正規化を確認してください。");
   }
   if (!dataIsLog) {
-    notes.push("Fold change computed on the linear scale from group means.");
+    notes.push("倍数変化は群平均から線形スケールで計算しました。");
   }
 
   return {

@@ -156,7 +156,7 @@ test("paired t-test equals a one-sample test on the differences", () => {
 test("paired t-test drops incomplete pairs and says so", () => {
   const r = pairedTTest([1, 2, 3, null, 5], [0, 1, 2, 4, 4]);
   assert.equal(r.nA, 4);
-  assert.ok(r.notes.some((n) => n.includes("incomplete pair")));
+  assert.ok(r.notes.some((n) => n.includes("不完全なペア")));
 });
 
 test("one-sided alternatives split the two-sided p correctly", () => {
@@ -241,7 +241,7 @@ test("ANOVA warns on unbalanced designs and tiny groups", () => {
     { name: "A", values: [1, 2] },
     { name: "B", values: [3, 4, 5, 6, 7, 8] },
   ]);
-  assert.ok(r.notes.some((n) => n.includes("Unbalanced")));
+  assert.ok(r.notes.some((n) => n.includes("不均衡")));
   assert.ok(r.notes.some((n) => n.includes("n < 3")));
 });
 
@@ -395,7 +395,7 @@ test("PCA mean-imputes gaps and notes it", () => {
     values: [[1, 2, null, 4], [2, 4, 6, 8], [1, 1, 2, 3]],
   };
   const r = pca(m);
-  assert.ok(r.notes.some((n) => n.includes("missing value")));
+  assert.ok(r.notes.some((n) => n.includes("欠損値")));
   assert.ok(r.scores.every((s) => s.every(Number.isFinite)));
 });
 
@@ -438,7 +438,7 @@ test("k-means is deterministic across runs with the same seed", () => {
 test("k-means clamps k to the number of rows", () => {
   const r = kMeans([[1, 1], [2, 2]], 5);
   assert.equal(r.k, 2);
-  assert.ok(r.notes.some((n) => n.includes("k reduced")));
+  assert.ok(r.notes.some((n) => n.includes("k を")));
 });
 
 test("hierarchical clustering builds the expected merge order", () => {
@@ -628,7 +628,7 @@ test("features without enough replicates are skipped, not crashed on", () => {
   const r = differentialAnalysis(m, [0, 1], [2, 3], "A", "B");
   assert.equal(r.counts.skipped, 1);
   assert.ok(Number.isNaN(r.rows[1].p));
-  assert.ok(r.notes.some((n) => n.includes("replicates")));
+  assert.ok(r.notes.some((n) => n.includes("反復")));
 });
 
 test("adjusted-vs-raw threshold choice changes the hit count as expected", () => {

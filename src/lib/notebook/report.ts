@@ -45,18 +45,18 @@ function mdTable(headers: readonly string[], rows: readonly (readonly string[])[
 
 function notesBlock(notes: readonly string[]): string {
   if (!notes.length) return "";
-  return `\n**注意 / Notes**\n${notes.map((n) => `- ${n}`).join("\n")}\n`;
+  return `\n**注意**\n${notes.map((n) => `- ${n}`).join("\n")}\n`;
 }
 
 export function tTestToMarkdown(r: TTestResult, label?: string): string {
   const title = label ? `### ${label}` : `### ${r.test}`;
   const rows: string[][] = [
-    ["Test", r.test],
-    ["Alternative", r.alternative],
+    ["検定", r.test],
+    ["対立仮説", r.alternative === "two-sided" ? "両側" : r.alternative === "greater" ? "大きい" : "小さい"],
     ["n", r.nB === null ? String(r.nA) : `${r.nA} vs ${r.nB}`],
-    ["Mean", r.meanB === null ? num(r.meanA) : `${num(r.meanA)} vs ${num(r.meanB)}`],
-    ["Difference", num(r.diff)],
-    ["95% CI", `${num(r.ci95[0])} to ${num(r.ci95[1])}`],
+    ["平均", r.meanB === null ? num(r.meanA) : `${num(r.meanA)} vs ${num(r.meanB)}`],
+    ["差", num(r.diff)],
+    ["95% CI", `${num(r.ci95[0])} ～ ${num(r.ci95[1])}`],
     ["t", num(r.t)],
     ["df", num(r.df, 2)],
     ["p", formatP(r.p) + stars(r.p)],
@@ -65,7 +65,7 @@ export function tTestToMarkdown(r: TTestResult, label?: string): string {
   return [
     title,
     "",
-    mdTable(["項目 / Item", "値 / Value"], rows),
+    mdTable(["項目", "値"], rows),
     notesBlock(r.notes),
   ].join("\n");
 }
@@ -76,39 +76,39 @@ export function anovaToMarkdown(r: AnovaResult, label?: string): string {
   ]);
 
   const anovaRows = [
-    ["Between groups", num(r.dfBetween, 0), num(r.ssBetween), num(r.msBetween), num(r.f), formatP(r.p) + stars(r.p)],
-    ["Within groups", num(r.dfWithin, 0), num(r.ssWithin), num(r.msWithin), "", ""],
-    ["Total", num(r.dfTotal, 0), num(r.ssTotal), "", "", ""],
+    ["群間", num(r.dfBetween, 0), num(r.ssBetween), num(r.msBetween), num(r.f), formatP(r.p) + stars(r.p)],
+    ["群内", num(r.dfWithin, 0), num(r.ssWithin), num(r.msWithin), "", ""],
+    ["全体", num(r.dfTotal, 0), num(r.ssTotal), "", "", ""],
   ];
 
   const parts = [
     label ? `### ${label}` : `### ${r.test}`,
     "",
-    "**群 / Groups**",
+    "**群**",
     "",
-    mdTable(["Group", "n", "Mean", "SD"], groupRows),
+    mdTable(["群", "n", "平均", "SD"], groupRows),
     "",
-    "**分散分析表 / ANOVA table**",
+    "**分散分析表**",
     "",
-    mdTable(["Source", "df", "SS", "MS", "F", "p"], anovaRows),
+    mdTable(["要因", "df", "SS", "MS", "F", "p"], anovaRows),
     "",
-    `効果量 / Effect size: eta² = ${num(r.etaSquared, 3)}, omega² = ${num(r.omegaSquared, 3)}`,
+    `効果量: eta² = ${num(r.etaSquared, 3)}, omega² = ${num(r.omegaSquared, 3)}`,
   ];
 
   if (r.tukey.length) {
     parts.push(
       "",
-      "**Tukey HSD 事後検定 / post-hoc**",
+      "**Tukey HSD 事後検定**",
       "",
       mdTable(
-        ["Comparison", "Diff", "95% CI", "q", "p", ""],
+        ["比較", "差", "95% CI", "q", "p", ""],
         r.tukey.map((t) => [
           `${t.a} vs ${t.b}`,
           num(t.diff),
-          `${num(t.ci95[0])} to ${num(t.ci95[1])}`,
+          `${num(t.ci95[0])} ～ ${num(t.ci95[1])}`,
           num(t.q, 2),
           formatP(t.p),
-          t.significant ? "significant" : "ns",
+          t.significant ? "有意" : "ns",
         ]),
       ),
     );
@@ -125,12 +125,12 @@ export function pcaToMarkdown(r: PcaResult, label?: string): string {
     `${(r.cumulative[i] * 100).toFixed(1)}%`,
   ]);
   return [
-    label ? `### ${label}` : "### 主成分分析 / PCA",
+    label ? `### ${label}` : "### 主成分分析（PCA）",
     "",
-    `${r.sampleNames.length} samples × ${r.featureNames.length} features · ` +
-      `${r.center ? "centred" : "uncentred"}${r.scale ? ", scaled" : ""}`,
+    `${r.sampleNames.length} サンプル × ${r.featureNames.length} 特徴量 · ` +
+      `${r.center ? "中心化あり" : "中心化なし"}${r.scale ? "、スケールあり" : ""}`,
     "",
-    mdTable(["Component", "Eigenvalue", "Variance", "Cumulative"], rows),
+    mdTable(["成分", "固有値", "分散", "累積"], rows),
     notesBlock(r.notes),
   ].join("\n");
 }
@@ -143,17 +143,17 @@ export function kMeansToMarkdown(r: KMeansResult, names?: readonly string[]): st
   const rows = [...members.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([c, ms]) => [
-      `Cluster ${c + 1}`,
+      `クラスタ ${c + 1}`,
       String(ms.length),
-      ms.slice(0, 8).join(", ") + (ms.length > 8 ? `, +${ms.length - 8} more` : ""),
+      ms.slice(0, 8).join(", ") + (ms.length > 8 ? `、他 ${ms.length - 8}` : ""),
     ]);
   return [
-    "### k-means クラスタリング / clustering",
+    "### k-meansクラスタリング",
     "",
-    `k = ${r.k} · inertia = ${num(r.inertia)} · mean silhouette = ${num(r.silhouette, 3)} · ` +
-      `${r.converged ? "converged" : "hit iteration limit"} in ${r.iterations} iterations`,
+    `k = ${r.k} · inertia = ${num(r.inertia)} · 平均シルエット = ${num(r.silhouette, 3)} · ` +
+      `${r.converged ? "収束" : "反復上限に到達"}（${r.iterations} 回）`,
     "",
-    mdTable(["Cluster", "n", "Members"], rows),
+    mdTable(["クラスタ", "n", "メンバー"], rows),
     notesBlock(r.notes),
   ].join("\n");
 }
@@ -164,12 +164,12 @@ export function hierarchicalToMarkdown(
 ): string {
   const order = r.order.map((i) => names?.[i] ?? `row_${i + 1}`);
   return [
-    "### 階層クラスタリング / Hierarchical clustering",
+    "### 階層クラスタリング",
     "",
-    `Linkage: ${r.linkage} · Distance: ${r.metric} · ` +
-      `merge height at root = ${num(r.root?.height ?? NaN)}`,
+    `連結法: ${r.linkage} · 距離: ${r.metric} · ` +
+      `根の結合高さ = ${num(r.root?.height ?? NaN)}`,
     "",
-    `**並び順 / Leaf order:** ${order.join(" → ")}`,
+    `**並び順:** ${order.join(" → ")}`,
     notesBlock(r.notes),
   ].join("\n");
 }
@@ -185,33 +185,33 @@ export function differentialToMarkdown(
     .slice(0, topN);
 
   const parts = [
-    `### 差次発現解析 / Differential analysis — ${r.groupA} vs ${r.groupB}`,
+    `### 差次発現解析 — ${r.groupA} vs ${r.groupB}`,
     "",
-    `Test: ${r.test} · Correction: ${CORRECTION_LABELS[r.correction]} · ` +
-      `Thresholds: |log2FC| ≥ ${r.fcThreshold}, ${r.useAdjusted ? "adjusted " : ""}p < ${r.pThreshold}`,
+    `検定: ${r.test} · 補正: ${CORRECTION_LABELS[r.correction]} · ` +
+      `閾値: |log2FC| ≥ ${r.fcThreshold}、${r.useAdjusted ? "調整" : ""}p < ${r.pThreshold}`,
     "",
-    `**${r.counts.tested}** features tested — ` +
-      `**${r.counts.up}** up, **${r.counts.down}** down, ${r.counts.ns} unchanged.`,
+    `**${r.counts.tested}** 特徴量を検定 — ` +
+      `**${r.counts.up}** 上昇、**${r.counts.down}** 低下、${r.counts.ns} 変化なし。`,
     "",
   ];
 
   if (hits.length) {
     parts.push(
-      `**上位ヒット / Top ${hits.length} hits**`,
+      `**上位ヒット ${hits.length} 件**`,
       "",
       mdTable(
-        ["Feature", "log2FC", "p", "adj. p", "Direction"],
+        ["特徴量", "log2FC", "p", "調整p", "方向"],
         hits.map((h) => [
           h.label,
           num(h.log2fc, 2),
           formatP(h.p),
           formatP(h.padj),
-          h.direction,
+          h.direction === "up" ? "上昇" : h.direction === "down" ? "低下" : "ns",
         ]),
       ),
     );
   } else {
-    parts.push("_閾値を満たす特徴量はありません / No features passed the thresholds._");
+    parts.push("_閾値を満たす特徴量はありません。_");
   }
   parts.push(notesBlock(r.notes));
   return parts.join("\n");
@@ -225,15 +225,15 @@ export function inventoryToMarkdown(inv: RawFileInventory): string {
       e.inferredGroup ?? "—", e.inferredReplicate?.toString() ?? "—",
     ]);
   const parts = [
-    "### Rawファイル一覧 / Raw file inventory",
+    "### Rawファイル一覧",
     "",
-    `${inv.entries.length} files · ${(inv.totalSize / 1024 ** 3).toFixed(2)} GB total · ` +
-      inv.extensions.map((e) => `${e.extension || "none"} ×${e.count}`).join(", "),
+    `${inv.entries.length} ファイル · 合計 ${(inv.totalSize / 1024 ** 3).toFixed(2)} GB · ` +
+      inv.extensions.map((e) => `${e.extension || "なし"} ×${e.count}`).join(", "),
     "",
-    mdTable(["#", "File", "Platform", "Size", "Group", "Rep"], rows),
+    mdTable(["#", "ファイル", "プラットフォーム", "サイズ", "群", "反復"], rows),
   ];
   if (inv.entries.length > 50) {
-    parts.push("", `_… and ${inv.entries.length - 50} more files._`);
+    parts.push("", `_… ほか ${inv.entries.length - 50} ファイル。_`);
   }
   parts.push(notesBlock([...inv.issues, ...inv.notes]));
   return parts.join("\n");
@@ -247,28 +247,28 @@ export function sampleSheetToMarkdown(sheet: SampleSheet): string {
   const errors = sheet.issues.filter((i) => i.level === "error");
   const warnings = sheet.issues.filter((i) => i.level === "warning");
   const parts = [
-    "### サンプルシート / Sample sheet",
+    "### サンプルシート",
     "",
-    `${sheet.rows.length} samples across ${sheet.groups.length} group(s): ` +
+    `${sheet.groups.length} 群、${sheet.rows.length} サンプル: ` +
       sheet.groups.map((g) => `${g.name} (n=${g.n})`).join(", "),
     "",
     mdTable(
-      ["Sample ID", "File", "Group", "Rep", "Batch", "Order"],
+      ["サンプルID", "ファイル", "群", "反復", "バッチ", "順"],
       rows,
     ),
   ];
   if (errors.length) {
     parts.push(
       "",
-      "**エラー / Errors**",
-      ...errors.map((e) => `- ${e.row !== null ? `Row ${e.row + 1}: ` : ""}${e.message}`),
+      "**エラー**",
+      ...errors.map((e) => `- ${e.row !== null ? `${e.row + 1} 行目: ` : ""}${e.message}`),
     );
   }
   if (warnings.length) {
     parts.push(
       "",
-      "**警告 / Warnings**",
-      ...warnings.map((e) => `- ${e.row !== null ? `Row ${e.row + 1}: ` : ""}${e.message}`),
+      "**警告**",
+      ...warnings.map((e) => `- ${e.row !== null ? `${e.row + 1} 行目: ` : ""}${e.message}`),
     );
   }
   return parts.join("\n");
@@ -277,15 +277,15 @@ export function sampleSheetToMarkdown(sheet: SampleSheet): string {
 export function renameToMarkdown(preview: RenamePreview): string {
   const changed = preview.rows.filter((r) => r.changed);
   return [
-    "### ファイル名変更 / File rename",
+    "### ファイル名変更",
     "",
-    `${changed.length} of ${preview.rows.length} files renamed.`,
+    `${preview.rows.length} 件中 ${changed.length} 件を変更。`,
     "",
     mdTable(
-      ["Before", "After"],
+      ["変更前", "変更後"],
       changed.slice(0, 60).map((r) => [r.original, r.proposed]),
     ),
-    changed.length > 60 ? `\n_… and ${changed.length - 60} more._` : "",
+    changed.length > 60 ? `\n_… ほか ${changed.length - 60} 件。_` : "",
     notesBlock(preview.issues),
   ].join("\n");
 }
@@ -300,9 +300,9 @@ export function buildReport(
   const header = [
     `## ${title}`,
     "",
-    `*生成日 / Generated: ${stamp}*` +
-      (meta.operator ? ` · *担当 / Operator: ${meta.operator}*` : "") +
-      (meta.source ? ` · *データ / Source: ${meta.source}*` : ""),
+    `*生成日: ${stamp}*` +
+      (meta.operator ? ` · *担当: ${meta.operator}*` : "") +
+      (meta.source ? ` · *データ: ${meta.source}*` : ""),
     "",
   ].join("\n");
   return header + sections.filter(Boolean).join("\n\n") + "\n";

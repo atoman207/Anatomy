@@ -78,7 +78,7 @@ export function renderHeatmap(
   const cols = matrix.samples.length;
   let work = matrix;
   if (rows > maxRows) {
-    notes.push(`Showing the first ${maxRows} of ${rows} features.`);
+    notes.push(`特徴量 ${rows} 件中、先頭 ${maxRows} 件を表示しています。`);
     work = {
       ...matrix,
       features: matrix.features.slice(0, maxRows),
@@ -179,12 +179,12 @@ export function renderHeatmap(
   const parts: string[] = [];
 
   parts.push(
-    `<text x="${n(padding)}" y="${n(26)}" fill="${theme.textPrimary}" font-size="14" font-weight="600">${esc(options.title ?? "Heatmap")}</text>`,
+    `<text x="${n(padding)}" y="${n(26)}" fill="${theme.textPrimary}" font-size="14" font-weight="600">${esc(options.title ?? "ヒートマップ")}</text>`,
   );
   const subtitle = [
-    scaling === "row-zscore" ? "row z-score" : scaling === "column-zscore" ? "column z-score" : "raw values",
-    clusterRows || clusterColumns ? `${linkage} linkage, ${metric}` : "unclustered",
-    `${rows} x ${cols}`,
+    scaling === "row-zscore" ? "行のzスコア" : scaling === "column-zscore" ? "列のzスコア" : "生の値",
+    clusterRows || clusterColumns ? `${linkage} 連結、${metric}` : "クラスタなし",
+    `${rows} × ${cols}`,
   ].join(" · ");
   parts.push(
     `<text x="${n(padding)}" y="${n(40)}" fill="${theme.textMuted}" font-size="11">${esc(subtitle)}</text>`,
@@ -210,7 +210,7 @@ export function renderHeatmap(
       const label = work.featureLabels?.[r] || work.features[r];
       const tip =
         `${label} / ${work.samples[c]}` +
-        (raw === null ? " — missing" : ` — ${Number(raw).toPrecision(5)}`) +
+        (raw === null ? " — 欠損" : ` — ${Number(raw).toPrecision(5)}`) +
         (v !== null && scaling !== "none" ? ` (z ${v.toFixed(2)})` : "");
       // A 1px inset leaves the surface visible between cells.
       parts.push(
@@ -301,14 +301,14 @@ export function renderHeatmap(
     `<text x="${n(barX + barW + 6)}" y="${n(barY + 8)}" fill="${theme.textSecondary}" font-size="10">${esc(fmtBar(barTop))}</text>`,
     `<text x="${n(barX + barW + 6)}" y="${n(barY + barH / 2 + 4)}" fill="${theme.textSecondary}" font-size="10">${esc(fmtBar(barMid))}</text>`,
     `<text x="${n(barX + barW + 6)}" y="${n(barY + barH)}" fill="${theme.textSecondary}" font-size="10">${esc(fmtBar(barBottom))}</text>`,
-    `<text x="${n(barX)}" y="${n(barY - 8)}" fill="${theme.textPrimary}" font-size="11" font-weight="600">${esc(scaling === "none" ? "Value" : "z-score")}</text>`,
+    `<text x="${n(barX)}" y="${n(barY - 8)}" fill="${theme.textPrimary}" font-size="11" font-weight="600">${esc(scaling === "none" ? "値" : "z-score")}</text>`,
   );
 
   if (columnGroups) {
     const uniq = [...new Set(columnGroups.filter((g): g is string => !!g))];
     let ly = barY + barH + 34;
     parts.push(
-      `<text x="${n(barX)}" y="${n(ly - 14)}" fill="${theme.textPrimary}" font-size="11" font-weight="600">Group</text>`,
+      `<text x="${n(barX)}" y="${n(ly - 14)}" fill="${theme.textPrimary}" font-size="11" font-weight="600">群</text>`,
     );
     for (const g of uniq) {
       parts.push(
@@ -320,7 +320,7 @@ export function renderHeatmap(
   }
 
   return {
-    svg: svgDocument(width, height, theme.surface, parts.join(""), options.title ?? "Heatmap"),
+    svg: svgDocument(width, height, theme.surface, parts.join(""), options.title ?? "ヒートマップ"),
     width,
     height,
     rowOrder,

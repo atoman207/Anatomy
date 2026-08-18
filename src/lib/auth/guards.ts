@@ -41,9 +41,15 @@ export async function getSessionContext(): Promise<SessionContext | null> {
   if (error || !data.user) return null;
   const user = data.user;
 
+  // Filter to this user explicitly. The RLS policy on lab_members lets any
+  // member read their laboratory's whole roster - which is what makes the
+  // member list work - so an unfiltered query returns other people's rows
+  // too, and folding those into `memberships` would hand this user the
+  // highest role present in the lab.
   const { data: rows } = await supabase
     .from("lab_members")
     .select("lab_id, role, joined_at, laboratories(id, name, description, owner_id)")
+    .eq("user_id", user.id)
     .order("joined_at", { ascending: true });
 
   const memberships: LabMembership[] = [];

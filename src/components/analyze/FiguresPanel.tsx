@@ -318,7 +318,7 @@ function HeatmapFigure({
     const sub = topVariableFeatures(matrix, topN);
     return renderHeatmap(sub, {
       mode,
-      title: `Top ${sub.features.length} variable features`,
+      title: `変動が大きい特徴量 上位 ${sub.features.length}`,
       scaling, clusterRows, clusterColumns, linkage, metric,
       columnGroups: folded.labels,
       columnGroupColors: colors,
@@ -328,47 +328,47 @@ function HeatmapFigure({
 
   return (
     <>
-      <Card title="設定 / Settings">
+      <Card title="設定">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label={`表示数 / Top ${topN} by variance`}>
+          <Field label={`表示数: 変動上位 ${topN}`}>
             <input
               type="range" min={10} max={120} step={5} value={topN}
               onChange={(e) => setTopN(Number(e.target.value))}
               className="w-full accent-[var(--accent)]"
             />
           </Field>
-          <Field label="標準化 / Scaling" hint="Row z-score makes patterns comparable across features.">
+          <Field label="標準化" hint="行のzスコアにすると、特徴量間のパターンを比較しやすくなります。">
             <Select value={scaling} onChange={(e) => setScaling(e.target.value as typeof scaling)}>
-              <option value="row-zscore">Row z-score</option>
-              <option value="column-zscore">Column z-score</option>
-              <option value="none">Raw values</option>
+              <option value="row-zscore">行のzスコア</option>
+              <option value="column-zscore">列のzスコア</option>
+              <option value="none">生の値</option>
             </Select>
           </Field>
-          <Field label="連結法 / Linkage">
+          <Field label="連結法">
             <Select value={linkage} onChange={(e) => setLinkage(e.target.value as typeof linkage)}>
-              <option value="average">Average</option>
-              <option value="complete">Complete</option>
-              <option value="single">Single</option>
+              <option value="average">平均</option>
+              <option value="complete">完全</option>
+              <option value="single">単連結</option>
               <option value="ward">Ward</option>
             </Select>
           </Field>
-          <Field label="距離 / Distance">
+          <Field label="距離">
             <Select value={metric} onChange={(e) => setMetric(e.target.value as typeof metric)}>
-              <option value="euclidean">Euclidean</option>
+              <option value="euclidean">ユークリッド</option>
               <option value="correlation">1 − Pearson r</option>
-              <option value="manhattan">Manhattan</option>
-              <option value="cosine">Cosine</option>
+              <option value="manhattan">マンハッタン</option>
+              <option value="cosine">コサイン</option>
             </Select>
           </Field>
         </div>
         <div className="mt-3 flex flex-wrap gap-5">
           <label className="flex items-center gap-2 text-sm text-ink-2">
             <input type="checkbox" checked={clusterRows} onChange={(e) => setClusterRows(e.target.checked)} />
-            行クラスタリング / Cluster rows
+            行クラスタリング
           </label>
           <label className="flex items-center gap-2 text-sm text-ink-2">
             <input type="checkbox" checked={clusterColumns} onChange={(e) => setClusterColumns(e.target.checked)} />
-            列クラスタリング / Cluster columns
+            列クラスタリング
           </label>
         </div>
       </Card>
@@ -376,7 +376,7 @@ function HeatmapFigure({
       <FigureFrame
         svg={render.svg}
         filename="heatmap.svg"
-        title={`Heatmap — ${datasetName}`}
+        title={`ヒートマップ — ${datasetName}`}
         notes={render.notes}
       />
     </>
@@ -420,9 +420,9 @@ function PcaFigure({
 
   return (
     <>
-      <Card title="設定 / Settings">
+      <Card title="設定">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="X軸 / X component">
+          <Field label="X軸">
             <Select value={String(xc)} onChange={(e) => setXc(Number(e.target.value))}>
               {options.map((i) => (
                 <option key={i} value={i}>
@@ -431,7 +431,7 @@ function PcaFigure({
               ))}
             </Select>
           </Field>
-          <Field label="Y軸 / Y component">
+          <Field label="Y軸">
             <Select value={String(yc)} onChange={(e) => setYc(Number(e.target.value))}>
               {options.map((i) => (
                 <option key={i} value={i}>
@@ -440,27 +440,27 @@ function PcaFigure({
               ))}
             </Select>
           </Field>
-          <Field label="前処理 / Preprocessing">
+          <Field label="前処理">
             <div className="flex h-9 flex-wrap items-center gap-4">
               <label className="flex items-center gap-1.5 text-xs text-ink-2">
                 <input type="checkbox" checked={center} onChange={(e) => setCenter(e.target.checked)} />
-                Center
+                中心化
               </label>
               <label className="flex items-center gap-1.5 text-xs text-ink-2">
                 <input type="checkbox" checked={scale} onChange={(e) => setScale(e.target.checked)} />
-                Scale
+                スケール
               </label>
             </div>
           </Field>
-          <Field label="表示 / Display">
+          <Field label="表示">
             <div className="flex h-9 flex-wrap items-center gap-4">
               <label className="flex items-center gap-1.5 text-xs text-ink-2">
                 <input type="checkbox" checked={ellipses} onChange={(e) => setEllipses(e.target.checked)} />
-                95% ellipse
+                95%楕円
               </label>
               <label className="flex items-center gap-1.5 text-xs text-ink-2">
                 <input type="checkbox" checked={labels} onChange={(e) => setLabels(e.target.checked)} />
-                Labels
+                ラベル
               </label>
             </div>
           </Field>
@@ -470,7 +470,7 @@ function PcaFigure({
       <FigureFrame
         svg={render.svg}
         filename="pca_plot.svg"
-        title={`PCA score plot — ${datasetName}`}
+        title={`PCAスコアプロット — ${datasetName}`}
         notes={render.notes}
       />
     </>

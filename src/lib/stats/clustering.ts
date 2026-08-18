@@ -106,11 +106,11 @@ export function kMeans(
   if (n === 0) {
     return {
       assignments: [], centroids: [], k: 0, iterations: 0, converged: false,
-      inertia: NaN, silhouette: NaN, sizes: [], notes: ["No rows to cluster."],
+      inertia: NaN, silhouette: NaN, sizes: [], notes: ["クラスタリングする行がありません。"],
     };
   }
   const kk = Math.max(1, Math.min(k, n));
-  if (kk !== k) notes.push(`k reduced to ${kk} (cannot exceed the number of rows).`);
+  if (kk !== k) notes.push(`k を ${kk} に縮小しました（行数を超えられません）。`);
   const dim = data[0].length;
 
   let best: { assignments: number[]; centroids: number[][]; inertia: number; iterations: number; converged: boolean } | null = null;
@@ -206,8 +206,8 @@ export function kMeans(
   const b = best!;
   const sizes = new Array<number>(kk).fill(0);
   for (const a of b.assignments) sizes[a]++;
-  if (sizes.some((s) => s === 0)) notes.push("One or more clusters ended up empty.");
-  if (!b.converged) notes.push("Did not fully converge within the iteration limit.");
+  if (sizes.some((s) => s === 0)) notes.push("空になったクラスタがあります。");
+  if (!b.converged) notes.push("反復上限内に完全収束しませんでした。");
 
   return {
     assignments: b.assignments,
@@ -291,7 +291,7 @@ export function hierarchical(
   const { linkage = "average", metric = "euclidean" } = opts;
   const notes: string[] = [];
   const n = data.length;
-  if (n === 0) return { root: null, order: [], linkage, metric, notes: ["No rows."] };
+  if (n === 0) return { root: null, order: [], linkage, metric, notes: ["行がありません。"] };
   if (n === 1) {
     return {
       root: { id: 0, leaf: 0, left: null, right: null, height: 0, members: [0] },
@@ -301,7 +301,7 @@ export function hierarchical(
 
   const ward = linkage === "ward";
   if (ward && metric !== "euclidean") {
-    notes.push("Ward linkage assumes Euclidean distance; metric overridden.");
+    notes.push("Ward連結はユークリッド距離を仮定するため、距離を上書きしました。");
   }
   const effMetric: DistanceMetric = ward ? "euclidean" : metric;
 

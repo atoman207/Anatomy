@@ -159,3 +159,75 @@ test("only same-site paths survive as a post-login redirect", () => {
   assert.equal(safeNext(""), "/experiments");
   assert.equal(safeNext(null), "/experiments");
 });
+
+/* ------------------------------------------------------------------ */
+/* Membership derivation                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Mirrors how getSessionContext turns lab_members rows into this user's own
+ * memberships.
+ *
+ * This exists because of a real escalation bug: the query originally had no
+ * user_id filter, and the RLS policy on lab_members intentionally lets any
+ * member read their laboratory's whole roster. Every row in the lab - the
+ * owner's included - was folded into the signed-in user's memberships, so a
+ * plain member inherited the owner's role and reached the admin area.
+ */
+interface MemberRowFixture {
+  user_id: string;
+  lab_id: string;
+  role: LabRole;
+}
+
+function ownMemberships(rows: MemberRowFixture[], userId: string) {
+  return rows.filter((r) => r.user_id === userId);
+}
+
+test("a member does not inherit roles from other rows in the same lab", () => {
+  const roster: MemberRowFixture[] = [
+    { user_id: "owner-id", lab_id: "lab-1", role: "owner" },
+    { user_id: "admin-id", lab_id: "lab-1", role: "admin" },
+    { user_id: "member-id", lab_id: "lab-1", role: "member" },
+    { user_id: "viewer-id", lab_id: "lab-1", role: "viewer" },
+  ];
+
+  const mine = ownMemberships(roster, "member-id");
+  assert.equal(mine.length, 1, "only this user's own row counts");
+  assert.equal(mine[0].role, "member");
+
+  const adminLabs = mine.filter((m) => canManageMembers(m.role));
+  assert.equal(adminLabs.length, 0, "a member must not gain an administrable lab");
+
+  // The unfiltered query is what the bug looked like; assert it would fail.
+  const unfiltered = roster.filter((m) => canManageMembers(m.role));
+  assert.ok(
+    unfiltered.length > 0,
+    "sanity: an unfiltered roster does contain admin rows, which is why the filter matters",
+  );
+});
+
+test("a viewer stays a viewer even in a lab full of owners", () => {
+  const roster: MemberRowFixture[] = [
+    { user_id: "a", lab_id: "lab-1", role: "owner" },
+    { user_id: "b", lab_id: "lab-1", role: "owner" },
+    { user_id: "me", lab_id: "lab-1", role: "viewer" },
+  ];
+  const mine = ownMemberships(roster, "me");
+  assert.equal(mine[0].role, "viewer");
+  assert.equal(canWrite(mine[0].role), false);
+  assert.equal(canManageMembers(mine[0].role), false);
+});
+
+test("an admin in one lab gains nothing in another", () => {
+  const roster: MemberRowFixture[] = [
+    { user_id: "me", lab_id: "lab-1", role: "admin" },
+    { user_id: "me", lab_id: "lab-2", role: "viewer" },
+    { user_id: "other", lab_id: "lab-2", role: "owner" },
+  ];
+  const mine = ownMemberships(roster, "me");
+  assert.equal(mine.length, 2);
+
+  const manageable = mine.filter((m) => canManageMembers(m.role)).map((m) => m.lab_id);
+  assert.deepEqual(manageable, ["lab-1"], "lab-2 must not become manageable");
+});

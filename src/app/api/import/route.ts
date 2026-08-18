@@ -24,14 +24,14 @@ export async function POST(request: Request) {
     const headerRow = Number(form.get("headerRow") ?? 1) || 1;
 
     if (!(file instanceof File)) {
-      return NextResponse.json({ error: "No file was uploaded." }, { status: 400 });
+      return NextResponse.json({ error: "ファイルがアップロードされていません。" }, { status: 400 });
     }
     if (file.size === 0) {
-      return NextResponse.json({ error: "That file is empty." }, { status: 400 });
+      return NextResponse.json({ error: "ファイルが空です。" }, { status: 400 });
     }
     if (file.size > MAX_BYTES) {
       return NextResponse.json(
-        { error: `File is ${(file.size / 1024 ** 2).toFixed(0)} MB; the limit is ${MAX_BYTES / 1024 ** 2} MB.` },
+        { error: `ファイルは ${(file.size / 1024 ** 2).toFixed(0)} MB です。上限は ${MAX_BYTES / 1024 ** 2} MB です。` },
         { status: 413 },
       );
     }
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     if (isExcel) {
       if (lower.endsWith(".xls")) {
         return NextResponse.json(
-          { error: "Legacy .xls is not supported. Re-save the file as .xlsx." },
+          { error: "旧形式の .xls は非対応です。.xlsx として保存し直してください。" },
           { status: 415 },
         );
       }
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
         wb.sheets[0];
 
       if (!chosen) {
-        return NextResponse.json({ error: "That workbook has no readable sheets." }, { status: 422 });
+        return NextResponse.json({ error: "このブックに読み取れるシートがありません。" }, { status: 422 });
       }
       headers = chosen.headers;
       rows = chosen.rows;
@@ -76,17 +76,17 @@ export async function POST(request: Request) {
       rows = parsed.rows;
       if (parsed.raggedRows.length) {
         notes.push(
-          `${parsed.raggedRows.length} row(s) had a different column count than the header and were padded.`,
+          `${parsed.raggedRows.length} 行の列数がヘッダーと異なり、埋めました。`,
         );
       }
       notes.push(
-        `Detected delimiter: ${parsed.delimiter === "\t" ? "tab" : parsed.delimiter}`,
+        `検出した区切り文字: ${parsed.delimiter === "\t" ? "タブ" : parsed.delimiter}`,
       );
     }
 
     if (headers.length === 0) {
       return NextResponse.json(
-        { error: "No header row was found. Check that row 1 holds column names." },
+        { error: "ヘッダー行が見つかりません。1行目に列名があるか確認してください。" },
         { status: 422 },
       );
     }
@@ -106,10 +106,10 @@ export async function POST(request: Request) {
       notes: [...notes, ...profile.notes, ...built.notes],
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
+    const message = err instanceof Error ? err.message : "不明なエラー";
     // A corrupt workbook throws deep inside exceljs; surface something useful.
     return NextResponse.json(
-      { error: `Could not read that file: ${message}` },
+      { error: `ファイルを読み取れませんでした: ${message}` },
       { status: 422 },
     );
   }

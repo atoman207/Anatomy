@@ -1,6 +1,6 @@
 import type { PcaResult } from "../stats/pca";
 import {
-  getTheme, groupStyles, foldGroups, usesCompositeEncoding,
+  getTheme, groupStyles, foldGroups, usesCompositeEncoding, OTHER_GROUP,
   type Mode, type MarkerShape,
 } from "./theme";
 import {
@@ -67,27 +67,27 @@ export function renderPcaPlot(
   if (result.nComponents === 0 || result.scores.length === 0) {
     const body =
       `<text x="${n(width / 2)}" y="${n(height / 2)}" text-anchor="middle" fill="${theme.textMuted}" font-size="13">` +
-      `Not enough data for a PCA plot</text>`;
+      `PCAプロットに十分なデータがありません</text>`;
     return {
-      svg: svgDocument(width, height, theme.surface, body, "PCA plot"),
+      svg: svgDocument(width, height, theme.surface, body, "PCAプロット"),
       width, height, points: [], compositeEncoding: false,
-      notes: [...notes, "PCA produced no components."],
+      notes: [...notes, "PCAで成分が得られませんでした。"],
     };
   }
 
   const yc = Math.min(yComponent, result.nComponents - 1);
   const xc = Math.min(xComponent, result.nComponents - 1);
-  if (yc === xc) notes.push("Only one component available; both axes show it.");
+  if (yc === xc) notes.push("成分が1つだけのため、両軸に同じ成分を表示しています。");
 
   const rawGroups = (options.groups ?? result.sampleNames.map(() => null)).map(
-    (g) => g ?? "Ungrouped",
+    (g) => g ?? "未分類",
   );
   const folded = foldGroups(rawGroups);
   const groups = folded.labels;
   const uniqueGroups = folded.order;
   if (folded.folded > 0) {
     notes.push(
-      `${folded.folded} less common group(s) folded into "Other" to avoid reusing a hue.`,
+      `${folded.folded} 件の少数群を「${OTHER_GROUP}」にまとめ、色の再利用を避けました。`,
     );
   }
   const styles = groupStyles(uniqueGroups, theme);
@@ -95,7 +95,7 @@ export function renderPcaPlot(
   const composite = usesCompositeEncoding(uniqueGroups.length);
   if (composite) {
     notes.push(
-      "More than 3 groups: marker shape carries identity alongside colour.",
+      "群が3つを超えるため、色に加えてマーカー形状でも識別します。",
     );
   }
 
@@ -135,8 +135,8 @@ export function renderPcaPlot(
       axisColor: theme.axis,
       textColor: theme.textSecondary,
       labelColor: theme.textSecondary,
-      xLabel: `PC${xc + 1}  (${pct(xc)}% variance)`,
-      yLabel: `PC${yc + 1}  (${pct(yc)}% variance)`,
+      xLabel: `PC${xc + 1}（分散 ${pct(xc)}%）`,
+      yLabel: `PC${yc + 1}（分散 ${pct(yc)}%）`,
     }),
   );
 
@@ -205,15 +205,15 @@ export function renderPcaPlot(
   }
 
   parts.push(
-    `<text x="${n(plotLeft)}" y="${n(plotTop - 22)}" fill="${theme.textPrimary}" font-size="14" font-weight="600">${esc(options.title ?? "PCA score plot")}</text>`,
+    `<text x="${n(plotLeft)}" y="${n(plotTop - 22)}" fill="${theme.textPrimary}" font-size="14" font-weight="600">${esc(options.title ?? "PCAスコアプロット")}</text>`,
     `<text x="${n(plotLeft)}" y="${n(plotTop - 7)}" fill="${theme.textMuted}" font-size="11">` +
-      `${result.sampleNames.length} samples · ${result.featureNames.length} features · ` +
-      `${result.center ? "centred" : "uncentred"}${result.scale ? ", scaled" : ""} · ` +
+      `${result.sampleNames.length} サンプル · ${result.featureNames.length} 特徴量 · ` +
+      `${result.center ? "中心化あり" : "中心化なし"}${result.scale ? "、スケールあり" : ""} · ` +
       `PC1+PC2 = ${((result.cumulative[Math.min(1, result.cumulative.length - 1)] ?? 0) * 100).toFixed(1)}%</text>`,
   );
 
   // A legend is always present when there is real grouping.
-  if (uniqueGroups.length > 1 || uniqueGroups[0] !== "Ungrouped") {
+  if (uniqueGroups.length > 1 || uniqueGroups[0] !== "未分類") {
     parts.push(
       legend({
         items: styles.map((s) => ({
@@ -226,14 +226,14 @@ export function renderPcaPlot(
         textColor: theme.textSecondary,
         titleColor: theme.textPrimary,
         ring: theme.surface,
-        title: "Group",
+        title: "群",
       }),
     );
   }
 
   if (showEllipses && uniqueGroups.some((g) => points.filter((p) => p.group === g).length >= 3)) {
     parts.push(
-      `<text x="${n(plotRight + 22)}" y="${n(plotTop + 24 + styles.length * 18 + 14)}" fill="${theme.textMuted}" font-size="10">95% ellipse</text>`,
+      `<text x="${n(plotRight + 22)}" y="${n(plotTop + 24 + styles.length * 18 + 14)}" fill="${theme.textMuted}" font-size="10">95%楕円</text>`,
     );
   }
 
@@ -245,7 +245,7 @@ export function renderPcaPlot(
   return {
     svg: svgDocument(
       width, height, theme.surface, defs + parts.join(""),
-      options.title ?? "PCA score plot",
+      options.title ?? "PCAスコアプロット",
     ),
     width,
     height,

@@ -46,7 +46,7 @@ export default function NotebookPage() {
   const full = useMemo(() => {
     const clips = ws.clips.map((c) => c.markdown);
     if (clips.length === 0) return body;
-    return `${body}\n\n---\n\n${buildReport("解析結果 / Analysis results", clips, {
+    return `${body}\n\n---\n\n${buildReport("解析結果", clips, {
       operator: typeof effective.operator === "string" ? effective.operator : undefined,
       date: typeof effective.experiment_date === "string" ? effective.experiment_date : undefined,
     })}`;
@@ -55,23 +55,23 @@ export default function NotebookPage() {
   const html = useMemo(() => renderMarkdown(full), [full]);
 
   const title =
-    (typeof effective.experiment_name === "string" && effective.experiment_name) || "experiment";
+    (typeof effective.experiment_name === "string" && effective.experiment_name) || "実験";
   const dateStr =
     (typeof effective.experiment_date === "string" && effective.experiment_date) || today || "";
 
   return (
     <div className="flex flex-col gap-5">
       <header>
-        <h1 className="text-xl font-semibold text-ink">実験ノート自動化 / Notebook automation</h1>
+        <h1 className="text-xl font-semibold text-ink">実験ノート自動化</h1>
         <p className="mt-1 text-sm text-ink-2">
-          Fill a template once, paste in the analysis blocks you queued, and export a complete entry.
+          テンプレートを一度埋め、キューした解析ブロックを貼り付けて、完成したエントリを書き出します。
         </p>
       </header>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         <div className="flex flex-col gap-4">
-          <Card title="テンプレート / Template" subtitle={template.description}>
-            <Field label="種類 / Type">
+          <Card title="テンプレート" subtitle={template.description}>
+            <Field label="種類">
               <Select value={templateId} onChange={(e) => { setTemplateId(e.target.value); }}>
                 {BUILT_IN_TEMPLATES.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -83,8 +83,8 @@ export default function NotebookPage() {
           </Card>
 
           <Card
-            title="入力 / Fields"
-            subtitle="Only the starred fields are required; the rest fill in as you go."
+            title="入力"
+            subtitle="星印の項目だけ必須です。残りは進めながら埋められます。"
           >
             <div className="flex flex-col gap-3">
               {template.fields.map((f) => {
@@ -107,7 +107,7 @@ export default function NotebookPage() {
                       <TextArea
                         id={`f-${f.key}`}
                         value={str}
-                        placeholder={f.placeholder ?? (f.type === "list" ? "One item per line" : "")}
+                        placeholder={f.placeholder ?? (f.type === "list" ? "1行に1項目" : "")}
                         onChange={(e) => set(e.target.value)}
                       />
                     ) : f.type === "select" ? (
@@ -133,19 +133,19 @@ export default function NotebookPage() {
           </Card>
 
           <Card
-            title={`解析ブロック / Analysis blocks (${ws.clips.length})`}
-            subtitle="Queued from the organize and analyze pages."
+            title={`解析ブロック（${ws.clips.length}）`}
+            subtitle="データ整理と統計解析のページからキューされます。"
             actions={
               ws.clips.length > 0 && (
                 <Button size="sm" variant="danger" onClick={ws.clearClips}>
-                  全消去 / Clear all
+                  すべて消去
                 </Button>
               )
             }
           >
             {ws.clips.length === 0 ? (
-              <EmptyState title="No blocks queued">
-                Use “ノートへ / To notebook” on any result to add it here.
+              <EmptyState title="ブロックはキューされていません">
+                結果の「ノートへ」からここに追加できます。
               </EmptyState>
             ) : (
               <ul className="flex flex-col gap-2">
@@ -157,7 +157,7 @@ export default function NotebookPage() {
                     <div className="min-w-0">
                       <p className="truncate text-xs font-medium text-ink">{c.title}</p>
                       <p className="text-[11px] text-ink-3">
-                        {new Date(c.createdAt).toLocaleString()} · {c.markdown.length} chars
+                        {new Date(c.createdAt).toLocaleString()} · {c.markdown.length} 文字
                       </p>
                     </div>
                     <Button size="sm" variant="ghost" onClick={() => ws.removeClip(c.id)}>
@@ -172,14 +172,14 @@ export default function NotebookPage() {
 
         <div className="flex flex-col gap-4">
           {!validation.valid && (
-            <Callout tone="warn" title="未入力の必須項目 / Missing required fields">
+            <Callout tone="warn" title="未入力の必須項目">
               {validation.missing.join(", ")}
             </Callout>
           )}
 
           <Card
-            title="プレビュー / Preview"
-            subtitle={`${full.split("\n").length} lines`}
+            title="プレビュー"
+            subtitle={`${full.split("\n").length} 行`}
             actions={
               <>
                 <Button
@@ -194,7 +194,7 @@ export default function NotebookPage() {
                     }
                   }}
                 >
-                  {copied ? "コピー済 ✓" : "コピー / Copy"}
+                  {copied ? "コピー済 ✓" : "コピー"}
                 </Button>
                 <Button
                   size="sm"
@@ -219,7 +219,7 @@ export default function NotebookPage() {
             />
           </Card>
 
-          <Card title="Markdown ソース / Source">
+          <Card title="Markdownソース">
             <pre className="scroll-x max-h-80 overflow-y-auto rounded-lg border border-line bg-surface-2 p-3 font-mono text-[11px] leading-relaxed text-ink-2">
               {full}
             </pre>

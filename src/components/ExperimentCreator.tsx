@@ -41,7 +41,7 @@ export function ExperimentCreator({ labs }: { labs: LabOption[] }) {
       setLabName("");
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not create the laboratory.");
+      setError(e instanceof Error ? e.message : "研究室を作成できませんでした。");
     } finally {
       setBusy(false);
     }
@@ -68,7 +68,7 @@ export function ExperimentCreator({ labs }: { labs: LabOption[] }) {
       setOperator("");
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not create the experiment.");
+      setError(e instanceof Error ? e.message : "実験を作成できませんでした。");
     } finally {
       setBusy(false);
     }
@@ -76,51 +76,51 @@ export function ExperimentCreator({ labs }: { labs: LabOption[] }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {error && <Callout tone="danger" title="Save failed">{error}</Callout>}
+      {error && <Callout tone="danger" title="保存に失敗しました">{error}</Callout>}
 
       {labs.length === 0 ? (
-        <Card title="研究室を作成 / Create a laboratory" subtitle="Experiments and data are scoped to a laboratory.">
+        <Card title="研究室を作成" subtitle="実験とデータは研究室ごとに分かれます。">
           <form onSubmit={createLab} className="flex flex-wrap items-end gap-3">
-            <Field label="名称 / Name" className="min-w-56 flex-1">
+            <Field label="名称" className="min-w-56 flex-1">
               <TextInput
                 value={labName}
                 onChange={(e) => setLabName(e.target.value)}
-                placeholder="Cartilage Biology Lab"
+                placeholder="軟骨生物学研究室"
                 required
               />
             </Field>
             <Button type="submit" variant="primary" disabled={busy || !labName.trim()}>
-              作成 / Create
+              作成
             </Button>
           </form>
         </Card>
       ) : (
-        <Card title="実験を作成 / New experiment">
+        <Card title="実験を作成">
           <form onSubmit={createExperiment} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 lg:items-end">
-            <Field label="研究室 / Laboratory">
+            <Field label="研究室">
               <Select value={labId} onChange={(e) => setLabId(e.target.value)}>
                 {labs.map((l) => (
                   <option key={l.id} value={l.id}>{l.name}</option>
                 ))}
               </Select>
             </Field>
-            <Field label="実験名 / Name" className="lg:col-span-2">
+            <Field label="実験名" className="lg:col-span-2">
               <TextInput
                 value={expName}
                 onChange={(e) => setExpName(e.target.value)}
-                placeholder="TMT labeling"
+                placeholder="TMT標識"
                 required
               />
             </Field>
-            <Field label="日付 / Date">
+            <Field label="日付">
               <TextInput type="date" value={expDate} onChange={(e) => setExpDate(e.target.value)} />
             </Field>
-            <Field label="担当者 / Operator">
+            <Field label="担当者">
               <TextInput value={operator} onChange={(e) => setOperator(e.target.value)} />
             </Field>
             <div className="lg:col-span-5">
               <Button type="submit" variant="primary" disabled={busy || !expName.trim() || !labId}>
-                作成 / Create experiment
+                実験を作成
               </Button>
             </div>
           </form>

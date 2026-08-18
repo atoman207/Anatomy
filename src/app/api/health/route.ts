@@ -35,9 +35,9 @@ export async function GET() {
       ok: false,
       configured: false,
       url: null,
-      auth: { ok: false, detail: "Not configured" },
-      rest: { ok: false, detail: "Not configured" },
-      schema: { ok: false, present: [], missing: [...EXPECTED_TABLES], detail: "Not configured" },
+      auth: { ok: false, detail: "未設定" },
+      rest: { ok: false, detail: "未設定" },
+      schema: { ok: false, present: [], missing: [...EXPECTED_TABLES], detail: "未設定" },
       checkedAt,
     });
   }
@@ -60,10 +60,10 @@ export async function GET() {
       cache: "no-store",
     });
     report.auth = res.ok
-      ? { ok: true, detail: "GoTrue reachable" }
+      ? { ok: true, detail: "GoTrue 到達可能" }
       : { ok: false, detail: `HTTP ${res.status}` };
   } catch (e) {
-    report.auth = { ok: false, detail: e instanceof Error ? e.message : "unreachable" };
+    report.auth = { ok: false, detail: e instanceof Error ? e.message : "到達不可" };
   }
 
   // --- REST + schema ---
@@ -75,7 +75,7 @@ export async function GET() {
   } catch (e) {
     report.rest = {
       ok: false,
-      detail: e instanceof Error ? e.message : "service key missing",
+      detail: e instanceof Error ? e.message : "サービスキーがありません",
     };
   }
 
@@ -83,7 +83,7 @@ export async function GET() {
     const present: string[] = [];
     const missing: string[] = [];
     let restOk = true;
-    let restDetail = "REST reachable";
+    let restDetail = "REST 到達可能";
 
     for (const table of EXPECTED_TABLES) {
       // A HEAD request (`head: true`) comes back 204 with no body even when
@@ -118,8 +118,8 @@ export async function GET() {
       missing,
       detail:
         missing.length === 0
-          ? `All ${present.length} tables present`
-          : `${missing.length} table(s) missing — run: npm run db:push`,
+          ? `全 ${present.length} テーブルが存在します`
+          : `${missing.length} 件のテーブルが不足しています — 実行: npm run db:push`,
     };
   }
 

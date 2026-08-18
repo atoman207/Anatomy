@@ -121,7 +121,7 @@ export function validateSampleSheet(
   const issues: SampleSheetIssue[] = [];
 
   if (rows.length === 0) {
-    issues.push({ level: "error", row: null, column: null, message: "Sample sheet is empty." });
+    issues.push({ level: "error", row: null, column: null, message: "サンプルシートが空です。" });
   }
 
   // --- identity checks ---
@@ -129,14 +129,14 @@ export function validateSampleSheet(
   rows.forEach((r, i) => {
     const id = r.sample_id.trim();
     if (id === "") {
-      issues.push({ level: "error", row: i, column: "sample_id", message: "Missing sample_id." });
+      issues.push({ level: "error", row: i, column: "sample_id", message: "sample_id がありません。" });
       return;
     }
     idCount.set(id, [...(idCount.get(id) ?? []), i]);
     if (/[^\w.\-+]/.test(id)) {
       issues.push({
         level: "warning", row: i, column: "sample_id",
-        message: `"${id}" contains characters that break some tools; prefer letters, digits, _ . - +`,
+        message: `"${id}" には一部ツールで問題になる文字が含まれます。英数字と _ . - + を使ってください。`,
       });
     }
   });
@@ -144,7 +144,7 @@ export function validateSampleSheet(
     if (idxs.length > 1) {
       issues.push({
         level: "error", row: idxs[1], column: "sample_id",
-        message: `Duplicate sample_id "${id}" on rows ${idxs.map((i) => i + 1).join(", ")}.`,
+        message: `sample_id "${id}" が ${idxs.map((i) => i + 1).join(", ")} 行目で重複しています。`,
       });
     }
   }
@@ -159,7 +159,7 @@ export function validateSampleSheet(
     if (idxs.length > 1) {
       issues.push({
         level: "error", row: idxs[1], column: "file_name",
-        message: `File "${f}" is assigned to ${idxs.length} samples.`,
+        message: `ファイル "${f}" が ${idxs.length} サンプルに割り当てられています。`,
       });
     }
   }
@@ -169,7 +169,7 @@ export function validateSampleSheet(
   rows.forEach((r, i) => {
     const g = r.group.trim();
     if (g === "") {
-      issues.push({ level: "error", row: i, column: "group", message: "Missing group." });
+      issues.push({ level: "error", row: i, column: "group", message: "群がありません。" });
       return;
     }
     groupMap.set(g, (groupMap.get(g) ?? 0) + 1);
@@ -179,19 +179,19 @@ export function validateSampleSheet(
   if (groups.length === 1) {
     issues.push({
       level: "warning", row: null, column: "group",
-      message: "Only one group: no comparison is possible.",
+      message: "群が1つだけです。比較できません。",
     });
   }
   for (const g of groups) {
     if (g.n < 2) {
       issues.push({
         level: "error", row: null, column: "group",
-        message: `Group "${g.name}" has ${g.n} sample - at least 2 are needed for a p-value.`,
+        message: `群 "${g.name}" は ${g.n} サンプルです。p値には少なくとも2つ必要です。`,
       });
     } else if (g.n < 3) {
       issues.push({
         level: "warning", row: null, column: "group",
-        message: `Group "${g.name}" has only 2 replicates; variance estimates will be unstable.`,
+        message: `群 "${g.name}" の反復は2つだけです。分散の推定は不安定になります。`,
       });
     }
   }
@@ -211,7 +211,7 @@ export function validateSampleSheet(
       issues.push({
         level: "warning", row: null, column: "batch",
         message:
-          "Every batch contains only one group: batch effects are fully confounded with the biology.",
+          "すべてのバッチが1群しか含みません。バッチ効果と生物学的効果が完全に交絡しています。",
       });
     }
   }
@@ -229,7 +229,7 @@ export function validateSampleSheet(
       issues.push({
         level: "warning", row: null, column: "run_order",
         message:
-          "Samples ran grouped rather than interleaved; instrument drift will look like a treatment effect.",
+          "サンプルが群ごとに連続して測定されています。装置ドリフトが処理効果に見えます。",
       });
     }
   }
@@ -240,7 +240,7 @@ export function validateSampleSheet(
     if (orderSeen.has(r.run_order)) {
       issues.push({
         level: "warning", row: i, column: "run_order",
-        message: `Duplicate run_order ${r.run_order}.`,
+        message: `run_order ${r.run_order} が重複しています。`,
       });
     }
     orderSeen.set(r.run_order, i);

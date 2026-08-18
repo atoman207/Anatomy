@@ -53,9 +53,9 @@ export function oneSampleTTest(
   const n = xs.length;
   const notes: string[] = [];
   if (n < 2) {
-    notes.push("Need at least 2 observations.");
+    notes.push("少なくとも2つの観測値が必要です。");
     return {
-      test: "One-sample t-test", t: NaN, df: NaN, p: NaN, alternative,
+      test: "1標本t検定", t: NaN, df: NaN, p: NaN, alternative,
       meanA: mean(xs), meanB: null, diff: NaN, stderr: NaN,
       ci95: [NaN, NaN], nA: n, nB: null, cohensD: NaN, notes,
     };
@@ -65,10 +65,10 @@ export function oneSampleTTest(
   const stderr = s / Math.sqrt(n);
   const df = n - 1;
   const t = stderr === 0 ? NaN : (m - mu) / stderr;
-  if (stderr === 0) notes.push("Zero variance: the t statistic is undefined.");
+  if (stderr === 0) notes.push("分散が0のため、t統計量は定義できません。");
   const crit = tInv(0.975, df);
   return {
-    test: "One-sample t-test",
+    test: "1標本t検定",
     t, df,
     p: pFromAlternative(t, df, alternative),
     alternative,
@@ -97,10 +97,10 @@ export function twoSampleTTest(
   const n1 = xs.length;
   const n2 = ys.length;
   const notes: string[] = [];
-  const label = equalVariance ? "Student t-test" : "Welch t-test";
+  const label = equalVariance ? "Studentのt検定" : "Welchのt検定";
 
   if (n1 < 2 || n2 < 2) {
-    notes.push("Each group needs at least 2 observations.");
+    notes.push("各群に少なくとも2つの観測値が必要です。");
     return {
       test: label, t: NaN, df: NaN, p: NaN, alternative,
       meanA: mean(xs), meanB: mean(ys), diff: NaN, stderr: NaN,
@@ -133,17 +133,17 @@ export function twoSampleTTest(
     pooledSd = Math.sqrt((v1 + v2) / 2);
   }
 
-  if (stderr === 0) notes.push("Zero variance in both groups: t is undefined.");
+  if (stderr === 0) notes.push("両群の分散が0のため、tは定義できません。");
   if (!equalVariance && Number.isFinite(v1) && Number.isFinite(v2)) {
     const ratio = Math.max(v1, v2) / Math.min(v1, v2 || Number.EPSILON);
     if (ratio > 4) {
       notes.push(
-        "Group variances differ by more than 4x; Welch correction is doing real work here.",
+        "群間の分散が4倍以上異なります。Welch補正が実質的に効いています。",
       );
     }
   }
   if (n1 < 3 || n2 < 3) {
-    notes.push("Very small n: interpret the p-value cautiously.");
+    notes.push("nが非常に小さいため、p値の解釈は慎重にしてください。");
   }
 
   const t = stderr === 0 ? NaN : diff / stderr;
@@ -190,13 +190,13 @@ export function pairedTTest(
   }
   const res = oneSampleTTest(diffs, 0, alternative);
   const notes = [...res.notes];
-  if (dropped > 0) notes.push(`${dropped} incomplete pair(s) dropped.`);
+  if (dropped > 0) notes.push(`不完全なペアを ${dropped} 組除外しました。`);
   if (a.length !== b.length) {
-    notes.push("Inputs had different lengths; compared up to the shorter one.");
+    notes.push("入力の長さが異なるため、短い方までで比較しました。");
   }
   return {
     ...res,
-    test: "Paired t-test",
+    test: "対応のあるt検定",
     meanA: mean(av),
     meanB: mean(bv),
     nA: diffs.length,
@@ -216,7 +216,7 @@ export function mannWhitneyU(
   const n2 = ys.length;
   const notes: string[] = [];
   if (n1 < 1 || n2 < 1) {
-    return { u: NaN, z: NaN, p: NaN, nA: n1, nB: n2, notes: ["Empty group."] };
+    return { u: NaN, z: NaN, p: NaN, nA: n1, nB: n2, notes: ["空の群があります。"] };
   }
   const all = [...xs.map((v) => ({ v, g: 0 })), ...ys.map((v) => ({ v, g: 1 }))];
   all.sort((p, q) => p.v - q.v);
@@ -246,9 +246,9 @@ export function mannWhitneyU(
   const sigma2 =
     ((n1 * n2) / 12) * (nTot + 1 - tieSum / (nTot * (nTot - 1)));
   const sigma = Math.sqrt(sigma2);
-  if (tieGroups.length) notes.push("Ties present; variance was tie-corrected.");
+  if (tieGroups.length) notes.push("タイがあるため、分散をタイ補正しました。");
   if (n1 < 5 || n2 < 5) {
-    notes.push("n < 5 per group: the normal approximation is rough here.");
+    notes.push("群あたり n < 5 のため、正規近似は粗いです。");
   }
   // Continuity-corrected z
   const z = sigma === 0 ? NaN : (u1 - mu - Math.sign(u1 - mu) * 0.5) / sigma;

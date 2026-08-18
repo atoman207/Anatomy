@@ -111,7 +111,7 @@ export function pca(
       scores: [], loadings: [], eigenvalues: [], explained: [], cumulative: [],
       sampleNames: [...m.samples], featureNames: [...m.features],
       nComponents: 0, center, scale,
-      notes: ["PCA needs at least 2 samples and 2 features."],
+      notes: ["PCAには少なくとも2サンプルと2特徴量が必要です。"],
     };
   }
 
@@ -138,10 +138,10 @@ export function pca(
     keptFeatures.push(f);
   }
   if (imputed > 0) {
-    notes.push(`${imputed} missing value(s) filled with the feature mean.`);
+    notes.push(`欠損値 ${imputed} 件を特徴量の平均で埋めました。`);
   }
   if (keptFeatures.length < nFeatures) {
-    notes.push(`${nFeatures - keptFeatures.length} all-missing feature(s) dropped.`);
+    notes.push(`すべて欠損の特徴量を ${nFeatures - keptFeatures.length} 件除外しました。`);
   }
 
   const F = keptFeatures.length;
@@ -150,7 +150,7 @@ export function pca(
       scores: [], loadings: [], eigenvalues: [], explained: [], cumulative: [],
       sampleNames: [...m.samples], featureNames: [],
       nComponents: 0, center, scale,
-      notes: [...notes, "Fewer than 2 usable features remain."],
+      notes: [...notes, "使える特徴量が2つ未満です。"],
     };
   }
 
@@ -186,7 +186,7 @@ export function pca(
         for (let i = 0; i < nSamples; i++) Xc[i][f] /= v;
       }
     }
-    if (constant) notes.push(`${constant} zero-variance feature(s) left unscaled.`);
+    if (constant) notes.push(`分散0の特徴量 ${constant} 件はスケールしませんでした。`);
   }
 
   // With F >> nSamples, decompose the small nSamples x nSamples Gram matrix
@@ -271,7 +271,7 @@ export function pca(
   }
 
   if (nSamples < 3) {
-    notes.push("With only 2 samples PCA can show at most 1 component.");
+    notes.push("サンプルが2つだけのとき、PCAは最大1成分です。");
   }
 
   return {

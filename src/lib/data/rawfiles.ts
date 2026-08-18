@@ -55,22 +55,22 @@ const PLATFORM_BY_EXT: Record<string, string> = {
   raw: "Thermo / Waters RAW",
   d: "Agilent / Bruker .d",
   wiff: "SCIEX WIFF",
-  mzml: "mzML (open)",
-  mzxml: "mzXML (open)",
+  mzml: "mzML（オープン）",
+  mzxml: "mzXML（オープン）",
   mgf: "Mascot Generic Format",
-  fastq: "Sequencing FASTQ",
-  "fastq.gz": "Sequencing FASTQ (gz)",
-  fcs: "Flow cytometry FCS",
-  czi: "Zeiss CZI image",
-  nd2: "Nikon ND2 image",
-  lif: "Leica LIF image",
-  tif: "TIFF image",
-  tiff: "TIFF image",
-  csv: "Delimited text",
-  tsv: "Delimited text",
-  txt: "Text",
-  xlsx: "Excel workbook",
-  xls: "Excel workbook",
+  fastq: "シーケンス FASTQ",
+  "fastq.gz": "シーケンス FASTQ（gz）",
+  fcs: "フローサイトメトリー FCS",
+  czi: "Zeiss CZI 画像",
+  nd2: "Nikon ND2 画像",
+  lif: "Leica LIF 画像",
+  tif: "TIFF 画像",
+  tiff: "TIFF 画像",
+  csv: "区切りテキスト",
+  tsv: "区切りテキスト",
+  txt: "テキスト",
+  xlsx: "Excelブック",
+  xls: "Excelブック",
 };
 
 export function humanSize(bytes: number | null | undefined): string {
@@ -172,15 +172,15 @@ export function buildRawFileInventory(files: readonly RawFileInput[]): RawFileIn
     const inferred = inferFromTokens(tokens);
     const entryIssues: string[] = [];
 
-    if (name === "") entryIssues.push("Empty filename.");
-    if (extension === "") entryIssues.push("No file extension.");
+    if (name === "") entryIssues.push("ファイル名が空です。");
+    if (extension === "") entryIssues.push("拡張子がありません。");
     if (/[^\w.\-+()\[\]]/.test(stem)) {
-      entryIssues.push("Contains characters that some pipelines reject.");
+      entryIssues.push("一部パイプラインが拒否する文字が含まれます。");
     }
     if (f.size !== undefined && f.size !== null && f.size === 0) {
-      entryIssues.push("Zero bytes.");
+      entryIssues.push("0バイトです。");
     }
-    if (name.length > 120) entryIssues.push("Very long filename.");
+    if (name.length > 120) entryIssues.push("ファイル名が非常に長いです。");
 
     seen.set(name.toLowerCase(), (seen.get(name.toLowerCase()) ?? 0) + 1);
 
@@ -200,7 +200,7 @@ export function buildRawFileInventory(files: readonly RawFileInput[]): RawFileIn
       size: f.size ?? null,
       sizeHuman: humanSize(f.size),
       modified,
-      platform: PLATFORM_BY_EXT[extension] ?? (extension ? `.${extension}` : "unknown"),
+      platform: PLATFORM_BY_EXT[extension] ?? (extension ? `.${extension}` : "不明"),
       tokens,
       inferredSample: inferred.sample,
       inferredGroup: inferred.group,
@@ -215,7 +215,7 @@ export function buildRawFileInventory(files: readonly RawFileInput[]): RawFileIn
     .filter(([, c]) => c > 1)
     .map(([n]) => n);
   if (duplicateNames.length) {
-    issues.push(`${duplicateNames.length} duplicate filename(s) in the set.`);
+    issues.push(`ファイル名の重複が ${duplicateNames.length} 件あります。`);
   }
 
   const extCounts = new Map<string, number>();
@@ -227,29 +227,29 @@ export function buildRawFileInventory(files: readonly RawFileInput[]): RawFileIn
     .sort((a, b) => b.count - a.count);
   if (extensions.length > 1) {
     notes.push(
-      `Mixed file types: ${extensions.map((e) => `${e.extension || "none"} x${e.count}`).join(", ")}.`,
+      `混在するファイル種類: ${extensions.map((e) => `${e.extension || "なし"} ×${e.count}`).join(", ")}。`,
     );
   }
 
   const byGroup = new Map<string, string[]>();
   for (const e of entries) {
-    const g = e.inferredGroup ?? "(ungrouped)";
+    const g = e.inferredGroup ?? "(未分類)";
     byGroup.set(g, [...(byGroup.get(g) ?? []), e.name]);
   }
   const groupSummary = [...byGroup.entries()]
     .map(([group, fs]) => ({ group, replicates: fs.length, files: fs }))
     .sort((a, b) => b.replicates - a.replicates);
 
-  const thin = groupSummary.filter((g) => g.group !== "(ungrouped)" && g.replicates < 2);
+  const thin = groupSummary.filter((g) => g.group !== "(未分類)" && g.replicates < 2);
   if (thin.length) {
     notes.push(
-      `${thin.length} inferred group(s) have a single file - check the naming or add replicates.`,
+      `推定グループ ${thin.length} 件がファイル1つだけです。命名を確認するか反復を追加してください。`,
     );
   }
 
   const totalSize = entries.reduce((s, e) => s + (e.size ?? 0), 0);
   const zero = entries.filter((e) => e.size === 0).length;
-  if (zero) issues.push(`${zero} file(s) are zero bytes.`);
+  if (zero) issues.push(`${zero} 件が0バイトです。`);
 
   // Size outliers often mean a truncated acquisition.
   const sizes = entries.map((e) => e.size).filter((s): s is number => s !== null && s > 0);
@@ -261,7 +261,7 @@ export function buildRawFileInventory(files: readonly RawFileInput[]): RawFileIn
     );
     if (odd.length) {
       notes.push(
-        `${odd.length} file(s) differ from the median size by more than 4x - possible truncated runs.`,
+        `${odd.length} 件が中央値サイズから4倍以上外れています。途中で切れた測定の可能性があります。`,
       );
     }
   }

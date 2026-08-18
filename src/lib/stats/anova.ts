@@ -67,7 +67,7 @@ export function oneWayAnova(
     })
     .filter((g) => {
       if (g.n === 0) {
-        notes.push(`Group "${g.name}" had no usable values and was dropped.`);
+        notes.push(`群「${g.name}」に使える値がなく、除外しました。`);
         return false;
       }
       return true;
@@ -75,7 +75,7 @@ export function oneWayAnova(
 
   const k = groups.length;
   const empty = (): AnovaResult => ({
-    test: "One-way ANOVA", groups,
+    test: "一元配置ANOVA", groups,
     dfBetween: NaN, ssBetween: NaN, msBetween: NaN,
     dfWithin: NaN, ssWithin: NaN, msWithin: NaN,
     dfTotal: NaN, ssTotal: NaN,
@@ -84,14 +84,14 @@ export function oneWayAnova(
   });
 
   if (k < 2) {
-    notes.push("ANOVA needs at least 2 groups.");
+    notes.push("ANOVAには少なくとも2群が必要です。");
     return empty();
   }
 
   const all = groups.flatMap((g) => g.values);
   const N = all.length;
   if (N - k < 1) {
-    notes.push("Not enough observations for a within-groups error term.");
+    notes.push("群内誤差項を計算できる観測値が足りません。");
     return empty();
   }
 
@@ -111,21 +111,21 @@ export function oneWayAnova(
   const p = Number.isFinite(f) ? fUpperP(f, dfBetween, dfWithin) : NaN;
 
   if (msWithin === 0) {
-    notes.push("Zero within-group variance: F is undefined.");
+    notes.push("群内分散が0のため、Fは定義できません。");
   }
   if (groups.some((g) => g.n < 3)) {
-    notes.push("At least one group has n < 3; results are fragile.");
+    notes.push("少なくとも1群で n < 3 です。結果は不安定です。");
   }
   const ns = groups.map((g) => g.n);
   if (Math.max(...ns) !== Math.min(...ns)) {
-    notes.push("Unbalanced design; Tukey HSD uses the harmonic mean of group sizes.");
+    notes.push("不均衡デザインです。Tukey HSDは群サイズの調和平均を使います。");
   }
   const vars = groups.filter((g) => g.n > 1).map((g) => g.sd ** 2);
   if (vars.length > 1) {
     const ratio = Math.max(...vars) / (Math.min(...vars) || Number.EPSILON);
     if (ratio > 4) {
       notes.push(
-        "Largest/smallest group variance exceeds 4x; the equal-variance assumption is questionable.",
+        "最大/最小の群分散が4倍を超えます。等分散の仮定は疑わしいです。",
       );
     }
   }
@@ -164,7 +164,7 @@ export function oneWayAnova(
   }
 
   return {
-    test: "One-way ANOVA",
+    test: "一元配置ANOVA",
     groups,
     dfBetween, ssBetween, msBetween,
     dfWithin, ssWithin, msWithin,
@@ -202,7 +202,7 @@ export function kruskalWallis(
     .map((g) => ({ name: g.name, values: clean(g.values) }))
     .filter((g) => g.values.length > 0);
   const k = groups.length;
-  if (k < 2) return { h: NaN, df: NaN, p: NaN, notes: ["Need at least 2 groups."] };
+  if (k < 2) return { h: NaN, df: NaN, p: NaN, notes: ["少なくとも2群が必要です。"] };
 
   const flat: { v: number; g: number }[] = [];
   groups.forEach((g, gi) => g.values.forEach((v) => flat.push({ v, g: gi })));
@@ -234,7 +234,7 @@ export function kruskalWallis(
   let h = (12 / (N * (N + 1))) * acc - 3 * (N + 1);
   if (tieSum > 0) {
     h /= 1 - tieSum / (N * N * N - N);
-    notes.push("Ties present; H was tie-corrected.");
+    notes.push("タイがあるため、Hをタイ補正しました。");
   }
   const df = k - 1;
   // Chi-square upper tail = regularized upper incomplete gamma.

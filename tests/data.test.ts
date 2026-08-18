@@ -134,9 +134,9 @@ test("inventory flags duplicates and zero-byte files", () => {
     { name: "b.raw", size: 0 },
   ]);
   assert.equal(inv.duplicateNames.length, 1);
-  assert.ok(inv.issues.some((i) => i.includes("duplicate")));
-  assert.ok(inv.issues.some((i) => i.includes("zero bytes")));
-  assert.ok(inv.entries[2].issues.some((i) => i.includes("Zero bytes")));
+  assert.ok(inv.issues.some((i) => i.includes("重複")));
+  assert.ok(inv.issues.some((i) => i.includes("0バイト")));
+  assert.ok(inv.entries[2].issues.some((i) => i.includes("0バイト")));
 });
 
 test("humanSize formats readable units", () => {
@@ -171,7 +171,7 @@ test("duplicate sample ids are an error", () => {
   ];
   const sheet = validateSampleSheet(rows, []);
   assert.ok(!sheet.valid);
-  assert.ok(sheet.issues.some((i) => i.level === "error" && i.message.includes("Duplicate sample_id")));
+  assert.ok(sheet.issues.some((i) => i.level === "error" && i.message.includes("重複")));
 });
 
 test("a one-replicate group is an error, two is a warning", () => {
@@ -179,13 +179,13 @@ test("a one-replicate group is an error, two is a warning", () => {
     sample_id: id, file_name: `${id}.raw`, group, replicate: 1, batch: null, run_order: 1, extra: {},
   });
   const single = validateSampleSheet([mk("a", "A"), mk("b", "B"), mk("c", "B")], []);
-  assert.ok(single.issues.some((i) => i.level === "error" && i.message.includes('"A" has 1 sample')));
+  assert.ok(single.issues.some((i) => i.level === "error" && i.message.includes("は 1 サンプル")));
 
   const two = validateSampleSheet(
     [mk("a", "A"), mk("b", "A"), mk("c", "B"), mk("d", "B")], [],
   );
   assert.ok(two.valid);
-  assert.ok(two.issues.some((i) => i.level === "warning" && i.message.includes("only 2 replicates")));
+  assert.ok(two.issues.some((i) => i.level === "warning" && i.message.includes("反復は2つだけ")));
 });
 
 test("batch confounding is warned about", () => {
@@ -199,7 +199,7 @@ test("batch confounding is warned about", () => {
     ],
     [],
   );
-  assert.ok(sheet.issues.some((i) => i.message.includes("confounded")));
+  assert.ok(sheet.issues.some((i) => i.message.includes("交絡")));
 });
 
 test("sample sheet maps columns from a table by alias", () => {
@@ -482,7 +482,7 @@ test("a list given as newline text is split into items", () => {
 test("empty lists render a visible placeholder, not silence", () => {
   const t = getTemplate("generic")!;
   const out = renderTemplate(t, {});
-  assert.ok(out.includes("not recorded"));
+  assert.ok(out.includes("未記入"));
 });
 
 test("required-field validation reports what is missing", () => {

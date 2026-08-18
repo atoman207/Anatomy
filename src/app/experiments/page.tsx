@@ -8,9 +8,8 @@ export const dynamic = "force-dynamic";
 export default async function ExperimentsPage() {
   if (!isSupabaseConfigured()) {
     return (
-      <Callout tone="info" title="Supabase is not configured">
-        Add the project URL and keys to <code>.env.local</code> to save experiments. The
-        organize, analyze and notebook pages work without it.
+      <Callout tone="info" title="Supabaseが設定されていません">
+        実験を保存するには、プロジェクトURLとキーを <code>.env.local</code> に追加してください。データ整理、統計解析、実験ノートは設定なしでも使えます。
       </Callout>
     );
   }
@@ -19,10 +18,10 @@ export default async function ExperimentsPage() {
   if (!user) {
     return (
       <div className="flex flex-col gap-4">
-        <h1 className="text-xl font-semibold text-ink">実験一覧 / Experiments</h1>
-        <Callout tone="info" title="Sign in to save experiments">
-          <Link href="/login" className="text-accent underline">ログイン / Sign in</Link>{" "}
-          to keep experiments, notebook entries and figures. Everything else works signed out.
+        <h1 className="text-xl font-semibold text-ink">実験一覧</h1>
+        <Callout tone="info" title="実験を保存するにはログインしてください">
+          <Link href="/login" className="text-accent underline">ログイン</Link>
+          すると、実験・ノート・図を保存できます。それ以外は未ログインでも使えます。
         </Callout>
       </div>
     );
@@ -37,11 +36,11 @@ export default async function ExperimentsPage() {
 
   if (memberError) {
     return (
-      <Callout tone="danger" title="Could not load laboratories">
+      <Callout tone="danger" title="研究室を読み込めませんでした">
         {memberError.message}
         {/relation|does not exist|Could not find the table/i.test(memberError.message) && (
           <p className="mt-1.5">
-            The schema has not been applied yet — run <code>npm run db:push</code>.
+            スキーマがまだ適用されていません。<code>npm run db:push</code> を実行してください。
           </p>
         )}
       </Callout>
@@ -70,9 +69,9 @@ export default async function ExperimentsPage() {
     <div className="flex flex-col gap-5">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-ink">実験一覧 / Experiments</h1>
+          <h1 className="text-xl font-semibold text-ink">実験一覧</h1>
           <p className="mt-1 text-sm text-ink-2">
-            Signed in as {user.email}
+            {user.email} としてログイン中
           </p>
         </div>
       </header>
@@ -80,15 +79,15 @@ export default async function ExperimentsPage() {
       <ExperimentCreator labs={labs} />
 
       {labs.length === 0 ? (
-        <EmptyState title="No laboratory yet">
-          Create one above to start recording experiments.
+        <EmptyState title="研究室がまだありません">
+          上で研究室を作成すると、実験の記録を始められます。
         </EmptyState>
       ) : (experiments ?? []).length === 0 ? (
-        <EmptyState title="No experiments yet">
-          Create your first experiment above.
+        <EmptyState title="実験はまだありません">
+          上で最初の実験を作成してください。
         </EmptyState>
       ) : (
-        <Card title={`${experiments!.length} experiment(s)`}>
+        <Card title={`実験 ${experiments!.length} 件`}>
           <ul className="flex flex-col divide-y divide-[var(--border)]">
             {experiments!.map((e) => (
               <li key={e.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5">
@@ -108,7 +107,11 @@ export default async function ExperimentsPage() {
                         : e.status === "planned" ? "accent" : "warn"
                   }
                 >
-                  {e.status}
+                  {e.status === "complete" ? "完了"
+                    : e.status === "archived" ? "アーカイブ"
+                      : e.status === "planned" ? "計画"
+                        : e.status === "in_progress" ? "進行中"
+                          : e.status}
                 </Badge>
               </li>
             ))}
