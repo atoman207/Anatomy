@@ -6,10 +6,12 @@ import {
 } from "@/components/ui";
 import { useDownload, useWorkspace } from "@/components/workspace";
 import { Recorder, type Recording } from "@/components/voice/Recorder";
+import { LiveTranscriber } from "@/components/voice/LiveTranscriber";
 import { renderMarkdown } from "@/lib/notebook/markdown";
 import type { StructuredVoiceNote } from "@/lib/ai/voiceNote";
 
 type Stage = "record" | "transcript" | "structured";
+type Engine = "browser" | "openai";
 
 interface TranscribeResponse {
   text: string;
@@ -34,6 +36,9 @@ export default function VoicePage() {
   const ws = useWorkspace();
   const download = useDownload();
 
+  // Browser recognition is the default: it is free and shows text as you
+  // speak. The paid path stays one click away for accuracy or for Firefox.
+  const [engine, setEngine] = useState<Engine>("browser");
   const [recording, setRecording] = useState<Recording | null>(null);
   const [rawTranscript, setRawTranscript] = useState("");
   const [editedTranscript, setEditedTranscript] = useState("");
@@ -117,7 +122,7 @@ export default function VoicePage() {
 
       <ol className="flex flex-wrap items-center gap-2 text-xs">
         {[
-          { id: "record", label: "1. 録音" },
+          { id: "record", label: engine === "browser" ? "1. 話す" : "1. 録音" },
           { id: "transcript", label: "2. 書き起こしを確認" },
           { id: "structured", label: "3. ノートに整形" },
         ].map((s) => (
@@ -138,8 +143,80 @@ export default function VoicePage() {
       {error && <Callout tone="danger" title="エラー">{error}</Callout>}
 
       <Card
+        title="文字起こしの方法"
+        subtitle="どちらの方法でも、この後の整形・ノート化は同じです。"
+      >
+        <div className="flex flex-col gap-3">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <EngineOption
+              selected={engine === "browser"}
+              onSelect={() => setEngine("browser")}
+              title="ブラウザ音声認識"
+              badge={<Badge tone="good">無料</Badge>}
+              points={[
+                "APIキー不要・利用料なし",
+                "話しながらリアルタイムで文字が出る",
+                "Chrome / Edge / Safari のみ",
+              ]}
+            />
+            <EngineOption
+              selected={engine === "openai"}
+              onSelect={() => setEngine("openai")}
+              title="OpenAI で文字起こし"
+              badge={<Badge tone="neutral">従量課金</Badge>}
+              points={[
+                "専門用語の精度が高い",
+                "音声を残して聞き直せる",
+                "すべてのブラウザで動作",
+              ]}
+            />
+          </div>
+          {engine === "browser" && (
+            <Callout tone="info">
+              音声はブラウザの音声認識サービス（Chrome/Edge は Google、Safari は Apple）に
+              送られます。録音ファイルは作られず、テキストだけが手元に残ります。
+            </Callout>
+          )}
+          {engine === "openai" && (
+            <Callout tone="info">
+              音声はサーバー経由で OpenAI に送られ、書き起こし後に破棄されます。
+              保存されるのはテキストだけです。
+            </Callout>
+          )}
+        </div>
+      </Card>
+
+      {engine === "browser" && (
+        <Card
+          title="話して文字にする"
+          subtitle="話した内容がその場で文字になります。停止すると書き起こしが確定します。"
+          actions={
+            rawTranscript && (
+              <Button size="sm" variant="danger" onClick={reset}>やり直す</Button>
+            )
+          }
+        >
+          <LiveTranscriber
+            disabled={busy !== null}
+            onCommit={(text) => {
+              setRawTranscript(text);
+              setEditedTranscript(text);
+              setMeta(null);
+              setError(null);
+            }}
+            onUnavailable={(reason) => {
+              // Fall back rather than dead-end: the paid path works everywhere.
+              setError(reason);
+              setEngine("openai");
+            }}
+          />
+        </Card>
+      )}
+
+      <Card
         title="録音"
         subtitle="音声はブラウザからサーバー経由で OpenAI に送られ、書き起こし後に破棄されます。保存されるのはテキストだけです。"
+        className={engine === "browser" ? "hidden" : undefined}
         actions={
           (recording || rawTranscript) && (
             <Button size="sm" variant="danger" onClick={reset}>やり直す</Button>
@@ -382,5 +459,55 @@ function ExtractedFields({ note }: { note: StructuredVoiceNote }) {
       {note.next_actions.length > 0 &&
         row("次の予定", <ul className="list-disc pl-4">{note.next_actions.map((a, i) => <li key={i}>{a}</li>)}</ul>)}
     </div>
+  );
+}
+
+/**
+ * One selectable transcription engine.
+ *
+ * The cost difference is the thing a researcher actually decides on, so it is
+ * a badge rather than buried prose, and the browser-only limitation is stated
+ * up front instead of surfacing as a failure later.
+ */
+function EngineOption({
+  selected, onSelect, title, badge, points,
+}: {
+  selected: boolean;
+  onSelect: () => void;
+  title: string;
+  badge: React.ReactNode;
+  points: string[];
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      className={cx(
+        "rounded-lg border p-3 text-left transition-colors",
+        selected
+          ? "border-accent bg-accent-soft/40"
+          : "border-line hover:border-line-strong hover:bg-surface-2",
+      )}
+    >
+      <span className="flex items-center gap-2">
+        <span
+          aria-hidden
+          className={cx(
+            "grid h-4 w-4 place-items-center rounded-full border",
+            selected ? "border-accent" : "border-line-strong",
+          )}
+        >
+          {selected && <span className="h-2 w-2 rounded-full bg-accent" />}
+        </span>
+        <span className="text-sm font-medium text-ink">{title}</span>
+        {badge}
+      </span>
+      <ul className="mt-2 flex flex-col gap-0.5 pl-6">
+        {points.map((p) => (
+          <li key={p} className="text-[11px] text-ink-2">・{p}</li>
+        ))}
+      </ul>
+    </button>
   );
 }

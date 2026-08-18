@@ -1,0 +1,191 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Badge, Button, Callout } from "@/components/ui";
+import {
+  SpeechSession, isWebSpeechSupported, fullTranscript,
+  EMPTY_TRANSCRIPT, type TranscriptState, type ClassifiedError,
+} from "@/lib/voice/webSpeech";
+
+/**
+ * Free, real-time Japanese dictation using the browser's own speech engine.
+ *
+ * No API key and no per-minute cost. Text appears while you speak, which the
+ * upload-and-wait path cannot do — worth having even alongside it.
+ */
+export function LiveTranscriber({
+  onCommit, onUnavailable, disabled,
+}: {
+  /** Called with the finished transcript when the user stops. */
+  onCommit: (text: string) => void;
+  /** Called when this browser cannot run recognition at all. */
+  onUnavailable?: (reason: string) => void;
+  disabled?: boolean;
+}) {
+  const supported = useSyncExternalStore(
+    () => () => {},
+    () => isWebSpeechSupported(),
+    () => true,
+  );
+
+  const [listening, setListening] = useState(false);
+  const [state, setState] = useState<TranscriptState>(EMPTY_TRANSCRIPT);
+  const [error, setError] = useState<ClassifiedError | null>(null);
+  const [dead, setDead] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+
+  const sessionRef = useRef<SpeechSession | null>(null);
+  const startedAtRef = useRef(0);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    return () => {
+      sessionRef.current?.dispose();
+      sessionRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!listening) return;
+    const id = setInterval(() => {
+      setElapsed((Date.now() - startedAtRef.current) / 1000);
+    }, 250);
+    return () => clearInterval(id);
+  }, [listening]);
+
+  // Keep the newest words in view during a long dictation.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [state]);
+
+  const start = useCallback(() => {
+    setError(null);
+    setDead(false);
+
+    const session = new SpeechSession(
+      {
+        onTranscript: setState,
+        onError: (e) => setError(e),
+        onStateChange: setListening,
+        onDead: () => {
+          setDead(true);
+          setListening(false);
+          onUnavailable?.(
+            "このブラウザの音声認識エンジンが応答しません。Chrome または Edge をお使いいただくか、OpenAI での文字起こしに切り替えてください。",
+          );
+        },
+      },
+      { lang: "ja-JP" },
+    );
+
+    sessionRef.current?.dispose();
+    sessionRef.current = session;
+    startedAtRef.current = Date.now();
+    setElapsed(0);
+    // Continue from whatever is already there rather than starting over.
+    session.setTranscript(state.final);
+    session.start();
+  }, [onUnavailable, state.final]);
+
+  const stop = useCallback(() => {
+    const session = sessionRef.current;
+    session?.stop();
+    const text = session ? fullTranscript(session.transcript) : fullTranscript(state);
+    if (text.trim()) onCommit(text.trim());
+  }, [onCommit, state]);
+
+  function clear() {
+    sessionRef.current?.dispose();
+    sessionRef.current = null;
+    setState(EMPTY_TRANSCRIPT);
+    setError(null);
+    setDead(false);
+    setElapsed(0);
+    setListening(false);
+  }
+
+  if (!supported) {
+    return (
+      <Callout tone="warn" title="このブラウザは無料の音声認識に対応していません">
+        Chrome、Edge、または Safari をお使いください。Firefox は Web Speech API に
+        対応していません。下の「OpenAI で文字起こし」に切り替えれば、どのブラウザでも利用できます。
+      </Callout>
+    );
+  }
+
+  const mmss = `${Math.floor(elapsed / 60)}:${String(Math.floor(elapsed % 60)).padStart(2, "0")}`;
+  const charCount = fullTranscript(state).length;
+
+  return (
+    <div className="flex flex-col gap-3">
+      {dead && (
+        <Callout tone="danger" title="音声認識エンジンが応答しません">
+          このブラウザには音声認識サービスへの接続がありません。Chrome または Edge を
+          お使いいただくか、「OpenAI で文字起こし」に切り替えてください。
+        </Callout>
+      )}
+
+      {error && !dead && (
+        <Callout tone="danger" title="音声認識エラー">{error.message}</Callout>
+      )}
+
+      <div className="flex flex-wrap items-center gap-3">
+        {!listening ? (
+          <Button variant="primary" onClick={start} disabled={disabled || dead}>
+            ● 話し始める
+          </Button>
+        ) : (
+          <Button variant="danger" onClick={stop}>■ 停止して確定</Button>
+        )}
+
+        {charCount > 0 && !listening && (
+          <Button onClick={clear}>クリア</Button>
+        )}
+
+        {listening && (
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden
+              className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-[var(--danger)]"
+            />
+            <span className="font-mono text-sm tabular-nums text-ink">{mmss}</span>
+            <span className="text-xs text-ink-3">認識中…</span>
+          </div>
+        )}
+
+        {charCount > 0 && <Badge tone="neutral">{charCount} 文字</Badge>}
+      </div>
+
+      <div
+        ref={scrollRef}
+        aria-live="polite"
+        aria-label="認識結果"
+        className="max-h-56 min-h-24 overflow-y-auto rounded-lg border border-line bg-surface-1 px-3 py-2.5 text-sm leading-relaxed"
+      >
+        {state.final && <span className="text-ink">{state.final}</span>}
+        {/* Interim text is shown greyed so it reads as provisional: the
+            engine revises it as the phrase completes. */}
+        {state.interim && (
+          <span className="text-ink-3 italic">
+            {state.final ? " " : ""}
+            {state.interim}
+          </span>
+        )}
+        {!state.final && !state.interim && (
+          <span className="text-ink-3">
+            {listening
+              ? "話してください。認識された文字がここに表示されます…"
+              : "「話し始める」を押すと、話した内容がリアルタイムで文字になります。"}
+          </span>
+        )}
+      </div>
+
+      {listening && (
+        <p className="text-[11px] text-ink-3">
+          区切りのよいところで自動的に確定されます。一時的に止まっても自動で再開します。
+        </p>
+      )}
+    </div>
+  );
+}
