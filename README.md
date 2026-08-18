@@ -86,6 +86,96 @@ identity is never colour-alone.
 
 ---
 
+## AI features
+
+Two features use OpenAI. Both are built so the model does the part it is good
+at and nothing more.
+
+### 音声メモ (`/voice`)
+
+Record while you work, then get a structured notebook entry.
+
+```
+録音 (MediaRecorder)
+  → /api/voice/transcribe   gpt-4o-transcribe    音声 → 書き起こし
+  → 研究者が書き起こしを確認・修正
+  → /api/voice/structure    gpt-5.6-terra        書き起こし → JSON (Structured Outputs)
+  → ノートの Markdown
+```
+
+Four layers are kept separate — audio, raw transcript, AI structure, and the
+researcher's confirmed version. If the model mishears "10 μL" as "100 μL", the
+original recording and the original transcript are both still there. The page
+shows the raw transcript beside the edited one whenever they differ.
+
+Every field in the schema is nullable, and the prompt forbids filling gaps.
+A concentration that was never spoken comes back as `null` and renders as
+**未記録**, not as a plausible number. Terms the transcriber rendered
+ambiguously are listed under 要確認 for you to check.
+
+Katakana is normalized in the structuring pass rather than during
+transcription: `トリプシン` → `Trypsin`, `ロットA123` → lot `A123`. The
+transcriber stays faithful to what was said; normalization happens where a
+schema can validate it.
+
+`gpt-live-transcribe` is a **realtime/WebRTC** model and returns 404 on the
+file-upload endpoint. A recorded memo is uploaded whole, so `gpt-4o-transcribe`
+is what runs here. It was the most accurate of the file-based models on
+Japanese lab speech — the only one to get both `TMT標識` and `IL-1β` right.
+
+### 論文検索 (`/literature`)
+
+```
+日本語の質問
+  → gpt-5.6-terra            → PubMed 検索式 (MeSH + Title/Abstract)
+  → NCBI E-utilities         → 実在する論文（書誌 + 抄録）
+  → gpt-5.6-terra (任意)      → 取得した抄録のみに基づく要約
+  → Crossref (任意)           → DOI の照合
+```
+
+**The model never produces citations.** Asked for "ten relevant papers" a
+language model will emit ten plausible references, and some will not exist.
+Here it writes a query; PubMed returns the records. Nothing reaches the screen
+that did not come out of the index.
+
+Three further guards:
+
+- The generated query is shown and is **editable** — you can see exactly what
+  was searched and change it, with 条件を広げる / 条件を絞る as one-click
+  alternatives.
+- The summary is grounded only in retrieved abstracts, and any PMID it cites
+  that was not in the result set is **stripped before display**, with a warning.
+  Structured Outputs guarantees the shape of a response, not the truth of the
+  strings in it.
+- **DOIを照合** checks each DOI against Crossref and compares titles, so a
+  mistyped identifier is caught before it reaches a manuscript.
+
+Both features degrade rather than fail: without `OPENAI_API_KEY`, the voice page
+still accepts a pasted transcript and literature search passes your text
+straight to PubMed as a literal query.
+
+### Models
+
+Configured in `.env.local`, verified against the live API on startup and shown
+on the dashboard:
+
+| Variable | Value | Used for |
+|---|---|---|
+| `OPENAI_MODEL_TEXT` | `gpt-5.6-terra` | Structuring, query building, summarizing |
+| `OPENAI_MODEL_CHEAP` | `gpt-5.6-luna` | Reserved for bulk/low-stakes work |
+| `OPENAI_MODEL_TRANSCRIBE` | `gpt-4o-transcribe` | File-upload transcription |
+| `OPENAI_MODEL_REALTIME` | `gpt-live-transcribe` | Streaming (not yet wired up) |
+| `OPENAI_MODEL_IMAGE` | `gpt-image-2` | Reserved for figure illustrations |
+
+### What is sent where
+
+Audio goes to OpenAI and is discarded after transcription; only text is kept.
+Transcripts and questions go to OpenAI. Search terms go to NCBI and Crossref,
+both of which receive your `NCBI_EMAIL` / `CROSSREF_MAILTO` as courtesy
+identification. Nothing else leaves the browser.
+
+---
+
 ## Login and administration
 
 ### Access model
@@ -217,9 +307,10 @@ be audited or reversed months later.
 npm run dev            # development server
 npm run build          # production build
 npm run check          # typecheck + lint + unit tests
-npm test               # unit tests (113)
+npm test               # unit tests (132)
 npm run test:e2e       # browser smoke test; needs a server on :3210
 npm run test:e2e:auth  # login, administration and permission denials
+npm run test:e2e:ai    # voice structuring and literature search (uses real API calls)
 npm run admin:create   # create the first administrator account
 npm run db:push        # apply migrations (needs SUPABASE_DB_URL)
 ```
@@ -238,17 +329,32 @@ platform-admin allowlist (including that substring and prefix matches are
 refused), redirect-target sanitising, and that a user never inherits a role from
 someone else's row in the same laboratory.
 
-`tests/e2e.mjs` and `tests/e2e-auth.mjs` drive the real UI in Chromium and fail
-on any console error, page error or failed request.
+`tests/ai.test.ts` covers the parts of the AI features that must not drift:
+per-article abstract attribution, removal of any PMID the model cited that was
+not retrieved, and that every voice-note field is nullable so "not said" stays
+representable.
+
+`tests/e2e.mjs`, `tests/e2e-auth.mjs` and `tests/e2e-ai.mjs` drive the real UI
+in Chromium and fail on any console error, page error or failed request. The AI
+suite makes live API calls and asserts that no cited PMID falls outside the
+retrieved result set.
 
 ---
 
-## Notes on the AI features
+## Where AI is deliberately not used
 
-The model IDs in `.env.example` (`gpt-5.6-terra`, `gpt-live-transcribe`,
-`gpt-image-2`) came from the original project plan and do not correspond to
-OpenAI models known to this codebase. They are read from the environment rather
-than hard-coded, so correcting them is a one-line change with no code edits.
-All AI paths are inert while `OPENAI_API_KEY` is unset — the statistics,
-figures and notebook features do not use a model at all, by design: a t-test
-should be computed, not predicted.
+The statistics, figures and file-organization features never call a model, and
+that is a design decision rather than an omission. A t-test should be computed,
+not predicted: the value of a p-value is that it follows from the data by a
+rule you can check, and a model that returns one gives you a number with no
+provenance. Those modules are validated against closed forms and published
+reference values instead (see Testing).
+
+AI is used where the task is genuinely linguistic — turning speech into text,
+normalizing spoken jargon into standard notation, and translating a question
+into a search query. Even there, the output is constrained by a JSON schema and
+cross-checked against a real index before it is shown.
+
+Model IDs are read from the environment rather than hard-coded, so swapping one
+is a `.env.local` edit with no code change, and every AI path is inert while
+`OPENAI_API_KEY` is unset.

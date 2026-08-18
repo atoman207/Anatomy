@@ -16,20 +16,20 @@ export function Card({
   return (
     <section
       className={cx(
-        "rounded-xl border border-line bg-surface-1 shadow-[0_1px_2px_rgba(0,0,0,0.04)]",
+        "rounded-lg border border-line bg-surface-1 shadow-[var(--shadow-sm)]",
         className,
       )}
     >
       {(title || actions) && (
-        <header className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-4 py-3">
+        <header className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-5 py-4">
           <div className="min-w-0">
-            {title && <h2 className="text-sm font-semibold text-ink">{title}</h2>}
-            {subtitle && <p className="mt-0.5 text-xs text-ink-3">{subtitle}</p>}
+            {title && <h2 className="font-serif text-base font-semibold text-ink">{title}</h2>}
+            {subtitle && <p className="mt-1 text-[13px] leading-relaxed text-ink-3">{subtitle}</p>}
           </div>
           {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         </header>
       )}
-      <div className="p-4">{children}</div>
+      <div className="p-5">{children}</div>
     </section>
   );
 }
@@ -43,15 +43,15 @@ export function Button({
   variant = "secondary", size = "md", className, ...rest
 }: ButtonProps) {
   const base =
-    "inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50";
-  const sizes = size === "sm" ? "px-2.5 py-1.5 text-xs" : "px-3.5 py-2 text-sm";
+    "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50";
+  const sizes = size === "sm" ? "px-3 py-1.5 text-[13px]" : "px-5 py-2.5 text-[15px]";
   const variants = {
     primary:
-      "bg-accent text-accent-contrast hover:opacity-90 disabled:hover:opacity-50",
+      "btn-hatme text-accent-contrast shadow-[var(--shadow-sm)] disabled:hover:opacity-50",
     secondary:
-      "border border-line-strong bg-surface-1 text-ink hover:bg-surface-2",
-    ghost: "text-ink-2 hover:bg-surface-2 hover:text-ink",
-    danger: "border border-line-strong bg-surface-1 text-danger hover:bg-danger-soft",
+      "border border-line bg-surface-1 text-ink hover:border-accent hover:text-accent",
+    ghost: "text-ink-2 hover:text-accent",
+    danger: "border border-danger/30 bg-surface-1 text-danger hover:bg-danger-soft",
   }[variant];
   return <button className={cx(base, sizes, variants, className)} {...rest} />;
 }
@@ -67,7 +67,7 @@ export function Field({
 }) {
   return (
     <div className={cx("flex flex-col gap-1", className)}>
-      <label htmlFor={htmlFor} className="text-xs font-medium text-ink-2">
+      <label htmlFor={htmlFor} className="text-[13px] font-medium text-ink-2">
         {label}
       </label>
       {children}
@@ -77,7 +77,7 @@ export function Field({
 }
 
 const controlClass =
-  "w-full rounded-lg border border-line-strong bg-surface-1 px-2.5 py-1.5 text-sm text-ink outline-none transition-colors focus:border-accent";
+  "w-full rounded-md border border-line bg-surface-1 px-3 py-2 text-base text-ink outline-none transition-colors duration-200 focus:border-accent";
 
 export function TextInput({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
   return <input className={cx(controlClass, className)} {...rest} />;
@@ -109,7 +109,7 @@ export function Badge({
     accent: "bg-accent-soft text-accent",
   }[tone];
   return (
-    <span className={cx("inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium", tones)}>
+    <span className={cx("inline-flex items-center rounded-full px-2.5 py-0.5 text-[12px] font-medium", tones)}>
       {children}
     </span>
   );
@@ -133,7 +133,7 @@ export function Callout({
     danger: { cls: "border-danger/40 bg-danger-soft text-ink", icon: "✕", label: "エラー" },
   }[tone];
   return (
-    <div className={cx("flex gap-2.5 rounded-lg border px-3 py-2.5 text-xs leading-relaxed", config.cls)}>
+    <div className={cx("flex gap-2.5 rounded-md border px-4 py-3 text-[14px] leading-relaxed", config.cls)}>
       <span aria-hidden className="mt-px font-bold">{config.icon}</span>
       <div className="min-w-0 flex-1">
         <span className="sr-only">{config.label}: </span>
@@ -146,9 +146,9 @@ export function Callout({
 
 export function EmptyState({ title, children }: { title: string; children?: ReactNode }) {
   return (
-    <div className="rounded-lg border border-dashed border-line-strong px-4 py-10 text-center">
-      <p className="text-sm font-medium text-ink-2">{title}</p>
-      {children && <div className="mt-1 text-xs text-ink-3">{children}</div>}
+    <div className="rounded-lg border border-dashed border-line px-4 py-12 text-center">
+      <p className="text-[15px] font-medium text-ink-2">{title}</p>
+      {children && <div className="mt-2 text-[13px] text-ink-3">{children}</div>}
     </div>
   );
 }
@@ -164,7 +164,7 @@ export function DataTable({
 }) {
   return (
     <div className="scroll-x rounded-lg border border-line" style={maxHeight ? { maxHeight, overflowY: "auto" } : undefined}>
-      <table className="w-full border-collapse text-xs">
+      <table className="w-full border-collapse text-[14px]">
         <thead className="sticky top-0 z-10 bg-surface-2">
           <tr>
             {headers.map((h, i) => (
@@ -217,10 +217,10 @@ export function StatTile({
     ? { good: "text-good", warn: "text-warn", danger: "text-danger", accent: "text-accent" }[tone]
     : "text-ink";
   return (
-    <div className="rounded-lg border border-line bg-surface-1 px-3 py-2.5">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-ink-3">{label}</p>
-      <p className={cx("mt-0.5 text-xl font-semibold tabular-nums", valueTone)}>{value}</p>
-      {hint && <p className="mt-0.5 text-[11px] text-ink-3">{hint}</p>}
+    <div className="rounded-lg border border-line bg-surface-1 px-4 py-3 shadow-[var(--shadow-sm)]">
+      <p className="text-[12px] font-medium uppercase tracking-wider text-ink-3">{label}</p>
+      <p className={cx("mt-1 text-2xl font-semibold tabular-nums", valueTone)}>{value}</p>
+      {hint && <p className="mt-1 text-[13px] text-ink-3">{hint}</p>}
     </div>
   );
 }

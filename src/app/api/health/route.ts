@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase, isSupabaseConfigured, readSupabaseEnv } from "@/lib/supabase/server";
+import { checkAi, aiConfig } from "@/lib/ai/openai";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +19,7 @@ export interface HealthReport {
   auth: { ok: boolean; detail: string };
   rest: { ok: boolean; detail: string };
   schema: { ok: boolean; present: string[]; missing: string[]; detail: string };
+  ai: { ok: boolean; enabled: boolean; detail: string; models: string[] };
   checkedAt: string;
 }
 
@@ -38,6 +40,7 @@ export async function GET() {
       auth: { ok: false, detail: "未設定" },
       rest: { ok: false, detail: "未設定" },
       schema: { ok: false, present: [], missing: [...EXPECTED_TABLES], detail: "未設定" },
+      ai: { ok: false, enabled: false, detail: "未設定", models: [] },
       checkedAt,
     });
   }
@@ -50,6 +53,7 @@ export async function GET() {
     auth: { ok: false, detail: "" },
     rest: { ok: false, detail: "" },
     schema: { ok: false, present: [], missing: [], detail: "" },
+    ai: { ok: false, enabled: false, detail: "", models: [] },
     checkedAt,
   };
 
@@ -122,6 +126,12 @@ export async function GET() {
           : `${missing.length} 件のテーブルが不足しています — 実行: npm run db:push`,
     };
   }
+
+  // --- OpenAI ---
+  // AI is optional: the analysis tools never call a model, so a failure here
+  // is reported but does not make the deployment unhealthy.
+  const ai = await checkAi();
+  report.ai = { ...ai, enabled: aiConfig().enabled };
 
   report.ok = report.auth.ok && report.rest.ok && report.schema.ok;
   // Always 200: the endpoint itself succeeded, and "schema not applied yet" is

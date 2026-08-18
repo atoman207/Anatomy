@@ -80,9 +80,9 @@ export function UserMenu() {
     return (
       <Link
         href={`/login?next=${encodeURIComponent(pathname)}`}
-        className="whitespace-nowrap rounded-xl border border-line-strong px-3.5 py-2 text-sm font-medium text-ink transition-colors hover:bg-surface-2"
+        className="btn-hatme whitespace-nowrap rounded-md px-4 py-2 text-[15px] font-medium"
       >
-        ログイン
+        <span>ログイン</span>
       </Link>
     );
   }

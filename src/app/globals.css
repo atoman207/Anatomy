@@ -1,75 +1,105 @@
 @import "tailwindcss";
 
 /*
- * Design tokens. Light values live on :root; the dark block redefines only
- * what changes, so a token is never defined solely inside a media query.
+ * Design tokens inspired by HATME corporate site (hatme.jp):
+ * green primary, clean white surfaces, Noto Sans/Serif JP typography.
  */
 :root {
-  --surface-0: #f6f5f2;
-  --surface-1: #fcfcfb;
-  --surface-2: #f0efec;
-  --border: #e2e1dc;
-  --border-strong: #cdccc5;
-  --text-primary: #0b0b0b;
-  --text-secondary: #52514e;
-  --text-muted: #78776f;
-  --accent: #2a78d6;
+  --surface-0: #f7f7f7;
+  --surface-1: #ffffff;
+  --surface-2: #f7f7f7;
+  --surface-3: #deede0;
+  --border: #d4d4d4;
+  --border-strong: #333333;
+  --text-primary: #333333;
+  --text-secondary: #666666;
+  --text-muted: #838383;
+  --accent: #00913a;
+  --accent-hover: #007830;
+  --accent-light: #0fa14a;
   --accent-contrast: #ffffff;
-  --accent-soft: #e8f1fd;
-  --good: #1baf7a;
-  --warn: #eda100;
-  --danger: #e34948;
+  --accent-soft: #deede0;
+  --accent-gradient: linear-gradient(to right, #00913a 0%, #13c259 100%);
+  --accent-gradient-hover: linear-gradient(to right, #007830 0%, #0fa14a 100%);
+  --highlight: #ffe81d;
+  --link: #0763ce;
+  --good: #00913a;
+  --warn: #e97f02;
+  --danger: #ca0808;
   --danger-soft: #fdecec;
-  --warn-soft: #fdf4e0;
-  --good-soft: #e6f7f1;
+  --warn-soft: #fbedd2;
+  --good-soft: #deede0;
+  --footer-bg: #333333;
+  --footer-text: #ffffff;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --ease-out: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --duration-fast: 200ms;
+  --duration-normal: 350ms;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --surface-0: #131312;
-    --surface-1: #1a1a19;
-    --surface-2: #252523;
-    --border: #33322f;
-    --border-strong: #4d4c48;
-    --text-primary: #ffffff;
-    --text-secondary: #c3c2b7;
-    --text-muted: #8f8e85;
-    --accent: #3987e5;
-    --accent-contrast: #0b0b0b;
-    --accent-soft: #16283f;
-    --good: #199e70;
-    --warn: #c98500;
+    --surface-0: #1a1a1a;
+    --surface-1: #242424;
+    --surface-2: #2e2e2e;
+    --surface-3: #1e3324;
+    --border: #444444;
+    --border-strong: #666666;
+    --text-primary: #f0f0f0;
+    --text-secondary: #b0b0b0;
+    --text-muted: #888888;
+    --accent: #14d05f;
+    --accent-hover: #0fa14a;
+    --accent-light: #1bcd62;
+    --accent-contrast: #ffffff;
+    --accent-soft: #1e3324;
+    --accent-gradient: linear-gradient(to right, #00913a 0%, #14d05f 100%);
+    --accent-gradient-hover: linear-gradient(to right, #007830 0%, #0fa14a 100%);
+    --good: #14d05f;
+    --warn: #e97f02;
     --danger: #e66767;
     --danger-soft: #3a1f1f;
     --warn-soft: #33290f;
     --good-soft: #10291f;
+    --footer-bg: #1a1a1a;
   }
 }
 
 :root[data-theme="dark"] {
-  --surface-0: #131312;
-  --surface-1: #1a1a19;
-  --surface-2: #252523;
-  --border: #33322f;
-  --border-strong: #4d4c48;
-  --text-primary: #ffffff;
-  --text-secondary: #c3c2b7;
-  --text-muted: #8f8e85;
-  --accent: #3987e5;
-  --accent-contrast: #0b0b0b;
-  --accent-soft: #16283f;
-  --good: #199e70;
-  --warn: #c98500;
+  --surface-0: #1a1a1a;
+  --surface-1: #242424;
+  --surface-2: #2e2e2e;
+  --surface-3: #1e3324;
+  --border: #444444;
+  --border-strong: #666666;
+  --text-primary: #f0f0f0;
+  --text-secondary: #b0b0b0;
+  --text-muted: #888888;
+  --accent: #14d05f;
+  --accent-hover: #0fa14a;
+  --accent-light: #1bcd62;
+  --accent-contrast: #ffffff;
+  --accent-soft: #1e3324;
+  --accent-gradient: linear-gradient(to right, #00913a 0%, #14d05f 100%);
+  --accent-gradient-hover: linear-gradient(to right, #007830 0%, #0fa14a 100%);
+  --good: #14d05f;
+  --warn: #e97f02;
   --danger: #e66767;
   --danger-soft: #3a1f1f;
   --warn-soft: #33290f;
   --good-soft: #10291f;
+  --footer-bg: #1a1a1a;
 }
 
 @theme inline {
   --color-surface-0: var(--surface-0);
   --color-surface-1: var(--surface-1);
   --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
   --color-line: var(--border);
   --color-line-strong: var(--border-strong);
   --color-ink: var(--text-primary);
@@ -92,11 +122,15 @@
 
 html {
   color-scheme: light dark;
+  scroll-behavior: smooth;
 }
 
 body {
   background: var(--surface-0);
   color: var(--text-primary);
+  font-size: 16px;
+  line-height: 1.75;
+  letter-spacing: 0.02em;
 }
 
 h1,
@@ -106,6 +140,136 @@ h4,
 h5,
 h6 {
   font-family: var(--font-serif), ui-serif, serif;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.04em;
+}
+
+h1 {
+  font-size: clamp(1.75rem, 3vw, 2.125rem);
+}
+
+h2 {
+  font-size: clamp(1.375rem, 2.5vw, 1.75rem);
+}
+
+h3 {
+  font-size: 1.125rem;
+}
+
+/* HATME-style section label (Japanese + English) */
+.section-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-bottom: 0.75rem;
+}
+
+.section-label-en {
+  font-family: var(--font-roboto), ui-sans-serif, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.section-label-ja {
+  font-family: var(--font-serif), ui-serif, serif;
+  font-size: clamp(1.25rem, 2vw, 1.5rem);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Fade-in animation (HATME animate.css style) */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp var(--duration-normal) var(--ease-out) both;
+}
+
+.animate-fade-in {
+  animation: fadeIn var(--duration-normal) var(--ease-out) both;
+}
+
+.animate-delay-1 {
+  animation-delay: 100ms;
+}
+
+.animate-delay-2 {
+  animation-delay: 200ms;
+}
+
+.animate-delay-3 {
+  animation-delay: 300ms;
+}
+
+.animate-delay-4 {
+  animation-delay: 400ms;
+}
+
+/* HATME-style button hover slide */
+.btn-hatme {
+  position: relative;
+  overflow: hidden;
+  background: var(--accent-gradient);
+  color: var(--accent-contrast);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.btn-hatme::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--surface-1);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--duration-normal) var(--ease-out);
+}
+
+.btn-hatme:hover::before {
+  transform: scaleX(1);
+}
+
+.btn-hatme:hover {
+  color: var(--accent);
+}
+
+.btn-hatme > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Card hover lift */
+.card-hover {
+  transition:
+    transform var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--accent);
 }
 
 /* Wide content scrolls inside its own container, never the page body. */
@@ -120,6 +284,7 @@ select,
 textarea {
   color: var(--text-primary);
   background-color: var(--surface-1);
+  font-size: 16px;
 }
 
 input::placeholder,
@@ -135,11 +300,12 @@ textarea::placeholder {
 /* Rendered notebook Markdown. */
 .prose-note {
   color: var(--text-primary);
-  line-height: 1.65;
+  line-height: 1.75;
+  font-size: 16px;
 }
-.prose-note h1 { font-size: 1.4rem; font-weight: 650; margin: 1.1em 0 0.5em; }
-.prose-note h2 { font-size: 1.15rem; font-weight: 650; margin: 1.1em 0 0.45em; }
-.prose-note h3 { font-size: 1rem; font-weight: 650; margin: 1em 0 0.4em; }
+.prose-note h1 { font-size: 1.75rem; font-weight: 650; margin: 1.1em 0 0.5em; }
+.prose-note h2 { font-size: 1.375rem; font-weight: 650; margin: 1.1em 0 0.45em; }
+.prose-note h3 { font-size: 1.125rem; font-weight: 650; margin: 1em 0 0.4em; }
 .prose-note p { margin: 0.55em 0; }
 .prose-note ul, .prose-note ol { margin: 0.55em 0; padding-left: 1.35em; }
 .prose-note ul { list-style: disc; }
@@ -168,3 +334,22 @@ textarea::placeholder {
 }
 .prose-note th { background: var(--surface-2); font-weight: 600; }
 .prose-note hr { border: 0; border-top: 1px solid var(--border); margin: 1.2em 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .animate-fade-in-up,
+  .animate-fade-in {
+    animation: none;
+  }
+
+  .card-hover:hover {
+    transform: none;
+  }
+
+  .btn-hatme::before {
+    transition: none;
+  }
+}

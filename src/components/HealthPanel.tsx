@@ -75,10 +75,11 @@ export function HealthPanel() {
 
       {report && (
         <div className="flex flex-col gap-3">
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <StatusRow label="認証" ok={report.auth.ok} detail={report.auth.detail} />
             <StatusRow label="REST API" ok={report.rest.ok} detail={report.rest.detail} />
             <StatusRow label="スキーマ" ok={report.schema.ok} detail={report.schema.detail} />
+            <StatusRow label="AI (OpenAI)" ok={report.ai.ok} detail={report.ai.detail} />
           </div>
 
           {report.configured && !report.schema.ok && report.schema.missing.length > 0 && (
@@ -97,6 +98,20 @@ export function HealthPanel() {
               <p className="mt-1.5">
                 データ整理・統計解析・ノートの各ページは、この設定なしでも利用できます。
               </p>
+            </Callout>
+          )}
+
+          {report.configured && !report.ai.ok && (
+            <Callout tone="info" title="AI機能">
+              {report.ai.enabled
+                ? `OpenAI に接続できません: ${report.ai.detail}`
+                : "OPENAI_API_KEY が未設定です。音声メモと論文検索のAI機能は無効ですが、他の機能はすべて利用できます。"}
+            </Callout>
+          )}
+
+          {report.ai.ok && report.ai.models.length > 0 && (
+            <Callout tone="good" title="AI機能は有効です">
+              使用モデル: {report.ai.models.join(", ")}
             </Callout>
           )}
 

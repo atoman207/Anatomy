@@ -8,12 +8,13 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "tsx --conditions=react-server --test tests/*.test.ts",
     "test:e2e": "node tests/e2e.mjs",
     "db:push": "node scripts/db-push.mjs",
     "check": "npm run typecheck && npm run lint && npm test",
     "admin:create": "node scripts/create-admin.mjs",
-    "test:e2e:auth": "node tests/e2e-auth.mjs"
+    "test:e2e:auth": "node tests/e2e-auth.mjs",
+    "test:e2e:ai": "node tests/e2e-ai.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
