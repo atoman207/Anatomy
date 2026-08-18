@@ -127,10 +127,10 @@ export function Callout({
   children?: ReactNode;
 }) {
   const config = {
-    info: { cls: "border-line bg-surface-2 text-ink-2", icon: "i", label: "Note" },
-    good: { cls: "border-good/30 bg-good-soft text-ink", icon: "✓", label: "OK" },
-    warn: { cls: "border-warn/40 bg-warn-soft text-ink", icon: "!", label: "Warning" },
-    danger: { cls: "border-danger/40 bg-danger-soft text-ink", icon: "✕", label: "Error" },
+    info: { cls: "border-line bg-surface-2 text-ink-2", icon: "i", label: "お知らせ" },
+    good: { cls: "border-good/30 bg-good-soft text-ink", icon: "✓", label: "正常" },
+    warn: { cls: "border-warn/40 bg-warn-soft text-ink", icon: "!", label: "警告" },
+    danger: { cls: "border-danger/40 bg-danger-soft text-ink", icon: "✕", label: "エラー" },
   }[tone];
   return (
     <div className={cx("flex gap-2.5 rounded-lg border px-3 py-2.5 text-xs leading-relaxed", config.cls)}>
@@ -199,7 +199,7 @@ export function DataTable({
         </tbody>
       </table>
       {rows.length === 0 && (
-        <p className="px-3 py-6 text-center text-xs text-ink-3">No rows.</p>
+        <p className="px-3 py-6 text-center text-xs text-ink-3">行がありません。</p>
       )}
     </div>
   );

@@ -6,42 +6,38 @@ const FEATURES = [
   {
     href: "/organize",
     title: "データ整理",
-    en: "Data organization",
     items: [
-      "Rawファイル一覧作成 — inventory with duplicate, size and naming checks",
-      "サンプルシート作成 — groups, replicates, batch and run order, validated",
-      "ファイル名変更 — rule-based batch rename with collision-safe preview",
+      "Rawファイル一覧作成 — 重複・サイズ・命名規則のチェック付きインベントリ",
+      "サンプルシート作成 — 群、生物学的不応、バッチ、実行順序を検証",
+      "ファイル名変更 — 衝突回避プレビュー付きルールベース一括リネーム",
     ],
   },
   {
     href: "/analyze",
     title: "統計解析",
-    en: "Statistics",
     items: [
-      "t検定 — Welch, Student, paired, and Mann-Whitney",
-      "ANOVA — one-way with Tukey HSD and Kruskal-Wallis",
-      "PCA — scores, loadings and explained variance",
-      "クラスタリング — k-means and hierarchical with silhouette",
+      "t検定 — Welch、Student、対応あり、Mann-Whitney",
+      "ANOVA — 一元配置、Tukey HSD、Kruskal-Wallis",
+      "PCA — スコア、ローディング、説明分散",
+      "クラスタリング — k-means、階層的クラスタリング、シルエット",
     ],
   },
   {
     href: "/analyze",
     title: "図作成",
-    en: "Figures",
     items: [
-      "Volcano plot — fold change against FDR-controlled significance",
-      "Heatmap — row z-scores with row and column dendrograms",
-      "PCA plot — group colours, marker shapes and 95% ellipses",
+      "Volcano plot — 倍数変化とFDR制御有意性",
+      "Heatmap — 行zスコア、行・列デンドログラム",
+      "PCA plot — 群色、マーカー形状、95%楕円",
     ],
   },
   {
     href: "/notebook",
     title: "実験ノート自動化",
-    en: "Notebook automation",
     items: [
-      "テンプレート作成 — reusable templates for recurring experiments",
-      "測定情報取り込み — sample counts and sheets flow in automatically",
-      "結果貼り付け — queue any result and export one Markdown entry",
+      "テンプレート作成 — 繰り返し実験用の再利用可能テンプレート",
+      "測定情報取り込み — サンプル数とシートを自動連携",
+      "結果貼り付け — 任意の結果をキューに入れ、Markdownエントリを一括エクスポート",
     ],
   },
 ];
@@ -51,12 +47,11 @@ export default function DashboardPage() {
     <div className="flex flex-col gap-6">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight text-ink">
-          chondro — 研究データ管理
+          研究データ管理
         </h1>
         <p className="mt-1.5 max-w-3xl text-sm text-ink-2">
-          Organize raw files, run the standard statistics, produce publication figures, and
-          keep the experiment notebook in step. Statistics and plotting run entirely in your
-          browser; the database is only used when you choose to save.
+          Rawファイルの整理、標準統計解析、論文用図の作成、実験ノートの更新を一貫して行えます。
+          統計・作図はすべてブラウザ内で実行され、データベースは保存を選択した場合のみ使用されます。
         </p>
       </header>
 
@@ -64,15 +59,10 @@ export default function DashboardPage() {
 
       <div className="grid gap-4 sm:grid-cols-2">
         {FEATURES.map((f) => (
-          <Link key={f.title + f.en} href={f.href} className="group">
+          <Link key={f.title} href={f.href} className="group">
             <Card
               className="h-full transition-colors group-hover:border-line-strong"
-              title={
-                <span className="flex items-center gap-2">
-                  {f.title}
-                  <span className="text-xs font-normal text-ink-3">{f.en}</span>
-                </span>
-              }
+              title={f.title}
             >
               <ul className="flex flex-col gap-1.5 text-xs text-ink-2">
                 {f.items.map((it) => (
@@ -87,37 +77,37 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      <Card title="はじめ方 / Getting started">
+      <Card title="はじめ方">
         <ol className="flex flex-col gap-2 text-sm text-ink-2">
           <li>
             <Badge tone="accent">1</Badge>{" "}
             <Link href="/analyze" className="text-accent underline">
-              統計・図 / Analyze
+              統計・図
             </Link>{" "}
-            → <strong>デモデータ / Load demo data</strong> to see every feature working
-            immediately, with no file or login needed.
+            → <strong>デモデータ</strong>
+            を読み込んで、ファイルやログインなしですべての機能をすぐ確認できます。
           </li>
           <li>
             <Badge tone="accent">2</Badge>{" "}
             <Link href="/organize" className="text-accent underline">
-              データ整理 / Organize
+              データ整理
             </Link>{" "}
-            → add your raw files to build an inventory and a sample sheet.
+            → Rawファイルを追加してインベントリとサンプルシートを作成します。
           </li>
           <li>
-            <Badge tone="accent">3</Badge> Run the analyses, then send each result to the{" "}
+            <Badge tone="accent">3</Badge>{" "}
+            解析を実行し、各結果を{" "}
             <Link href="/notebook" className="text-accent underline">
-              実験ノート / Notebook
+              実験ノート
             </Link>{" "}
-            and export one entry.
+            に送ってエントリをエクスポートします。
           </li>
         </ol>
       </Card>
 
-      <Callout tone="info" title="Data handling">
-        Files you open are read in the browser for their contents and names only. Nothing is
-        transmitted anywhere unless you explicitly save to the database. Excel workbooks are the
-        one exception: they are parsed on the server and discarded immediately after the response.
+      <Callout tone="info" title="データの取り扱い">
+        開いたファイルは内容とファイル名のみブラウザ内で読み込まれます。明示的にデータベースへ保存しない限り、外部へ送信されることはありません。
+        Excelブックのみ例外で、サーバー上で解析後、レスポンス直後に破棄されます。
       </Callout>
     </div>
   );

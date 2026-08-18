@@ -15,10 +15,10 @@ import type { CorrectionMethod } from "@/lib/stats/multiple";
 
 type FigureKind = "volcano" | "heatmap" | "pca";
 
-const KINDS: { id: FigureKind; label: string; en: string }[] = [
-  { id: "volcano", label: "Volcano plot", en: "differential" },
-  { id: "heatmap", label: "Heatmap", en: "clustered" },
-  { id: "pca", label: "PCA plot", en: "score plot" },
+const KINDS: { id: FigureKind; label: string }[] = [
+  { id: "volcano", label: "ボルケーノプロット" },
+  { id: "heatmap", label: "ヒートマップ" },
+  { id: "pca", label: "PCAプロット" },
 ];
 
 /**
@@ -70,7 +70,7 @@ export function FiguresPanel({
 
   return (
     <div className="flex flex-col gap-4">
-      <Card title="図の種類 / Figure type">
+      <Card title="図の種類">
         <div className="flex flex-wrap gap-2">
           {KINDS.map((k) => (
             <Button
@@ -80,7 +80,6 @@ export function FiguresPanel({
               onClick={() => setKind(k.id)}
             >
               {k.label}
-              <span className="ml-1 opacity-70">{k.en}</span>
             </Button>
           ))}
         </div>
@@ -126,7 +125,7 @@ function FigureFrame({
       const img = new Image();
       await new Promise<void>((resolve, reject) => {
         img.onload = () => resolve();
-        img.onerror = () => reject(new Error("Could not rasterize the figure."));
+        img.onerror = () => reject(new Error("図をラスター化できませんでした。"));
         img.src = url;
       });
       const w = img.naturalWidth || 900;
@@ -135,7 +134,7 @@ function FigureFrame({
       canvas.width = Math.round(w * scale);
       canvas.height = Math.round(h * scale);
       const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("Canvas is unavailable.");
+      if (!ctx) throw new Error("Canvasを利用できません。");
       ctx.scale(scale, scale);
       ctx.drawImage(img, 0, 0);
       URL.revokeObjectURL(url);
@@ -162,10 +161,10 @@ function FigureFrame({
           <Button
             size="sm"
             onClick={() =>
-              ws.addClip(title, `### ${title}\n\n_Figure exported as ${filename}._\n`)
+              ws.addClip(title, `### ${title}\n\n_図を ${filename} として書き出しました。_\n`)
             }
           >
-            ノートへ / To notebook
+            ノートへ
           </Button>
         </>
       }
@@ -224,33 +223,33 @@ function VolcanoFigure({
   }, [result, mode, labelTop, highlight, a, b]);
 
   if (groupNames.length < 2) {
-    return <Callout tone="warn">Assign at least two groups on the import tab.</Callout>;
+    return <Callout tone="warn">取り込みタブで少なくとも2つの群を割り当ててください。</Callout>;
   }
 
   return (
     <>
-      <Card title="設定 / Settings">
+      <Card title="設定">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="群A / Group A">
+          <Field label="群A">
             <Select value={a} onChange={(e) => setA(e.target.value)}>
               {groupNames.map((g) => <option key={g} value={g}>{g}</option>)}
             </Select>
           </Field>
-          <Field label="群B / Group B">
+          <Field label="群B">
             <Select value={b} onChange={(e) => setB(e.target.value)}>
               {groupNames.map((g) => <option key={g} value={g}>{g}</option>)}
             </Select>
           </Field>
-          <Field label="補正 / Correction">
+          <Field label="補正">
             <Select value={correction} onChange={(e) => setCorrection(e.target.value as CorrectionMethod)}>
               <option value="bh">BH FDR</option>
               <option value="by">BY FDR</option>
               <option value="bonferroni">Bonferroni</option>
               <option value="holm">Holm</option>
-              <option value="none">None</option>
+              <option value="none">なし</option>
             </Select>
           </Field>
-          <Field label="p 閾値 / threshold">
+          <Field label="p 閾値">
             <Select value={String(pThreshold)} onChange={(e) => setPThreshold(Number(e.target.value))}>
               {[0.1, 0.05, 0.01, 0.001].map((v) => <option key={v} value={v}>{v}</option>)}
             </Select>
@@ -262,14 +261,14 @@ function VolcanoFigure({
               className="w-full accent-[var(--accent)]"
             />
           </Field>
-          <Field label={`ラベル数 / Labels: ${labelTop}`}>
+          <Field label={`ラベル数: ${labelTop}`}>
             <input
               type="range" min={0} max={40} value={labelTop}
               onChange={(e) => setLabelTop(Number(e.target.value))}
               className="w-full accent-[var(--accent)]"
             />
           </Field>
-          <Field label="強調 / Highlight" hint="Comma-separated feature names always get a label." className="lg:col-span-2">
+          <Field label="強調" hint="カンマ区切りの特徴量名は必ずラベルを付けます。" className="lg:col-span-2">
             <TextInput
               value={highlight}
               onChange={(e) => setHighlight(e.target.value)}
@@ -279,13 +278,13 @@ function VolcanoFigure({
         </div>
       </Card>
 
-      {a === b && <Callout tone="warn">Pick two different groups.</Callout>}
+      {a === b && <Callout tone="warn">異なる2つの群を選んでください。</Callout>}
 
       {render && result && (
         <FigureFrame
           svg={render.svg}
           filename={`volcano_${a}_vs_${b}.svg`}
-          title={`Volcano plot — ${a} vs ${b}`}
+          title={`ボルケーノプロット — ${a} vs ${b}`}
           notes={result.notes}
         />
       )}
@@ -312,7 +311,7 @@ function HeatmapFigure({
 
   const render = useMemo(() => {
     const theme = getTheme(mode);
-    const folded = foldGroups(groups.map((g) => g || "Ungrouped"));
+    const folded = foldGroups(groups.map((g) => g || "未分類"));
     const styles = groupStyles(folded.order, theme);
     const colors: Record<string, string> = {};
     for (const s of styles) colors[s.name] = s.color;

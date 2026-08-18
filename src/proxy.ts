@@ -1,10 +1,23 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
+/** Paths that require a signed-in user before they render at all. */
+const PROTECTED_PREFIXES = ["/admin"];
+
+function isProtected(pathname: string): boolean {
+  return PROTECTED_PREFIXES.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`),
+  );
+}
+
 /**
  * Refreshes the Supabase auth session on every request so server components
  * see a valid user. Without this the access token expires and pages start
  * rendering as signed-out mid-session.
+ *
+ * It also turns signed-out hits on the admin area into a redirect. The page
+ * guards are what actually enforce access - this only spares the visitor a
+ * flash of a page they were never going to keep.
  */
 export default async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -32,9 +45,17 @@ export default async function proxy(request: NextRequest) {
   });
 
   try {
-    await supabase.auth.getUser();
+    const { data } = await supabase.auth.getUser();
+    const pathname = request.nextUrl.pathname;
+
+    if (!data.user && isProtected(pathname)) {
+      const login = new URL("/login", request.url);
+      login.searchParams.set("next", pathname + request.nextUrl.search);
+      return NextResponse.redirect(login);
+    }
   } catch {
-    // A transient auth outage should not take the whole app down.
+    // A transient auth outage should not take the whole app down; the page
+    // guards still refuse to render protected content without a user.
   }
 
   return response;

@@ -1,23 +1,37 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Noto_Sans_JP, Noto_Serif_JP } from "next/font/google";
 import "./globals.css";
 import { Nav } from "@/components/Nav";
 import { WorkspaceProvider } from "@/components/workspace";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const notoSans = Noto_Sans_JP({
+  variable: "--font-noto-sans-jp",
+  subsets: ["latin"],
+  display: "swap",
+});
+
+const notoSerif = Noto_Serif_JP({
+  variable: "--font-noto-serif-jp",
+  subsets: ["latin"],
+  display: "swap",
+});
 
 export const metadata: Metadata = {
-  title: "chondro — 研究データ管理 / Research data workbench",
+  title: "研究データ管理",
   description:
-    "Raw file organization, sample sheets, statistics (t-test, ANOVA, PCA, clustering), figures, and experiment notebook automation.",
+    "Rawファイル整理、サンプルシート、統計解析（t検定、ANOVA、PCA、クラスタリング）、図作成、実験ノート自動化。",
+  icons: {
+    icon: "/LOGO.png",
+    shortcut: "/LOGO.png",
+    apple: "/LOGO.png",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="ja"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${notoSans.variable} ${notoSerif.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col font-sans">
         <WorkspaceProvider>
@@ -27,7 +41,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           </main>
         </WorkspaceProvider>
         <footer className="border-t border-line px-4 py-4 text-center text-[11px] text-ink-3 sm:px-6">
-          chondro — statistics run locally in your browser; nothing is uploaded unless you save it.
+          統計解析はブラウザ内で実行されます。保存しない限りデータはアップロードされません。
         </footer>
       </body>
     </html>

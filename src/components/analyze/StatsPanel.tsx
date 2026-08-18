@@ -20,12 +20,12 @@ import {
 
 type Method = "ttest" | "anova" | "pca" | "cluster" | "differential";
 
-const METHODS: { id: Method; label: string; en: string; needs: string }[] = [
-  { id: "ttest", label: "t検定", en: "t-test", needs: "2 groups" },
-  { id: "anova", label: "ANOVA", en: "ANOVA + Tukey", needs: "2+ groups" },
-  { id: "pca", label: "PCA", en: "PCA", needs: "3+ samples" },
-  { id: "cluster", label: "クラスタリング", en: "Clustering", needs: "3+ samples" },
-  { id: "differential", label: "差次発現", en: "Differential", needs: "2 groups" },
+const METHODS: { id: Method; label: string; needs: string }[] = [
+  { id: "ttest", label: "t検定", needs: "2群" },
+  { id: "anova", label: "ANOVA", needs: "2群以上" },
+  { id: "pca", label: "PCA", needs: "3サンプル以上" },
+  { id: "cluster", label: "クラスタリング", needs: "3サンプル以上" },
+  { id: "differential", label: "差次発現", needs: "2群" },
 ];
 
 export function StatsPanel({
@@ -44,7 +44,7 @@ export function StatsPanel({
 
   return (
     <div className="flex flex-col gap-4">
-      <Card title="解析手法 / Method">
+      <Card title="解析手法">
         <div className="flex flex-wrap gap-2">
           {METHODS.map((m) => (
             <Button
@@ -54,12 +54,11 @@ export function StatsPanel({
               onClick={() => setMethod(m.id)}
             >
               {m.label}
-              <span className="ml-1 opacity-70">{m.en}</span>
             </Button>
           ))}
         </div>
         <p className="mt-2 text-xs text-ink-3">
-          {groupNames.length} group(s): {groupNames.join(", ") || "none assigned"}
+          {groupNames.length} 群: {groupNames.join(", ") || "未割り当て"}
         </p>
       </Card>
 
@@ -159,36 +158,36 @@ function TTestSection({
   }, [a, b, groups, matrix, variant]);
 
   if (groupNames.length < 2) {
-    return <Callout tone="warn">Assign at least two groups on the import tab.</Callout>;
+    return <Callout tone="warn">取り込みタブで少なくとも2つの群を割り当ててください。</Callout>;
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <Card title="設定 / Settings">
+      <Card title="設定">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="群A / Group A">
+          <Field label="群A">
             <Select value={a} onChange={(e) => setA(e.target.value)}>
               {groupNames.map((g) => <option key={g} value={g}>{g}</option>)}
             </Select>
           </Field>
-          <Field label="群B / Group B">
+          <Field label="群B">
             <Select value={b} onChange={(e) => setB(e.target.value)}>
               {groupNames.map((g) => <option key={g} value={g}>{g}</option>)}
             </Select>
           </Field>
-          <Field label="検定 / Test" hint="Welch does not assume equal variances.">
+          <Field label="検定" hint="Welchは等分散を仮定しません。">
             <Select value={variant} onChange={(e) => setVariant(e.target.value as typeof variant)}>
-              <option value="welch">Welch t-test</option>
-              <option value="student">Student t-test</option>
-              <option value="paired">Paired t-test</option>
+              <option value="welch">Welchのt検定</option>
+              <option value="student">Studentのt検定</option>
+              <option value="paired">対応のあるt検定</option>
               <option value="mw">Mann-Whitney U</option>
             </Select>
           </Field>
-          <Field label="特徴量 / Feature">
+          <Field label="特徴量">
             <TextInput
               value={featureQuery}
               onChange={(e) => setFeatureQuery(e.target.value)}
-              placeholder="Search…"
+              placeholder="検索…"
             />
           </Field>
         </div>
@@ -209,7 +208,7 @@ function TTestSection({
         </div>
       </Card>
 
-      {a === b && <Callout tone="warn">Pick two different groups.</Callout>}
+      {a === b && <Callout tone="warn">異なる2つの群を選んでください。</Callout>}
 
       {result?.kind === "t" && (
         <>
@@ -227,19 +226,19 @@ function TTestSection({
           <Card
             title={`${label} — ${result.t.test}`}
             actions={
-              <Button size="sm" onClick={() => ws.addClip(`t-test: ${label}`, tTestToMarkdown(result.t, `${label} — ${a} vs ${b}`))}>
-                ノートへ / To notebook
+              <Button size="sm" onClick={() => ws.addClip(`t検定: ${label}`, tTestToMarkdown(result.t, `${label} — ${a} vs ${b}`))}>
+                ノートへ
               </Button>
             }
           >
             <DataTable
-              headers={["Item", "Value"]}
+              headers={["項目", "値"]}
               rows={[
                 ["n", `${result.t.nA} vs ${result.t.nB}`],
-                ["Mean", `${num(result.t.meanA)} vs ${num(result.t.meanB ?? NaN)}`],
-                ["Difference", num(result.t.diff)],
-                ["95% CI of difference", `${num(result.t.ci95[0])} to ${num(result.t.ci95[1])}`],
-                ["Std. error", num(result.t.stderr)],
+                ["平均", `${num(result.t.meanA)} vs ${num(result.t.meanB ?? NaN)}`],
+                ["差", num(result.t.diff)],
+                ["差の95% CI", `${num(result.t.ci95[0])} ～ ${num(result.t.ci95[1])}`],
+                ["標準誤差", num(result.t.stderr)],
               ]}
             />
             {result.t.notes.length > 0 && (
@@ -267,8 +266,8 @@ function TTestSection({
 
       {allRows.length > 0 && (
         <Card
-          title="全特徴量 / All features"
-          subtitle="Same test applied to every row. Use the differential tab for FDR control."
+          title="全特徴量"
+          subtitle="同じ検定をすべての行に適用します。FDR制御は差次発現タブを使ってください。"
           actions={
             <Button
               size="sm"
@@ -289,7 +288,7 @@ function TTestSection({
         >
           <DataTable
             maxHeight="24rem"
-            headers={["Feature", `Mean ${a}`, `Mean ${b}`, "Diff", "t", "p"]}
+            headers={["特徴量", `平均 ${a}`, `平均 ${b}`, "差", "t", "p"]}
             align={["left", "right", "right", "right", "right", "right"]}
             rows={[...allRows]
               .sort((x, y) => (x.p || 1) - (y.p || 1))
@@ -366,29 +365,29 @@ function AnovaSection({
   const sigCount = allRows.filter((r) => Number.isFinite(r.padj) && r.padj < 0.05).length;
 
   if (groupNames.length < 2) {
-    return <Callout tone="warn">Assign at least two groups on the import tab.</Callout>;
+    return <Callout tone="warn">取り込みタブで少なくとも2つの群を割り当ててください。</Callout>;
   }
 
   const label = features[selected]?.label ?? "";
 
   return (
     <div className="flex flex-col gap-4">
-      <Card title="設定 / Settings">
+      <Card title="設定">
         <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="特徴量 / Feature">
-            <TextInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search…" />
+          <Field label="特徴量">
+            <TextInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="検索…" />
           </Field>
-          <Field label="多重比較補正 / Correction" hint="Applied to the all-features table.">
+          <Field label="多重比較補正" hint="全特徴量の表に適用します。">
             <Select value={correction} onChange={(e) => setCorrection(e.target.value as CorrectionMethod)}>
               {(Object.keys(CORRECTION_LABELS) as CorrectionMethod[]).map((k) => (
                 <option key={k} value={k}>{CORRECTION_LABELS[k]}</option>
               ))}
             </Select>
           </Field>
-          <Field label="ノンパラメトリック / Non-parametric" hint="Kruskal-Wallis, when normality is doubtful.">
+          <Field label="ノンパラメトリック" hint="正規性が疑わしいときは Kruskal-Wallis を使います。">
             <label className="flex h-9 items-center gap-2 text-sm text-ink-2">
               <input type="checkbox" checked={useRank} onChange={(e) => setUseRank(e.target.checked)} />
-              Also run Kruskal-Wallis
+              Kruskal-Wallis も実行
             </label>
           </Field>
         </div>
@@ -417,26 +416,26 @@ function AnovaSection({
           </div>
 
           <Card
-            title={`${label} — 分散分析表 / ANOVA table`}
+            title={`${label} — 分散分析表`}
             actions={
-              <Button size="sm" onClick={() => ws.addClip(`ANOVA: ${label}`, anovaToMarkdown(anova, `${label} — one-way ANOVA`))}>
-                ノートへ / To notebook
+              <Button size="sm" onClick={() => ws.addClip(`ANOVA: ${label}`, anovaToMarkdown(anova, `${label} — 一元配置ANOVA`))}>
+                ノートへ
               </Button>
             }
           >
             <DataTable
-              headers={["Source", "df", "SS", "MS", "F", "p"]}
+              headers={["要因", "df", "SS", "MS", "F", "p"]}
               align={["left", "right", "right", "right", "right", "right"]}
               rows={[
-                ["Between groups", num(anova.dfBetween, 0), num(anova.ssBetween), num(anova.msBetween), num(anova.f, 3), formatP(anova.p)],
-                ["Within groups", num(anova.dfWithin, 0), num(anova.ssWithin), num(anova.msWithin), "", ""],
-                ["Total", num(anova.dfTotal, 0), num(anova.ssTotal), "", "", ""],
+                ["群間", num(anova.dfBetween, 0), num(anova.ssBetween), num(anova.msBetween), num(anova.f, 3), formatP(anova.p)],
+                ["群内", num(anova.dfWithin, 0), num(anova.ssWithin), num(anova.msWithin), "", ""],
+                ["全体", num(anova.dfTotal, 0), num(anova.ssTotal), "", "", ""],
               ]}
             />
             <div className="mt-4">
-              <p className="mb-1.5 text-xs font-semibold text-ink-2">群 / Groups</p>
+              <p className="mb-1.5 text-xs font-semibold text-ink-2">群</p>
               <DataTable
-                headers={["Group", "n", "Mean", "SD"]}
+                headers={["群", "n", "平均", "SD"]}
                 align={["left", "right", "right", "right"]}
                 rows={anova.groups.map((g) => [g.name, g.n, num(g.mean), num(g.sd)])}
               />
@@ -449,9 +448,9 @@ function AnovaSection({
           </Card>
 
           {anova.tukey.length > 0 && (
-            <Card title="Tukey HSD 事後検定 / post-hoc" subtitle="All pairwise comparisons, controlling the family-wise error rate.">
+            <Card title="Tukey HSD 事後検定" subtitle="すべてのペア比較。ファミリーwise誤差率を制御します。">
               <DataTable
-                headers={["Comparison", "Difference", "95% CI", "q", "p", ""]}
+                headers={["比較", "差", "95% CI", "q", "p", ""]}
                 align={["left", "right", "left", "right", "right", "left"]}
                 rows={anova.tukey.map((t) => [
                   `${t.a} vs ${t.b}`,
@@ -459,7 +458,7 @@ function AnovaSection({
                   `${num(t.ci95[0])} — ${num(t.ci95[1])}`,
                   num(t.q, 2),
                   formatP(t.p),
-                  t.significant ? <Badge key="s" tone="good">significant</Badge> : <span key="s" className="text-ink-3">ns</span>,
+                  t.significant ? <Badge key="s" tone="good">有意</Badge> : <span key="s" className="text-ink-3">ns</span>,
                 ])}
               />
             </Card>
@@ -479,8 +478,8 @@ function AnovaSection({
       )}
 
       <Card
-        title="全特徴量のANOVA / ANOVA across all features"
-        subtitle={`${sigCount} feature(s) with adjusted p < 0.05 (${CORRECTION_LABELS[correction]})`}
+        title="全特徴量のANOVA"
+        subtitle={`調整p < 0.05 の特徴量: ${sigCount}（${CORRECTION_LABELS[correction]}）`}
         actions={
           <Button
             size="sm"
@@ -501,7 +500,7 @@ function AnovaSection({
       >
         <DataTable
           maxHeight="24rem"
-          headers={["Feature", "F", "p", "adj. p", "eta²"]}
+          headers={["特徴量", "F", "p", "調整p", "eta²"]}
           align={["left", "right", "right", "right", "right"]}
           rows={[...allRows]
             .sort((a, b) => (a.p || 1) - (b.p || 1))
@@ -542,19 +541,19 @@ function PcaSection({
 
   return (
     <div className="flex flex-col gap-4">
-      <Card title="設定 / Settings">
+      <Card title="設定">
         <div className="flex flex-wrap gap-5">
           <label className="flex items-center gap-2 text-sm text-ink-2">
             <input type="checkbox" checked={center} onChange={(e) => setCenter(e.target.checked)} />
-            中心化 / Center features
+            特徴量を中心化
           </label>
           <label className="flex items-center gap-2 text-sm text-ink-2">
             <input type="checkbox" checked={scale} onChange={(e) => setScale(e.target.checked)} />
-            スケーリング / Scale to unit variance
+            単位分散にスケーリング
           </label>
         </div>
         <p className="mt-2 text-xs text-ink-3">
-          Scaling gives every feature equal weight — appropriate when features are on different units.
+          スケーリングは各特徴量を等しい重みにします。単位が異なる特徴量があるときに適しています。
         </p>
       </Card>
 
@@ -566,11 +565,11 @@ function PcaSection({
             <StatTile label="PC1" value={`${(result.explained[0] * 100).toFixed(1)}%`} />
             <StatTile label="PC2" value={`${((result.explained[1] ?? 0) * 100).toFixed(1)}%`} />
             <StatTile label="PC1+PC2" value={`${((result.cumulative[1] ?? result.cumulative[0]) * 100).toFixed(1)}%`} tone="accent" />
-            <StatTile label="Components" value={result.nComponents} />
+            <StatTile label="成分数" value={result.nComponents} />
           </div>
 
           <Card
-            title="寄与率 / Explained variance"
+            title="寄与率"
             actions={
               <>
                 <Button
@@ -586,16 +585,16 @@ function PcaSection({
                     )
                   }
                 >
-                  スコアCSV / Scores
+                  スコアCSV
                 </Button>
                 <Button size="sm" onClick={() => ws.addClip("PCA", pcaToMarkdown(result, `PCA — ${datasetName}`))}>
-                  ノートへ / To notebook
+                  ノートへ
                 </Button>
               </>
             }
           >
             <DataTable
-              headers={["Component", "Eigenvalue", "Variance", "Cumulative"]}
+              headers={["成分", "固有値", "分散", "累積"]}
               align={["left", "right", "right", "right"]}
               rows={result.eigenvalues.map((ev, i) => [
                 `PC${i + 1}`,
@@ -606,10 +605,10 @@ function PcaSection({
             />
           </Card>
 
-          <Card title="サンプルスコア / Sample scores">
+          <Card title="サンプルスコア">
             <DataTable
               maxHeight="24rem"
-              headers={["Sample", "Group", "PC1", "PC2", "PC3"]}
+              headers={["サンプル", "群", "PC1", "PC2", "PC3"]}
               align={["left", "left", "right", "right", "right"]}
               rows={result.sampleNames.map((s, i) => [
                 <span key="s" className="font-mono">{s}</span>,
@@ -621,10 +620,10 @@ function PcaSection({
             />
           </Card>
 
-          <Card title="主要な寄与特徴量 / Top loadings" subtitle="Features driving PC1 and PC2.">
+          <Card title="主要な寄与特徴量" subtitle="PC1とPC2を駆動する特徴量。">
             <DataTable
               maxHeight="20rem"
-              headers={["Feature", "PC1 loading", "PC2 loading"]}
+              headers={["特徴量", "PC1 loading", "PC2 loading"]}
               align={["left", "right", "right"]}
               rows={result.featureNames
                 .map((f, i) => ({
@@ -701,41 +700,41 @@ function ClusterSection({ matrix, groups }: { matrix: DataMatrix; groups: string
 
   return (
     <div className="flex flex-col gap-4">
-      <Card title="設定 / Settings">
+      <Card title="設定">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="対象 / Cluster">
+          <Field label="対象">
             <Select value={target} onChange={(e) => setTarget(e.target.value as typeof target)}>
-              <option value="samples">Samples</option>
-              <option value="features">Features</option>
+              <option value="samples">サンプル</option>
+              <option value="features">特徴量</option>
             </Select>
           </Field>
-          <Field label={`クラスタ数 / k = ${k}`}>
+          <Field label={`クラスタ数 k = ${k}`}>
             <input
               type="range" min={2} max={Math.max(2, Math.min(12, vectors.length))}
               value={k} onChange={(e) => setK(Number(e.target.value))}
               className="w-full accent-[var(--accent)]"
             />
           </Field>
-          <Field label="連結法 / Linkage">
+          <Field label="連結法">
             <Select value={linkage} onChange={(e) => setLinkage(e.target.value as typeof linkage)}>
-              <option value="average">Average</option>
-              <option value="complete">Complete</option>
-              <option value="single">Single</option>
+              <option value="average">平均</option>
+              <option value="complete">完全</option>
+              <option value="single">単連結</option>
               <option value="ward">Ward</option>
             </Select>
           </Field>
-          <Field label="距離 / Distance">
+          <Field label="距離">
             <Select value={metric} onChange={(e) => setMetric(e.target.value as typeof metric)}>
-              <option value="euclidean">Euclidean</option>
+              <option value="euclidean">ユークリッド</option>
               <option value="correlation">1 − Pearson r</option>
-              <option value="manhattan">Manhattan</option>
-              <option value="cosine">Cosine</option>
+              <option value="manhattan">マンハッタン</option>
+              <option value="cosine">コサイン</option>
             </Select>
           </Field>
         </div>
         {target === "features" && (
           <div className="mt-3 max-w-xs">
-            <Field label={`上位変動特徴量 / Top ${topN} by variance`}>
+            <Field label={`上位変動特徴量: ${topN}`}>
               <input
                 type="range" min={20} max={500} step={20}
                 value={topN} onChange={(e) => setTopN(Number(e.target.value))}
@@ -754,28 +753,28 @@ function ClusterSection({ matrix, groups }: { matrix: DataMatrix; groups: string
               label="Silhouette"
               value={num(km.silhouette, 3)}
               tone={km.silhouette > 0.5 ? "good" : km.silhouette > 0.25 ? "warn" : "danger"}
-              hint={km.silhouette > 0.5 ? "well separated" : km.silhouette > 0.25 ? "weak structure" : "little structure"}
+              hint={km.silhouette > 0.5 ? "よく分離" : km.silhouette > 0.25 ? "弱い構造" : "構造が乏しい"}
             />
             <StatTile label="Inertia" value={num(km.inertia, 1)} />
-            <StatTile label="Converged" value={km.converged ? "Yes" : "No"} tone={km.converged ? "good" : "warn"} />
+            <StatTile label="収束" value={km.converged ? "はい" : "いいえ"} tone={km.converged ? "good" : "warn"} />
           </div>
 
           <Card
             title="k-means"
             actions={
-              <Button size="sm" onClick={() => ws.addClip("k-means clustering", kMeansToMarkdown(km, names))}>
-                ノートへ / To notebook
+              <Button size="sm" onClick={() => ws.addClip("k-meansクラスタリング", kMeansToMarkdown(km, names))}>
+                ノートへ
               </Button>
             }
           >
             <DataTable
               maxHeight="20rem"
-              headers={["Cluster", "n", "Members"]}
+              headers={["クラスタ", "n", "メンバー"]}
               align={["left", "right", "left"]}
               rows={Array.from({ length: km.k }, (_, c) => {
                 const members = names.filter((_, i) => km.assignments[i] === c);
                 return [
-                  `Cluster ${c + 1}`,
+                  `クラスタ ${c + 1}`,
                   members.length,
                   <span key="m" className="font-mono text-ink-2">
                     {members.slice(0, 10).join(", ")}
@@ -790,23 +789,23 @@ function ClusterSection({ matrix, groups }: { matrix: DataMatrix; groups: string
 
       {hc && hc.root && (
         <Card
-          title="階層クラスタリング / Hierarchical"
-          subtitle={`${linkage} linkage · ${hc.metric}`}
+          title="階層クラスタリング"
+          subtitle={`${linkage} 連結 · ${hc.metric}`}
           actions={
-            <Button size="sm" onClick={() => ws.addClip("Hierarchical clustering", hierarchicalToMarkdown(hc, names))}>
-              ノートへ / To notebook
+            <Button size="sm" onClick={() => ws.addClip("階層クラスタリング", hierarchicalToMarkdown(hc, names))}>
+              ノートへ
             </Button>
           }
         >
           <DataTable
             maxHeight="20rem"
-            headers={target === "samples" ? ["Item", "Assigned group", "Cluster (k cut)"] : ["Item", "Cluster (k cut)"]}
+            headers={target === "samples" ? ["項目", "割り当て群", "クラスタ（k切断）"] : ["項目", "クラスタ（k切断）"]}
             rows={hc.order.map((leaf) => {
               const base = [<span key="n" className="font-mono">{names[leaf]}</span>];
               if (target === "samples") {
                 base.push(<span key="g">{groups[leaf] || "—"}</span>);
               }
-              base.push(<Badge key="c" tone="accent">{`Cluster ${cut[leaf] + 1}`}</Badge>);
+              base.push(<Badge key="c" tone="accent">{`クラスタ ${cut[leaf] + 1}`}</Badge>);
               return base;
             })}
           />
@@ -846,81 +845,81 @@ function DifferentialSection({
   }, [matrix, groups, a, b, test, correction, dataIsLog, pThreshold, fcThreshold, useAdjusted]);
 
   if (groupNames.length < 2) {
-    return <Callout tone="warn">Assign at least two groups on the import tab.</Callout>;
+    return <Callout tone="warn">取り込みタブで少なくとも2つの群を割り当ててください。</Callout>;
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <Card title="設定 / Settings" subtitle="These same settings drive the volcano plot on the figures tab.">
+      <Card title="設定" subtitle="同じ設定が図作成タブのボルケーノプロットにも使われます。">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="群A (分子) / Group A (numerator)">
+          <Field label="群A（分子）">
             <Select value={a} onChange={(e) => setA(e.target.value)}>
               {groupNames.map((g) => <option key={g} value={g}>{g}</option>)}
             </Select>
           </Field>
-          <Field label="群B (分母) / Group B (denominator)">
+          <Field label="群B（分母）">
             <Select value={b} onChange={(e) => setB(e.target.value)}>
               {groupNames.map((g) => <option key={g} value={g}>{g}</option>)}
             </Select>
           </Field>
-          <Field label="検定 / Test">
+          <Field label="検定">
             <Select value={test} onChange={(e) => setTest(e.target.value as typeof test)}>
-              <option value="welch">Welch t-test</option>
-              <option value="student">Student t-test</option>
-              <option value="paired">Paired t-test</option>
+              <option value="welch">Welchのt検定</option>
+              <option value="student">Studentのt検定</option>
+              <option value="paired">対応のあるt検定</option>
               <option value="mannwhitney">Mann-Whitney U</option>
             </Select>
           </Field>
-          <Field label="補正 / Correction">
+          <Field label="補正">
             <Select value={correction} onChange={(e) => setCorrection(e.target.value as CorrectionMethod)}>
               {(Object.keys(CORRECTION_LABELS) as CorrectionMethod[]).map((k) => (
                 <option key={k} value={k}>{CORRECTION_LABELS[k]}</option>
               ))}
             </Select>
           </Field>
-          <Field label={`p 閾値 / threshold: ${pThreshold}`}>
+          <Field label={`p 閾値: ${pThreshold}`}>
             <Select value={String(pThreshold)} onChange={(e) => setPThreshold(Number(e.target.value))}>
               {[0.1, 0.05, 0.01, 0.001].map((v) => <option key={v} value={v}>{v}</option>)}
             </Select>
           </Field>
-          <Field label={`|log2FC| 閾値 / threshold: ${fcThreshold}`}>
+          <Field label={`|log2FC| 閾値: ${fcThreshold}`}>
             <input
               type="range" min={0} max={4} step={0.25}
               value={fcThreshold} onChange={(e) => setFcThreshold(Number(e.target.value))}
               className="w-full accent-[var(--accent)]"
             />
           </Field>
-          <Field label="判定基準 / Threshold on">
+          <Field label="判定基準">
             <label className="flex h-9 items-center gap-2 text-sm text-ink-2">
               <input type="checkbox" checked={useAdjusted} onChange={(e) => setUseAdjusted(e.target.checked)} />
-              Use adjusted p
+              調整pを使う
             </label>
           </Field>
-          <Field label="データ形式 / Data scale" hint="Log data makes fold change a subtraction.">
+          <Field label="データ形式" hint="対数データでは倍数変化は引き算になります。">
             <label className="flex h-9 items-center gap-2 text-sm text-ink-2">
               <input type="checkbox" checked={dataIsLog} onChange={(e) => setDataIsLog(e.target.checked)} />
-              Already log-scaled
+              すでに対数スケール
             </label>
           </Field>
         </div>
       </Card>
 
-      {a === b && <Callout tone="warn">Pick two different groups.</Callout>}
+      {a === b && <Callout tone="warn">異なる2つの群を選んでください。</Callout>}
 
       {result && (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatTile label="Tested" value={result.counts.tested} />
-            <StatTile label="Up" value={result.counts.up} tone="danger" hint={`higher in ${a}`} />
-            <StatTile label="Down" value={result.counts.down} tone="accent" hint={`lower in ${a}`} />
-            <StatTile label="Unchanged" value={result.counts.ns} />
+            <StatTile label="検定数" value={result.counts.tested} />
+            <StatTile label="上昇" value={result.counts.up} tone="danger" hint={`${a} で高い`} />
+            <StatTile label="低下" value={result.counts.down} tone="accent" hint={`${a} で低い`} />
+            <StatTile label="変化なし" value={result.counts.ns} />
           </div>
 
           {result.notes.map((n, i) => <Callout key={i} tone="warn">{n}</Callout>)}
 
           <Card
-            title={`差次発現 / Differential — ${a} vs ${b}`}
-            subtitle={`${CORRECTION_LABELS[correction]} · |log2FC| ≥ ${fcThreshold} · ${useAdjusted ? "adj. " : ""}p < ${pThreshold}`}
+            title={`差次発現 — ${a} vs ${b}`}
+            subtitle={`${CORRECTION_LABELS[correction]} · |log2FC| ≥ ${fcThreshold} · ${useAdjusted ? "調整" : ""}p < ${pThreshold}`}
             actions={
               <>
                 <Button
@@ -940,15 +939,15 @@ function DifferentialSection({
                 >
                   CSV
                 </Button>
-                <Button size="sm" onClick={() => ws.addClip(`Differential ${a} vs ${b}`, differentialToMarkdown(result))}>
-                  ノートへ / To notebook
+                <Button size="sm" onClick={() => ws.addClip(`差次発現 ${a} vs ${b}`, differentialToMarkdown(result))}>
+                  ノートへ
                 </Button>
               </>
             }
           >
             <DataTable
               maxHeight="28rem"
-              headers={["Feature", "log2FC", "p", "adj. p", "Direction"]}
+              headers={["特徴量", "log2FC", "p", "調整p", "方向"]}
               align={["left", "right", "right", "right", "left"]}
               rows={[...result.rows]
                 .sort((x, y) => {
@@ -964,9 +963,9 @@ function DifferentialSection({
                   formatP(r.p),
                   formatP(r.padj),
                   r.direction === "up"
-                    ? <Badge key="d" tone="danger">up</Badge>
+                    ? <Badge key="d" tone="danger">上昇</Badge>
                     : r.direction === "down"
-                      ? <Badge key="d" tone="accent">down</Badge>
+                      ? <Badge key="d" tone="accent">低下</Badge>
                       : <span key="d" className="text-ink-3">ns</span>,
                 ])}
             />
@@ -990,5 +989,5 @@ function sig(p: number): string {
   if (p < 0.001) return "*** p < 0.001";
   if (p < 0.01) return "** p < 0.01";
   if (p < 0.05) return "* p < 0.05";
-  return "not significant";
+  return "有意でない";
 }

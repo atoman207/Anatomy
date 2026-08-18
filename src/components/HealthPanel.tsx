@@ -22,7 +22,7 @@ export function HealthPanel() {
       const res = await fetch("/api/health", { cache: "no-store" });
       setReport((await res.json()) as HealthReport);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Health check failed");
+      setError(e instanceof Error ? e.message : "接続確認に失敗しました");
     } finally {
       setLoading(false);
     }
@@ -38,7 +38,7 @@ export function HealthPanel() {
         const json = (await res.json()) as HealthReport;
         if (!cancelled) setReport(json);
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Health check failed");
+        if (!cancelled) setError(e instanceof Error ? e.message : "接続確認に失敗しました");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -52,51 +52,58 @@ export function HealthPanel() {
 
   return (
     <Card
-      title="接続状態 / Connection"
+      title="接続状態"
       subtitle={report?.url ?? "Supabase"}
       actions={
         <>
           <Badge tone={tone}>
-            {loading ? "checking…" : report?.ok ? "connected" : report?.configured ? "setup needed" : "not configured"}
+            {loading
+              ? "確認中…"
+              : report?.ok
+                ? "接続済み"
+                : report?.configured
+                  ? "設定が必要"
+                  : "未設定"}
           </Badge>
           <Button size="sm" onClick={check} disabled={loading}>
-            再確認 / Recheck
+            再確認
           </Button>
         </>
       }
     >
-      {error && <Callout tone="danger" title="Health check failed">{error}</Callout>}
+      {error && <Callout tone="danger" title="接続確認に失敗しました">{error}</Callout>}
 
       {report && (
         <div className="flex flex-col gap-3">
           <div className="grid gap-2 sm:grid-cols-3">
-            <StatusRow label="Auth" ok={report.auth.ok} detail={report.auth.detail} />
+            <StatusRow label="認証" ok={report.auth.ok} detail={report.auth.detail} />
             <StatusRow label="REST API" ok={report.rest.ok} detail={report.rest.detail} />
-            <StatusRow label="Schema" ok={report.schema.ok} detail={report.schema.detail} />
+            <StatusRow label="スキーマ" ok={report.schema.ok} detail={report.schema.detail} />
           </div>
 
           {report.configured && !report.schema.ok && report.schema.missing.length > 0 && (
-            <Callout tone="warn" title="Database schema is not applied yet">
+            <Callout tone="warn" title="データベーススキーマが未適用です">
               <p className="mt-1">
-                Saving experiments, notebook entries and figures needs the tables from{" "}
-                <code>supabase/migrations/0001_init.sql</code>. Apply it with{" "}
-                <code>npm run db:push</code> (after setting <code>SUPABASE_DB_URL</code>),
-                or paste the file into the Supabase SQL editor.
+                実験・ノート・図の保存には{" "}
+                <code>supabase/migrations/0001_init.sql</code>{" "}
+                のテーブルが必要です。<code>SUPABASE_DB_URL</code>{" "}
+                を設定したうえで <code>npm run db:push</code>{" "}
+                を実行するか、Supabase SQL エディタに貼り付けてください。
               </p>
               <p className="mt-1.5 text-ink-3">
-                Missing: {report.schema.missing.slice(0, 6).join(", ")}
-                {report.schema.missing.length > 6 ? ` +${report.schema.missing.length - 6} more` : ""}
+                不足: {report.schema.missing.slice(0, 6).join(", ")}
+                {report.schema.missing.length > 6 ? ` 他${report.schema.missing.length - 6}件` : ""}
               </p>
               <p className="mt-1.5">
-                Everything on the organize, analyze and notebook pages works without this.
+                データ整理・統計解析・ノートの各ページは、この設定なしでも利用できます。
               </p>
             </Callout>
           )}
 
           {!report.configured && (
-            <Callout tone="info" title="Supabase is not configured">
-              Copy <code>.env.example</code> to <code>.env.local</code> and fill in the project
-              URL and keys. The analysis tools work without it.
+            <Callout tone="info" title="Supabase が未設定です">
+              <code>.env.example</code> を <code>.env.local</code>{" "}
+              にコピーし、プロジェクト URL とキーを入力してください。解析機能は設定なしでも利用できます。
             </Callout>
           )}
         </div>
@@ -117,7 +124,7 @@ function StatusRow({ label, ok, detail }: { label: string; ok: boolean; detail: 
       <div className="min-w-0">
         <p className="text-xs font-medium text-ink">
           {label}
-          <span className="sr-only">: {ok ? "ok" : "not ready"}</span>
+          <span className="sr-only">: {ok ? "正常" : "未準備"}</span>
         </p>
         <p className="truncate text-[11px] text-ink-3" title={detail}>{detail}</p>
       </div>

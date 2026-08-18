@@ -19,10 +19,10 @@ import { FiguresPanel } from "@/components/analyze/FiguresPanel";
 
 type Tab = "import" | "stats" | "figures";
 
-const TABS: { id: Tab; label: string; en: string }[] = [
-  { id: "import", label: "取り込み", en: "Import & prep" },
-  { id: "stats", label: "統計解析", en: "Statistics" },
-  { id: "figures", label: "図作成", en: "Figures" },
+const TABS: { id: Tab; label: string }[] = [
+  { id: "import", label: "取り込み" },
+  { id: "stats", label: "統計解析" },
+  { id: "figures", label: "図作成" },
 ];
 
 export interface PrepOptions {
@@ -81,7 +81,7 @@ export default function AnalyzePage() {
     if (prep.minCompleteness > 0) {
       const r = filterByCompleteness(m, prep.minCompleteness);
       m = r.matrix;
-      if (r.dropped) notes.push(`${r.dropped} feature(s) dropped by the completeness filter.`);
+      if (r.dropped) notes.push(`完全性フィルタにより ${r.dropped} 個の特徴量を除外しました。`);
     }
     if (prep.transform !== "none") m = transform(m, prep.transform);
     if (prep.normalize !== "none") m = normalize(m, prep.normalize);
@@ -97,10 +97,9 @@ export default function AnalyzePage() {
   return (
     <div className="flex flex-col gap-5">
       <header>
-        <h1 className="text-xl font-semibold text-ink">統計解析・図作成 / Statistics &amp; figures</h1>
+        <h1 className="text-xl font-semibold text-ink">統計解析・図作成</h1>
         <p className="mt-1 text-sm text-ink-2">
-          t-test, ANOVA, PCA and clustering, with volcano, heatmap and PCA plots.
-          All computation happens in your browser.
+          t検定、ANOVA、PCA、クラスタリングに加え、ボルケーノ、ヒートマップ、PCAプロットを作成します。計算はすべてブラウザ内で行います。
         </p>
       </header>
 
@@ -118,7 +117,6 @@ export default function AnalyzePage() {
             )}
           >
             {t.label}
-            <span className="ml-1.5 text-xs text-ink-3">{t.en}</span>
           </button>
         ))}
       </div>
@@ -189,7 +187,7 @@ function ImportPanel({
         // Delimited text is parsed locally so nothing leaves the browser.
         const text = await file.text();
         const parsed = parseDelimited(text);
-        if (parsed.headers.length === 0) throw new Error("No header row found.");
+        if (parsed.headers.length === 0) throw new Error("ヘッダー行が見つかりません。");
         const profile = profileTable(parsed.headers, parsed.rows);
         const built = buildMatrix(parsed.headers, parsed.rows, profile);
         load(
@@ -210,7 +208,7 @@ function ImportPanel({
         form.append("file", file);
         const res = await fetch("/api/import", { method: "POST", body: form });
         const json = await res.json();
-        if (!res.ok) throw new Error(json.error ?? `Import failed (${res.status})`);
+        if (!res.ok) throw new Error(json.error ?? `取り込みに失敗しました（${res.status}）`);
         load(
           {
             name: json.sheet ? `${file.name} — ${json.sheet}` : file.name,
@@ -225,7 +223,7 @@ function ImportPanel({
         );
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Import failed.");
+      setError(e instanceof Error ? e.message : "取り込みに失敗しました。");
     } finally {
       setBusy(false);
     }
@@ -248,12 +246,12 @@ function ImportPanel({
   return (
     <div className="flex flex-col gap-4">
       <Card
-        title="データ読み込み / Load data"
-        subtitle="Rows are features (proteins, genes, measurements); columns are samples. CSV, TSV and XLSX are supported."
+        title="データ読み込み"
+        subtitle="行は特徴量（タンパク質、遺伝子、測定値）、列はサンプルです。CSV、TSV、XLSXに対応しています。"
       >
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="primary" onClick={() => inputRef.current?.click()} disabled={busy}>
-            {busy ? "読み込み中… / Reading…" : "ファイル選択 / Choose file"}
+            {busy ? "読み込み中…" : "ファイルを選択"}
           </Button>
           <Button
             onClick={() => {
@@ -265,16 +263,16 @@ function ImportPanel({
                 matrix: demo.matrix,
                 profile: null,
                 headers: ["Protein", ...demo.matrix.samples],
-                notes: ["Synthetic demo data — 4 conditions in triplicate, log2 scale."],
+                notes: ["合成デモデータ — 4条件×3反復、log2スケール。"],
               });
             }}
             disabled={busy}
           >
-            デモデータ / Load demo data
+            デモデータを読み込む
           </Button>
           {dataset && (
             <Button variant="danger" onClick={() => { ws.setDataset(null); setPreview(null); }}>
-              クリア / Clear
+              クリア
             </Button>
           )}
           <input
@@ -289,23 +287,23 @@ function ImportPanel({
             }}
           />
         </div>
-        {error && <div className="mt-3"><Callout tone="danger" title="Import failed">{error}</Callout></div>}
+        {error && <div className="mt-3"><Callout tone="danger" title="取り込み失敗">{error}</Callout></div>}
       </Card>
 
       {!dataset && (
-        <EmptyState title="No dataset loaded">
-          Load a file or the demo data to continue.
+        <EmptyState title="データセットがありません">
+          ファイルまたはデモデータを読み込んでください。
         </EmptyState>
       )}
 
       {dataset && prepared && (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatTile label="Features" value={prepared.matrix.features.length} hint={`${dataset.matrix.features.length} imported`} />
-            <StatTile label="Samples" value={prepared.matrix.samples.length} />
-            <StatTile label="Groups" value={groupCounts.length} tone={groupCounts.length >= 2 ? "good" : "warn"} />
+            <StatTile label="特徴量" value={prepared.matrix.features.length} hint={`${dataset.matrix.features.length} 件を取り込み`} />
+            <StatTile label="サンプル" value={prepared.matrix.samples.length} />
+            <StatTile label="群" value={groupCounts.length} tone={groupCounts.length >= 2 ? "good" : "warn"} />
             <StatTile
-              label="Missing"
+              label="欠損"
               value={`${missingPct(prepared.matrix).toFixed(1)}%`}
               tone={missingPct(prepared.matrix) > 20 ? "warn" : "good"}
             />
@@ -320,52 +318,52 @@ function ImportPanel({
           )}
 
           <Card
-            title="前処理 / Preprocessing"
-            subtitle="Applied in order: completeness filter → transform → normalize → impute."
+            title="前処理"
+            subtitle="適用順：完全性フィルタ → 変換 → 正規化 → 補完。"
           >
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Field label="変換 / Transform" hint="log2 is the usual choice for intensity data.">
+              <Field label="変換" hint="強度データでは通常 log2 を選びます。">
                 <Select
                   value={prep.transform}
                   onChange={(e) => setPrep({ ...prep, transform: e.target.value as TransformMethod })}
                 >
-                  <option value="none">None</option>
+                  <option value="none">なし</option>
                   <option value="log2">log2</option>
                   <option value="log10">log10</option>
                   <option value="ln">ln</option>
-                  <option value="sqrt">sqrt</option>
-                  <option value="zscore">Row z-score</option>
+                  <option value="sqrt">平方根</option>
+                  <option value="zscore">行のzスコア</option>
                 </Select>
               </Field>
-              <Field label="正規化 / Normalize" hint="Removes loading differences between samples.">
+              <Field label="正規化" hint="サンプル間のローディング差を取り除きます。">
                 <Select
                   value={prep.normalize}
                   onChange={(e) => setPrep({ ...prep, normalize: e.target.value as NormalizeMethod })}
                 >
-                  <option value="none">None</option>
-                  <option value="median">Median centring</option>
-                  <option value="sum">Total sum</option>
-                  <option value="quantile">Quantile</option>
-                  <option value="vsn-lite">Median shift (log data)</option>
+                  <option value="none">なし</option>
+                  <option value="median">中央値センタリング</option>
+                  <option value="sum">総和</option>
+                  <option value="quantile">分位点</option>
+                  <option value="vsn-lite">中央値シフト（対数データ）</option>
                 </Select>
               </Field>
-              <Field label="欠損値 / Impute" hint="PCA and clustering need complete rows.">
+              <Field label="欠損値" hint="PCAとクラスタリングには欠損のない行が必要です。">
                 <Select
                   value={prep.impute}
                   onChange={(e) => setPrep({ ...prep, impute: e.target.value as ImputeMethod })}
                 >
-                  <option value="none">Leave missing</option>
-                  <option value="rowmean">Row mean</option>
-                  <option value="rowmedian">Row median</option>
-                  <option value="knn">k-nearest neighbours</option>
-                  <option value="half-min">Half of global minimum</option>
-                  <option value="min">Global minimum</option>
-                  <option value="zero">Zero</option>
+                  <option value="none">欠損のまま</option>
+                  <option value="rowmean">行の平均</option>
+                  <option value="rowmedian">行の中央値</option>
+                  <option value="knn">k近傍</option>
+                  <option value="half-min">全体最小値の半分</option>
+                  <option value="min">全体最小値</option>
+                  <option value="zero">ゼロ</option>
                 </Select>
               </Field>
               <Field
-                label={`完全性フィルタ / Min completeness: ${(prep.minCompleteness * 100).toFixed(0)}%`}
-                hint="Drops features observed in too few samples."
+                label={`完全性フィルタ：${(prep.minCompleteness * 100).toFixed(0)}%`}
+                hint="観測サンプルが少なすぎる特徴量を除外します。"
               >
                 <input
                   type="range"
@@ -381,18 +379,18 @@ function ImportPanel({
           </Card>
 
           <Card
-            title="群の割り当て / Group assignment"
-            subtitle="Every comparison depends on this. Seeded from the sample sheet where names match."
+            title="群の割り当て"
+            subtitle="すべての比較はこの割り当てに依存します。名前が一致する場合はサンプルシートから初期値を入れます。"
             actions={
               <Button size="sm" variant="primary" onClick={onReady} disabled={groupCounts.length < 2}>
-                解析へ / Go to statistics
+                統計解析へ
               </Button>
             }
           >
             {groupCounts.length < 2 && (
               <div className="mb-3">
                 <Callout tone="warn">
-                  At least two groups with a name are needed before any comparison can run.
+                  比較を実行するには、名前の付いた群が2つ以上必要です。
                 </Callout>
               </div>
             )}
@@ -403,9 +401,9 @@ function ImportPanel({
                   <TextInput
                     value={groups[s] ?? ""}
                     onChange={(e) => setGroups({ ...groups, [s]: e.target.value })}
-                    placeholder="group"
+                    placeholder="群"
                     className="w-32"
-                    aria-label={`Group for ${s}`}
+                    aria-label={`${s} の群`}
                   />
                 </div>
               ))}
@@ -423,8 +421,8 @@ function ImportPanel({
 
           {qc && (
             <Card
-              title="サンプルQC / Sample QC"
-              subtitle="Compare medians across samples: a sample far off the others usually means a loading or injection problem."
+              title="サンプルQC"
+              subtitle="サンプル間の中央値を比較します。他から大きく外れたサンプルは、ローディングやインジェクションの問題であることが多いです。"
               actions={
                 <Button
                   size="sm"
@@ -445,7 +443,7 @@ function ImportPanel({
             >
               <DataTable
                 maxHeight="24rem"
-                headers={["Sample", "Group", "Observed", "Missing", "Median", "Mean", "Min", "Max"]}
+                headers={["サンプル", "群", "観測", "欠損", "中央値", "平均", "最小", "最大"]}
                 align={["left", "left", "right", "right", "right", "right", "right", "right"]}
                 rows={qc.map((q) => [
                   <span key="s" className="font-mono">{q.sample}</span>,
@@ -462,7 +460,7 @@ function ImportPanel({
           )}
 
           {preview && preview.rows.length > 0 && (
-            <Card title="元データ / Source preview" subtitle={`First ${preview.rows.length} rows as imported`}>
+            <Card title="元データ" subtitle={`取り込み後の先頭 ${preview.rows.length} 行`}>
               <DataTable
                 maxHeight="20rem"
                 headers={preview.headers.slice(0, 14)}

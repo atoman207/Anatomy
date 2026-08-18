@@ -121,7 +121,7 @@ export async function writeWorkbook(
   }[],
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "chondro";
+  workbook.creator = "Research data workbench";
   workbook.created = new Date();
 
   for (const t of tables) {
