@@ -196,14 +196,14 @@ export function Recorder({
 
       <div className="flex flex-wrap items-center gap-3">
         {state === "idle" ? (
-          <Button variant="primary" onClick={start} disabled={disabled}>
-            ● 録音開始
+          <Button variant="primary" icon="mic" onClick={start} disabled={disabled}>
+            録音開始
           </Button>
         ) : (
           <>
-            <Button variant="danger" onClick={stop}>■ 停止</Button>
-            <Button onClick={togglePause}>
-              {state === "paused" ? "▶ 再開" : "❚❚ 一時停止"}
+            <Button variant="danger" icon="stop" onClick={stop}>停止</Button>
+            <Button icon={state === "paused" ? "play" : "pause"} onClick={togglePause}>
+              {state === "paused" ? "再開" : "一時停止"}
             </Button>
           </>
         )}

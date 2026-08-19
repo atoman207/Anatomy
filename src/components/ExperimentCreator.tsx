@@ -85,11 +85,10 @@ export function ExperimentCreator({ labs }: { labs: LabOption[] }) {
               <TextInput
                 value={labName}
                 onChange={(e) => setLabName(e.target.value)}
-                placeholder="軟骨生物学研究室"
                 required
               />
             </Field>
-            <Button type="submit" variant="primary" disabled={busy || !labName.trim()}>
+            <Button type="submit" variant="primary" icon="plus" disabled={busy || !labName.trim()}>
               作成
             </Button>
           </form>
@@ -108,7 +107,6 @@ export function ExperimentCreator({ labs }: { labs: LabOption[] }) {
               <TextInput
                 value={expName}
                 onChange={(e) => setExpName(e.target.value)}
-                placeholder="TMT標識"
                 required
               />
             </Field>
@@ -119,7 +117,7 @@ export function ExperimentCreator({ labs }: { labs: LabOption[] }) {
               <TextInput value={operator} onChange={(e) => setOperator(e.target.value)} />
             </Field>
             <div className="lg:col-span-5">
-              <Button type="submit" variant="primary" disabled={busy || !expName.trim() || !labId}>
+              <Button type="submit" variant="primary" icon="plus" disabled={busy || !expName.trim() || !labId}>
                 実験を作成
               </Button>
             </div>

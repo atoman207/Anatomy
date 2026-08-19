@@ -76,6 +76,7 @@ export function FiguresPanel({
             <Button
               key={k.id}
               size="sm"
+              icon="chart"
               variant={kind === k.id ? "primary" : "secondary"}
               onClick={() => setKind(k.id)}
             >
@@ -153,13 +154,14 @@ function FigureFrame({
       title={title}
       actions={
         <>
-          <Button size="sm" onClick={() => download(filename, svg, "image/svg+xml")}>SVG</Button>
-          <Button size="sm" onClick={() => downloadPng(2)} disabled={busy}>
+          <Button size="sm" icon="download" onClick={() => download(filename, svg, "image/svg+xml")}>SVG</Button>
+          <Button size="sm" icon="download" onClick={() => downloadPng(2)} disabled={busy}>
             {busy ? "…" : "PNG ×2"}
           </Button>
-          <Button size="sm" onClick={() => downloadPng(4)} disabled={busy}>PNG ×4</Button>
+          <Button size="sm" icon="download" onClick={() => downloadPng(4)} disabled={busy}>PNG ×4</Button>
           <Button
             size="sm"
+            icon="notebook"
             onClick={() =>
               ws.addClip(title, `### ${title}\n\n_図を ${filename} として書き出しました。_\n`)
             }
@@ -268,11 +270,10 @@ function VolcanoFigure({
               className="w-full accent-[var(--accent)]"
             />
           </Field>
-          <Field label="強調" hint="カンマ区切りの特徴量名は必ずラベルを付けます。" className="lg:col-span-2">
+          <Field label="強調" className="lg:col-span-2">
             <TextInput
               value={highlight}
               onChange={(e) => setHighlight(e.target.value)}
-              placeholder="MMP13, COL2A1"
             />
           </Field>
         </div>

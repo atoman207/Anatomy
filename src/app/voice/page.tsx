@@ -114,10 +114,6 @@ export default function VoicePage() {
     <div className="flex flex-col gap-5">
       <header>
         <h1 className="text-xl font-semibold text-ink">音声メモ</h1>
-        <p className="mt-1 max-w-3xl text-sm text-ink-2">
-          実験中に話した内容を録音し、書き起こして実験ノートの形に整えます。
-          音声・書き起こし・AI構造化・確定版を別々に保持するため、AIが誤って解釈しても元の記録は失われません。
-        </p>
       </header>
 
       <ol className="flex flex-wrap items-center gap-2 text-xs">
@@ -142,57 +138,31 @@ export default function VoicePage() {
 
       {error && <Callout tone="danger" title="エラー">{error}</Callout>}
 
-      <Card
-        title="文字起こしの方法"
-        subtitle="どちらの方法でも、この後の整形・ノート化は同じです。"
-      >
-        <div className="flex flex-col gap-3">
-          <div className="grid gap-2 sm:grid-cols-2">
+      <Card title="文字起こしの方法">
+        <div className="grid gap-2 sm:grid-cols-2">
             <EngineOption
               selected={engine === "browser"}
               onSelect={() => setEngine("browser")}
               title="ブラウザ音声認識"
               badge={<Badge tone="good">無料</Badge>}
-              points={[
-                "APIキー不要・利用料なし",
-                "話しながらリアルタイムで文字が出る",
-                "Chrome / Edge / Safari のみ",
-              ]}
+              detail="Chrome / Edge / Safari でリアルタイムに文字にします。"
             />
             <EngineOption
               selected={engine === "openai"}
               onSelect={() => setEngine("openai")}
               title="OpenAI で文字起こし"
               badge={<Badge tone="neutral">従量課金</Badge>}
-              points={[
-                "専門用語の精度が高い",
-                "音声を残して聞き直せる",
-                "すべてのブラウザで動作",
-              ]}
+              detail="録音してから文字にします。すべてのブラウザで使えます。"
             />
           </div>
-          {engine === "browser" && (
-            <Callout tone="info">
-              音声はブラウザの音声認識サービス（Chrome/Edge は Google、Safari は Apple）に
-              送られます。録音ファイルは作られず、テキストだけが手元に残ります。
-            </Callout>
-          )}
-          {engine === "openai" && (
-            <Callout tone="info">
-              音声はサーバー経由で OpenAI に送られ、書き起こし後に破棄されます。
-              保存されるのはテキストだけです。
-            </Callout>
-          )}
-        </div>
       </Card>
 
       {engine === "browser" && (
         <Card
           title="話して文字にする"
-          subtitle="話した内容がその場で文字になります。停止すると書き起こしが確定します。"
           actions={
             rawTranscript && (
-              <Button size="sm" variant="danger" onClick={reset}>やり直す</Button>
+              <Button size="sm" variant="danger" icon="refresh" onClick={reset}>やり直す</Button>
             )
           }
         >
@@ -215,11 +185,10 @@ export default function VoicePage() {
 
       <Card
         title="録音"
-        subtitle="音声はブラウザからサーバー経由で OpenAI に送られ、書き起こし後に破棄されます。保存されるのはテキストだけです。"
         className={engine === "browser" ? "hidden" : undefined}
         actions={
           (recording || rawTranscript) && (
-            <Button size="sm" variant="danger" onClick={reset}>やり直す</Button>
+            <Button size="sm" variant="danger" icon="refresh" onClick={reset}>やり直す</Button>
           )
         }
       >
@@ -254,17 +223,17 @@ export default function VoicePage() {
 
       {stage === "record" && !recording && (
         <Card title="または書き起こしを直接入力">
-          <Field label="テキスト" hint="別の機器で録音した場合や、マイクが使えない場合に。">
+          <Field label="テキスト">
             <TextArea
               value={editedTranscript}
               onChange={(e) => setEditedTranscript(e.target.value)}
-              placeholder="本日8月18日、TMT標識を実施します。サンプルは6検体…"
               className="min-h-28"
             />
           </Field>
           <div className="mt-3">
             <Button
               variant="primary"
+              icon="notebook"
               disabled={!editedTranscript.trim() || busy !== null}
               onClick={() => {
                 setRawTranscript(editedTranscript);
@@ -290,6 +259,7 @@ export default function VoicePage() {
               {transcriptEdited && <Badge tone="warn">編集済み</Badge>}
               <Button
                 size="sm"
+                icon="download"
                 onClick={() => download(`transcript_${new Date().toISOString().slice(0, 10)}.txt`, editedTranscript)}
               >
                 .txt
@@ -297,6 +267,7 @@ export default function VoicePage() {
               <Button
                 size="sm"
                 variant="primary"
+                icon="notebook"
                 onClick={structure}
                 disabled={busy !== null || !editedTranscript.trim()}
               >
@@ -305,10 +276,7 @@ export default function VoicePage() {
             </>
           }
         >
-          <Callout tone="info">
-            送信前に読み返してください。専門用語やロット番号は聞き間違いが起きやすい箇所です。
-          </Callout>
-          <div className="mt-3">
+          <div className="mt-0">
             <TextArea
               value={editedTranscript}
               onChange={(e) => setEditedTranscript(e.target.value)}
@@ -357,6 +325,7 @@ export default function VoicePage() {
                 <>
                   <Button
                     size="sm"
+                    icon="download"
                     onClick={() =>
                       download(
                         `voice_note_${new Date().toISOString().slice(0, 10)}.md`,
@@ -370,6 +339,7 @@ export default function VoicePage() {
                   <Button
                     size="sm"
                     variant="primary"
+                    icon="notebook"
                     onClick={() =>
                       ws.addClip(
                         `音声メモ: ${structured.note.experiment_name ?? "無題"}`,
@@ -470,13 +440,13 @@ function ExtractedFields({ note }: { note: StructuredVoiceNote }) {
  * up front instead of surfacing as a failure later.
  */
 function EngineOption({
-  selected, onSelect, title, badge, points,
+  selected, onSelect, title, badge, detail,
 }: {
   selected: boolean;
   onSelect: () => void;
   title: string;
   badge: React.ReactNode;
-  points: string[];
+  detail: string;
 }) {
   return (
     <button
@@ -503,11 +473,7 @@ function EngineOption({
         <span className="text-sm font-medium text-ink">{title}</span>
         {badge}
       </span>
-      <ul className="mt-2 flex flex-col gap-0.5 pl-6">
-        {points.map((p) => (
-          <li key={p} className="text-[11px] text-ink-2">・{p}</li>
-        ))}
-      </ul>
+      <span className="mt-2 block pl-6 text-[12px] text-ink-2">{detail}</span>
     </button>
   );
 }

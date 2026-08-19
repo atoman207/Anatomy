@@ -38,9 +38,6 @@ export default function OrganizePage() {
     <div className="flex flex-col gap-5">
       <header>
         <h1 className="text-xl font-semibold text-ink">データ整理</h1>
-        <p className="mt-1 text-sm text-ink-2">
-          Rawファイル一覧を作り、サンプルシートを導き、安全な一括リネームを計画します。すべてブラウザ内で動作します。
-        </p>
       </header>
 
       <div role="tablist" aria-label="データ整理の手順" className="scroll-x flex gap-1 border-b border-line">
@@ -128,21 +125,19 @@ function RawFilesPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Card
-        title="ファイルを追加"
-        subtitle="ファイル、フォルダ、または名前の一覧を貼り付けできます。読み取るのは名前とサイズのみで、内容はマシンから出ません。"
-      >
+      <Card title="ファイルを追加">
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap gap-2">
-            <Button variant="primary" onClick={() => fileInput.current?.click()}>
+            <Button variant="primary" icon="upload" onClick={() => fileInput.current?.click()}>
               ファイルを選択
             </Button>
-            <Button onClick={() => dirInput.current?.click()}>
+            <Button icon="folder" onClick={() => dirInput.current?.click()}>
               フォルダを選択
             </Button>
             {ws.files.length > 0 && (
               <Button
                 variant="danger"
+                icon="trash"
                 onClick={() => {
                   ws.setFiles([]);
                   ws.setInventory(null);
@@ -176,19 +171,16 @@ function RawFilesPanel() {
             }}
           />
 
-          <Field
-            label="または名前を貼り付け（1行に1つ）"
-            hint="この画面から参照できない装置PC上のファイルに便利です。"
-          >
+          <Field label="または名前を貼り付け（1行に1つ）">
             <textarea
               value={pasted}
               onChange={(e) => setPasted(e.target.value)}
-              placeholder={"Control_1.raw\nControl_2.raw\nIL1b_1.raw"}
+              placeholder="ファイル名を1行ずつ"
               className="min-h-24 w-full rounded-lg border border-line-strong bg-surface-1 px-2.5 py-1.5 font-mono text-xs text-ink outline-none focus:border-accent"
             />
           </Field>
           <div>
-            <Button onClick={acceptPasted} disabled={!pasted.trim()}>
+            <Button icon="paste" onClick={acceptPasted} disabled={!pasted.trim()}>
               貼り付けた名前を追加
             </Button>
           </div>
@@ -235,6 +227,7 @@ function RawFilesPanel() {
                 />
                 <Button
                   size="sm"
+                  icon="download"
                   onClick={() =>
                     download(
                       "raw_file_list.csv",
@@ -247,6 +240,7 @@ function RawFilesPanel() {
                 </Button>
                 <Button
                   size="sm"
+                  icon="notebook"
                   onClick={() => ws.addClip("Rawファイル一覧", inventoryToMarkdown(inventory))}
                 >
                   ノートへ
@@ -272,7 +266,7 @@ function RawFilesPanel() {
           </Card>
 
           {inventory.groupSummary.length > 0 && (
-            <Card title="推定グループ" subtitle="ファイル名のトークンから推定しています。サンプルシートタブで修正してください。">
+            <Card title="推定グループ" subtitle="ファイル名から推定しています。">
               <DataTable
                 headers={["群", "ファイル数", "例"]}
                 align={["left", "right", "left"]}
@@ -365,23 +359,24 @@ function SampleSheetPanel() {
 
       <Card
         title="サンプルシート"
-        subtitle="どのセルも編集できます。群は以降のすべての比較を決めます。"
         actions={
           <>
             <Button
               size="sm"
+              icon="download"
               onClick={() =>
                 download("sample_sheet.csv", toDelimited(table.headers, table.rows), "text/csv")
               }
             >
               CSV
             </Button>
-            <Button size="sm" onClick={() => ws.addClip("サンプルシート", sampleSheetToMarkdown(sheet))}>
+            <Button size="sm" icon="notebook" onClick={() => ws.addClip("サンプルシート", sampleSheetToMarkdown(sheet))}>
               ノートへ
             </Button>
             <Button
               size="sm"
               variant="primary"
+              icon="check"
               onClick={() => ws.setSheet(sheet)}
               disabled={!sheet.valid}
               title={sheet.valid ? "" : "先にエラーを解消してください"}
@@ -522,7 +517,7 @@ function RenamePanel() {
     <div className="flex flex-col gap-4">
       <Card
         title="変更ルール"
-        subtitle="拡張子は常に保持されます。ディスクには書き込みません。マッピングを書き出して、自分のスクリプトで適用してください。"
+        subtitle="拡張子は保持されます。ディスクには書き込みません。"
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="プリセット" hint={RENAME_PRESETS.find((p) => p.id === presetId)?.description}>
@@ -577,6 +572,7 @@ function RenamePanel() {
               <>
                 <Button
                   size="sm"
+                  icon="download"
                   onClick={() =>
                     download(
                       "rename_mapping.csv",
@@ -593,6 +589,7 @@ function RenamePanel() {
                 </Button>
                 <Button
                   size="sm"
+                  icon="file"
                   onClick={() => {
                     const map = previewToMapping(preview);
                     const ps = [
@@ -609,7 +606,7 @@ function RenamePanel() {
                 >
                   スクリプト
                 </Button>
-                <Button size="sm" onClick={() => ws.addClip("ファイル名変更", renameToMarkdown(preview))}>
+                <Button size="sm" icon="notebook" onClick={() => ws.addClip("ファイル名変更", renameToMarkdown(preview))}>
                   ノートへ
                 </Button>
               </>

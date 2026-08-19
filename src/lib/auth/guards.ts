@@ -19,6 +19,7 @@ export interface SessionContext {
   user: User;
   email: string;
   displayName: string;
+  avatarUrl: string | null;
   isPlatformAdmin: boolean;
   memberships: LabMembership[];
   /** Labs where this user may manage members. */
@@ -76,11 +77,13 @@ export async function getSessionContext(): Promise<SessionContext | null> {
   const metaName =
     (user.user_metadata?.display_name as string | undefined) ??
     (user.user_metadata?.name as string | undefined);
+  const avatarUrl = (user.user_metadata?.avatar_url as string | undefined) || null;
 
   return {
     user,
     email: user.email ?? "",
     displayName: metaName || (user.email ?? "").split("@")[0] || "user",
+    avatarUrl,
     isPlatformAdmin,
     memberships,
     adminLabs,

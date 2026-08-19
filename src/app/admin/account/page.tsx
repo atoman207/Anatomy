@@ -21,7 +21,7 @@ export default async function AccountPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="アカウント" description="表示名、パスワード、所属研究室を確認・変更します。" />
+      <PageHeader title="アカウント" />
       <Card
         title="アカウント"
         subtitle={ctx.email}
@@ -53,7 +53,7 @@ export default async function AccountPage() {
       </Card>
 
       <Card title="表示名">
-        <ActionForm action={updateDisplayNameAction} submitLabel="保存">
+        <ActionForm action={updateDisplayNameAction} submitLabel="保存" icon="save">
           <Field label="表示名" htmlFor="dn">
             <TextInput id="dn" name="display_name" defaultValue={ctx.displayName} required maxLength={80} />
           </Field>
@@ -62,9 +62,8 @@ export default async function AccountPage() {
 
       <Card
         title="パスワード変更"
-        subtitle="変更後もこのデバイスではサインインしたままです。"
       >
-        <ActionForm action={changePasswordAction} submitLabel="変更">
+        <ActionForm action={changePasswordAction} submitLabel="変更" icon="lock">
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="新しいパスワード" htmlFor="pw" hint="8文字以上。">
               <TextInput id="pw" name="password" type="password" required minLength={8} autoComplete="new-password" />

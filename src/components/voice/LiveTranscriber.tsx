@@ -132,15 +132,15 @@ export function LiveTranscriber({
 
       <div className="flex flex-wrap items-center gap-3">
         {!listening ? (
-          <Button variant="primary" onClick={start} disabled={disabled || dead}>
-            ● 話し始める
+          <Button variant="primary" icon="mic" onClick={start} disabled={disabled || dead}>
+            話し始める
           </Button>
         ) : (
-          <Button variant="danger" onClick={stop}>■ 停止して確定</Button>
+          <Button variant="danger" icon="stop" onClick={stop}>停止して確定</Button>
         )}
 
         {charCount > 0 && !listening && (
-          <Button onClick={clear}>クリア</Button>
+          <Button icon="clear" onClick={clear}>クリア</Button>
         )}
 
         {listening && (

@@ -94,7 +94,6 @@ export default async function AdminOverviewPage(props: PageProps<"/admin">) {
 
       <Card
         title="あなたの権限"
-        subtitle="研究室の役割はデータベースで強制されます。システム管理者権限はサーバー側で設定されます。"
       >
         {ctx.memberships.length === 0 ? (
           <EmptyState title="所属している研究室がありません">
@@ -123,9 +122,7 @@ export default async function AdminOverviewPage(props: PageProps<"/admin">) {
         {ctx.isPlatformAdmin && (
           <div className="mt-3">
             <Callout tone="info" title="システム管理者">
-              あなたのメールアドレスは <code>PLATFORM_ADMIN_EMAILS</code> に登録されており、
-              すべての研究室とユーザー管理にアクセスできます。サーバー専用の設定のため、
-              ブラウザから変更することはできません。
+              すべての研究室とユーザー管理にアクセスできます。
             </Callout>
           </div>
         )}

@@ -65,7 +65,7 @@ export function HealthPanel() {
                   ? "設定が必要"
                   : "未設定"}
           </Badge>
-          <Button size="sm" onClick={check} disabled={loading}>
+          <Button size="sm" icon="refresh" onClick={check} disabled={loading}>
             再確認
           </Button>
         </>

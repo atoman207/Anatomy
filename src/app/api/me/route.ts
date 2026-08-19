@@ -8,6 +8,7 @@ export interface MeResponse {
   signedIn: boolean;
   email: string | null;
   displayName: string | null;
+  avatarUrl: string | null;
   isPlatformAdmin: boolean;
   canAccessAdmin: boolean;
   labs: { id: string; name: string; role: string }[];
@@ -28,6 +29,7 @@ export async function GET() {
         signedIn: true,
         email: ctx.email,
         displayName: ctx.displayName,
+        avatarUrl: ctx.avatarUrl,
         isPlatformAdmin: ctx.isPlatformAdmin,
         canAccessAdmin: ctx.canAccessAdmin,
         labs: ctx.memberships.map((m) => ({ id: m.labId, name: m.labName, role: m.role })),
@@ -36,6 +38,7 @@ export async function GET() {
         signedIn: false,
         email: null,
         displayName: null,
+        avatarUrl: null,
         isPlatformAdmin: false,
         canAccessAdmin: false,
         labs: [],

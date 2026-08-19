@@ -91,14 +91,14 @@ export default async function MembersPage(props: PageProps<"/admin/members">) {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="メンバー" description="研究室のメンバーと権限を管理します。権限はデータベース側で強制されます。" />
+      <PageHeader title="メンバー" description="研究室のメンバーと権限を管理します。" />
       {manageable.length > 1 && (
         <LabPicker labs={manageable} current={labId} basePath="/admin/members" />
       )}
 
       <Card
         title={`メンバー — ${lab.name}`}
-        subtitle={`${members.length} 名。役割はインターフェースではなくデータベースで強制されます。`}
+        subtitle={`${members.length} 名`}
       >
         {members.length === 0 ? (
           <EmptyState title="まだメンバーがいません" />
@@ -148,6 +148,7 @@ export default async function MembersPage(props: PageProps<"/admin/members">) {
                             action={changeMemberRoleAction}
                             hidden={{ lab_id: labId, user_id: m.userId }}
                             submitLabel="変更"
+                            icon="save"
                           >
                             <select
                               name="role"
@@ -182,12 +183,12 @@ export default async function MembersPage(props: PageProps<"/admin/members">) {
 
       <Card
         title="メンバーを追加"
-        subtitle="アカウントがまだない場合は、招待メールが送信されます。"
+        subtitle="アカウントがない場合は招待メールを送ります。"
       >
-        <ActionForm action={addMemberAction} hidden={{ lab_id: labId }} submitLabel="追加">
+        <ActionForm action={addMemberAction} hidden={{ lab_id: labId }} submitLabel="追加" icon="plus">
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="メールアドレス" htmlFor="member-email">
-              <TextInput id="member-email" name="email" type="email" required placeholder="colleague@university.ac.jp" />
+              <TextInput id="member-email" name="email" type="email" required />
             </Field>
             <Field label="権限" hint="実験・データセット・ノートブックの作成・編集。">
               <Select name="role" defaultValue="member">
@@ -205,7 +206,7 @@ export default async function MembersPage(props: PageProps<"/admin/members">) {
       {isOwner && members.length > 1 && (
         <Card
           title="オーナーの譲渡"
-          subtitle="オーナーのみ研究室を削除できます。譲渡後、あなたは管理者になります。"
+          subtitle="譲渡後、あなたは管理者になります。"
         >
           <Callout tone="warn">
             新しいオーナーが譲り返さない限り、取り消すことはできません。
@@ -217,6 +218,7 @@ export default async function MembersPage(props: PageProps<"/admin/members">) {
               submitLabel="譲渡"
               variant="danger"
               confirm="この研究室のオーナー権限を譲渡しますか？"
+              icon="arrow"
             >
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="新しいオーナー">

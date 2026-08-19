@@ -15,12 +15,21 @@ create extension if not exists "pgcrypto";
 -- ---------------------------------------------------------------------------
 
 create table if not exists public.profiles (
-  id           uuid primary key references auth.users (id) on delete cascade,
-  email        text,
-  display_name text,
-  created_at   timestamptz not null default now(),
-  updated_at   timestamptz not null default now()
+  id            uuid primary key references auth.users (id) on delete cascade,
+  email         text,
+  display_name  text,
+  avatar_url    text,
+  date_of_birth date,
+  phone_number  text,
+  major         text,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
 );
+
+alter table public.profiles add column if not exists avatar_url    text;
+alter table public.profiles add column if not exists date_of_birth date;
+alter table public.profiles add column if not exists phone_number  text;
+alter table public.profiles add column if not exists major         text;
 
 create table if not exists public.laboratories (
   id          uuid primary key default gen_random_uuid(),
@@ -483,11 +492,15 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, email, display_name)
+  insert into public.profiles (id, email, display_name, avatar_url, date_of_birth, phone_number, major)
   values (
     new.id,
     new.email,
-    coalesce(new.raw_user_meta_data ->> 'display_name', split_part(new.email, '@', 1))
+    coalesce(new.raw_user_meta_data ->> 'display_name', split_part(new.email, '@', 1)),
+    new.raw_user_meta_data ->> 'avatar_url',
+    nullif(new.raw_user_meta_data ->> 'date_of_birth', '')::date,
+    new.raw_user_meta_data ->> 'phone_number',
+    new.raw_user_meta_data ->> 'major'
   )
   on conflict (id) do nothing;
   return new;

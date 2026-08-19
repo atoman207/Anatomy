@@ -50,6 +50,7 @@ export function StatsPanel({
             <Button
               key={m.id}
               size="sm"
+              icon="chart"
               variant={method === m.id ? "primary" : "secondary"}
               onClick={() => setMethod(m.id)}
             >
@@ -226,7 +227,7 @@ function TTestSection({
           <Card
             title={`${label} — ${result.t.test}`}
             actions={
-              <Button size="sm" onClick={() => ws.addClip(`t検定: ${label}`, tTestToMarkdown(result.t, `${label} — ${a} vs ${b}`))}>
+              <Button size="sm" icon="notebook" onClick={() => ws.addClip(`t検定: ${label}`, tTestToMarkdown(result.t, `${label} — ${a} vs ${b}`))}>
                 ノートへ
               </Button>
             }
@@ -267,10 +268,11 @@ function TTestSection({
       {allRows.length > 0 && (
         <Card
           title="全特徴量"
-          subtitle="同じ検定をすべての行に適用します。FDR制御は差次発現タブを使ってください。"
+          subtitle="すべての行に同じ検定を適用します。"
           actions={
             <Button
               size="sm"
+              icon="download"
               onClick={() =>
                 download(
                   `ttest_${a}_vs_${b}.csv`,
@@ -418,7 +420,7 @@ function AnovaSection({
           <Card
             title={`${label} — 分散分析表`}
             actions={
-              <Button size="sm" onClick={() => ws.addClip(`ANOVA: ${label}`, anovaToMarkdown(anova, `${label} — 一元配置ANOVA`))}>
+              <Button size="sm" icon="notebook" onClick={() => ws.addClip(`ANOVA: ${label}`, anovaToMarkdown(anova, `${label} — 一元配置ANOVA`))}>
                 ノートへ
               </Button>
             }
@@ -483,6 +485,7 @@ function AnovaSection({
         actions={
           <Button
             size="sm"
+            icon="download"
             onClick={() =>
               download(
                 "anova_all_features.csv",
@@ -574,6 +577,7 @@ function PcaSection({
               <>
                 <Button
                   size="sm"
+                  icon="download"
                   onClick={() =>
                     download(
                       "pca_scores.csv",
@@ -587,7 +591,7 @@ function PcaSection({
                 >
                   スコアCSV
                 </Button>
-                <Button size="sm" onClick={() => ws.addClip("PCA", pcaToMarkdown(result, `PCA — ${datasetName}`))}>
+                <Button size="sm" icon="notebook" onClick={() => ws.addClip("PCA", pcaToMarkdown(result, `PCA — ${datasetName}`))}>
                   ノートへ
                 </Button>
               </>
@@ -762,7 +766,7 @@ function ClusterSection({ matrix, groups }: { matrix: DataMatrix; groups: string
           <Card
             title="k-means"
             actions={
-              <Button size="sm" onClick={() => ws.addClip("k-meansクラスタリング", kMeansToMarkdown(km, names))}>
+              <Button size="sm" icon="notebook" onClick={() => ws.addClip("k-meansクラスタリング", kMeansToMarkdown(km, names))}>
                 ノートへ
               </Button>
             }
@@ -792,7 +796,7 @@ function ClusterSection({ matrix, groups }: { matrix: DataMatrix; groups: string
           title="階層クラスタリング"
           subtitle={`${linkage} 連結 · ${hc.metric}`}
           actions={
-            <Button size="sm" onClick={() => ws.addClip("階層クラスタリング", hierarchicalToMarkdown(hc, names))}>
+            <Button size="sm" icon="notebook" onClick={() => ws.addClip("階層クラスタリング", hierarchicalToMarkdown(hc, names))}>
               ノートへ
             </Button>
           }
@@ -924,6 +928,7 @@ function DifferentialSection({
               <>
                 <Button
                   size="sm"
+                  icon="download"
                   onClick={() =>
                     download(
                       `differential_${a}_vs_${b}.csv`,
@@ -939,7 +944,7 @@ function DifferentialSection({
                 >
                   CSV
                 </Button>
-                <Button size="sm" onClick={() => ws.addClip(`差次発現 ${a} vs ${b}`, differentialToMarkdown(result))}>
+                <Button size="sm" icon="notebook" onClick={() => ws.addClip(`差次発現 ${a} vs ${b}`, differentialToMarkdown(result))}>
                   ノートへ
                 </Button>
               </>

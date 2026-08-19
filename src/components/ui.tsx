@@ -1,4 +1,5 @@
 import type { ReactNode, SelectHTMLAttributes, InputHTMLAttributes, TextareaHTMLAttributes, ButtonHTMLAttributes } from "react";
+import { Icon, type IconName } from "./icons";
 
 export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
@@ -37,23 +38,29 @@ export function Card({
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "secondary" | "ghost" | "danger";
   size?: "sm" | "md";
+  icon?: IconName;
 };
 
 export function Button({
-  variant = "secondary", size = "md", className, ...rest
+  variant = "secondary", size = "md", icon, className, children, ...rest
 }: ButtonProps) {
   const base =
-    "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50";
-  const sizes = size === "sm" ? "px-3 py-1.5 text-[13px]" : "px-5 py-2.5 text-[15px]";
+    "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50";
+  const sizes = size === "sm" ? "px-3 py-1.5 text-[13px]" : "px-4 py-2 text-[14px]";
   const variants = {
     primary:
-      "btn-hatme text-accent-contrast shadow-[var(--shadow-sm)] disabled:hover:opacity-50",
+      "bg-accent text-accent-contrast hover:bg-[var(--accent-hover)] shadow-[var(--shadow-sm)]",
     secondary:
       "border border-line bg-surface-1 text-ink hover:border-accent hover:text-accent",
-    ghost: "text-ink-2 hover:text-accent",
+    ghost: "text-ink-2 hover:bg-surface-2 hover:text-ink",
     danger: "border border-danger/30 bg-surface-1 text-danger hover:bg-danger-soft",
   }[variant];
-  return <button className={cx(base, sizes, variants, className)} {...rest} />;
+  return (
+    <button className={cx(base, sizes, variants, className)} {...rest}>
+      {icon && <Icon name={icon} className={size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4"} />}
+      {children}
+    </button>
+  );
 }
 
 export function Field({
@@ -77,7 +84,7 @@ export function Field({
 }
 
 const controlClass =
-  "w-full rounded-md border border-line bg-surface-1 px-3 py-2 text-base text-ink outline-none transition-colors duration-200 focus:border-accent";
+  "w-full rounded-md border border-line bg-surface-1 px-3 py-2 text-[15px] text-ink outline-none transition-colors duration-200 focus:border-accent";
 
 export function TextInput({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
   return <input className={cx(controlClass, className)} {...rest} />;

@@ -98,9 +98,6 @@ export default function AnalyzePage() {
     <div className="flex flex-col gap-5">
       <header>
         <h1 className="text-xl font-semibold text-ink">統計解析・図作成</h1>
-        <p className="mt-1 text-sm text-ink-2">
-          t検定、ANOVA、PCA、クラスタリングに加え、ボルケーノ、ヒートマップ、PCAプロットを作成します。計算はすべてブラウザ内で行います。
-        </p>
       </header>
 
       <div role="tablist" className="scroll-x flex gap-1 border-b border-line">
@@ -245,15 +242,13 @@ function ImportPanel({
 
   return (
     <div className="flex flex-col gap-4">
-      <Card
-        title="データ読み込み"
-        subtitle="行は特徴量（タンパク質、遺伝子、測定値）、列はサンプルです。CSV、TSV、XLSXに対応しています。"
-      >
+      <Card title="データ読み込み">
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="primary" onClick={() => inputRef.current?.click()} disabled={busy}>
+          <Button variant="primary" icon="upload" onClick={() => inputRef.current?.click()} disabled={busy}>
             {busy ? "読み込み中…" : "ファイルを選択"}
           </Button>
           <Button
+            icon="file"
             onClick={() => {
               const demo = buildDemoData();
               load({
@@ -263,15 +258,15 @@ function ImportPanel({
                 matrix: demo.matrix,
                 profile: null,
                 headers: ["Protein", ...demo.matrix.samples],
-                notes: ["合成デモデータ — 4条件×3反復、log2スケール。"],
+                notes: ["サンプルデータ（4条件×3反復）"],
               });
             }}
             disabled={busy}
           >
-            デモデータを読み込む
+            サンプルデータを読み込む
           </Button>
           {dataset && (
-            <Button variant="danger" onClick={() => { ws.setDataset(null); setPreview(null); }}>
+            <Button variant="danger" icon="trash" onClick={() => { ws.setDataset(null); setPreview(null); }}>
               クリア
             </Button>
           )}
@@ -292,7 +287,7 @@ function ImportPanel({
 
       {!dataset && (
         <EmptyState title="データセットがありません">
-          ファイルまたはデモデータを読み込んでください。
+          ファイルを読み込んでください。
         </EmptyState>
       )}
 
@@ -322,7 +317,7 @@ function ImportPanel({
             subtitle="適用順：完全性フィルタ → 変換 → 正規化 → 補完。"
           >
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Field label="変換" hint="強度データでは通常 log2 を選びます。">
+              <Field label="変換">
                 <Select
                   value={prep.transform}
                   onChange={(e) => setPrep({ ...prep, transform: e.target.value as TransformMethod })}
@@ -335,7 +330,7 @@ function ImportPanel({
                   <option value="zscore">行のzスコア</option>
                 </Select>
               </Field>
-              <Field label="正規化" hint="サンプル間のローディング差を取り除きます。">
+              <Field label="正規化">
                 <Select
                   value={prep.normalize}
                   onChange={(e) => setPrep({ ...prep, normalize: e.target.value as NormalizeMethod })}
@@ -347,7 +342,7 @@ function ImportPanel({
                   <option value="vsn-lite">中央値シフト（対数データ）</option>
                 </Select>
               </Field>
-              <Field label="欠損値" hint="PCAとクラスタリングには欠損のない行が必要です。">
+              <Field label="欠損値">
                 <Select
                   value={prep.impute}
                   onChange={(e) => setPrep({ ...prep, impute: e.target.value as ImputeMethod })}
@@ -363,7 +358,6 @@ function ImportPanel({
               </Field>
               <Field
                 label={`完全性フィルタ：${(prep.minCompleteness * 100).toFixed(0)}%`}
-                hint="観測サンプルが少なすぎる特徴量を除外します。"
               >
                 <input
                   type="range"
@@ -378,11 +372,9 @@ function ImportPanel({
             </div>
           </Card>
 
-          <Card
-            title="群の割り当て"
-            subtitle="すべての比較はこの割り当てに依存します。名前が一致する場合はサンプルシートから初期値を入れます。"
+          <Card title="群の割り当て"
             actions={
-              <Button size="sm" variant="primary" onClick={onReady} disabled={groupCounts.length < 2}>
+              <Button size="sm" variant="primary" icon="arrow" onClick={onReady} disabled={groupCounts.length < 2}>
                 統計解析へ
               </Button>
             }
@@ -420,12 +412,11 @@ function ImportPanel({
           </Card>
 
           {qc && (
-            <Card
-              title="サンプルQC"
-              subtitle="サンプル間の中央値を比較します。他から大きく外れたサンプルは、ローディングやインジェクションの問題であることが多いです。"
+            <Card title="サンプルQC"
               actions={
                 <Button
                   size="sm"
+                  icon="download"
                   onClick={() =>
                     download(
                       "sample_qc.csv",

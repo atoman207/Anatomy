@@ -127,30 +127,16 @@ export default function LiteraturePage() {
     <div className="flex flex-col gap-5">
       <header>
         <h1 className="text-xl font-semibold text-ink">論文検索</h1>
-        <p className="mt-1 max-w-3xl text-sm text-ink-2">
-          日本語の質問から PubMed の検索式を組み立て、実際の PubMed から論文を取得します。
-          論文そのものは AI が生成するのではなく、必ず PubMed の索引から取得されます。
-        </p>
       </header>
-
-      <Callout tone="info" title="なぜ AI に論文一覧を答えさせないのか">
-        言語モデルに「関連論文を10件」と尋ねると、実在しない論文をもっともらしく生成することがあります。
-        ここでは AI の役割を<strong>検索式の作成</strong>と<strong>取得済み抄録の要約</strong>に限定し、
-        書誌情報はすべて PubMed、DOI は Crossref で照合します。
-      </Callout>
 
       {error && <Callout tone="danger" title="エラー">{error}</Callout>}
 
       <Card title="検索">
         <div className="flex flex-col gap-3">
-          <Field
-            label="調べたいこと"
-            hint="日本語でかまいません。専門用語は英語の標準用語に自動変換されます。"
-          >
+          <Field label="調べたいこと">
             <TextArea
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
-              placeholder="軟骨細胞におけるIL-1βとMMP13の関係について、最近の論文を探して"
               className="min-h-20"
             />
           </Field>
@@ -181,6 +167,7 @@ export default function LiteraturePage() {
           <div>
             <Button
               variant="primary"
+              icon="search"
               onClick={() => search()}
               disabled={busy !== null || !question.trim()}
             >
@@ -197,12 +184,12 @@ export default function LiteraturePage() {
           actions={
             <>
               {result.builtQuery.broader_query && (
-                <Button size="sm" onClick={() => search(result.builtQuery!.broader_query!)}>
+                <Button size="sm" icon="plus" onClick={() => search(result.builtQuery!.broader_query!)}>
                   条件を広げる
                 </Button>
               )}
               {result.builtQuery.narrower_query && (
-                <Button size="sm" onClick={() => search(result.builtQuery!.narrower_query!)}>
+                <Button size="sm" icon="search" onClick={() => search(result.builtQuery!.narrower_query!)}>
                   条件を絞る
                 </Button>
               )}
@@ -228,6 +215,7 @@ export default function LiteraturePage() {
             <div>
               <Button
                 size="sm"
+                icon="search"
                 onClick={() => editedQuery && search(editedQuery)}
                 disabled={busy !== null || !editedQuery?.trim()}
               >
@@ -265,6 +253,7 @@ export default function LiteraturePage() {
                 <>
                   <Button
                     size="sm"
+                    icon="check"
                     onClick={() =>
                       setSelected(
                         selected.size === result.articles.length
@@ -275,11 +264,12 @@ export default function LiteraturePage() {
                   >
                     {selected.size === result.articles.length ? "全解除" : "全選択"}
                   </Button>
-                  <Button size="sm" onClick={verify} disabled={busy !== null || chosen.length === 0}>
+                  <Button size="sm" icon="check" onClick={verify} disabled={busy !== null || chosen.length === 0}>
                     {busy === "verify" ? "確認中…" : "DOIを照合"}
                   </Button>
                   <Button
                     size="sm"
+                    icon="download"
                     onClick={() =>
                       download(
                         "pubmed_results.csv",
@@ -300,6 +290,7 @@ export default function LiteraturePage() {
                   <Button
                     size="sm"
                     variant="primary"
+                    icon="file"
                     onClick={summarize}
                     disabled={busy !== null || chosen.length === 0 || !result.aiEnabled}
                   >
@@ -392,11 +383,12 @@ export default function LiteraturePage() {
       {summary && (
         <Card
           title="AI要約"
-          subtitle="選択された論文の抄録のみに基づきます。存在しない PMID は自動的に除去されます。"
+          subtitle="選択した論文の抄録に基づく要約です。"
           actions={
             <Button
               size="sm"
               variant="primary"
+              icon="notebook"
               onClick={() =>
                 ws.addClip(
                   `論文検索: ${question.slice(0, 40)}`,

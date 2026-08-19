@@ -5,6 +5,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { cx } from "@/components/ui";
+import { Icon } from "@/components/icons";
 import { visibleGroups, type NavVisibility } from "./navigation";
 import type { MeResponse } from "@/app/api/me/route";
 
@@ -52,14 +53,9 @@ export function Sidebar({
           priority
         />
         {!collapsed && (
-          <div className="min-w-0">
-            <p className="truncate text-[13px] font-semibold leading-tight text-[var(--shell-text)]">
-              研究データ管理
-            </p>
-            <p className="truncate text-[10px] leading-tight text-[var(--shell-text-faint)]">
-              Research workbench
-            </p>
-          </div>
+          <p className="truncate text-[13px] font-semibold leading-tight text-[var(--shell-text)]">
+            研究データ管理
+          </p>
         )}
       </div>
 
@@ -162,7 +158,12 @@ function AccountBlock({
             collapsed ? "px-1" : "px-3",
           )}
         >
-          {collapsed ? "→" : "ログイン"}
+          {collapsed ? <Icon name="login" className="h-4 w-4" /> : (
+            <>
+              <Icon name="login" className="h-4 w-4" />
+              ログイン
+            </>
+          )}
         </Link>
       </div>
     );
@@ -178,9 +179,14 @@ function AccountBlock({
           href="/admin/account"
           onClick={onNavigate}
           title={`${me.displayName} (${me.email})`}
-          className="mx-auto grid h-9 w-9 place-items-center rounded-lg bg-[var(--shell-hover)] text-xs font-semibold text-[var(--shell-active-text)]"
+          className="mx-auto grid h-9 w-9 place-items-center overflow-hidden rounded-lg bg-[var(--shell-hover)] text-xs font-semibold text-[var(--shell-active-text)]"
         >
-          {initial}
+          {me.avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- avatar sources are arbitrary user uploads, not app assets next/image can optimise
+            <img src={me.avatarUrl} alt="" className="h-full w-full object-cover" />
+          ) : (
+            initial
+          )}
         </Link>
       </div>
     );
@@ -193,12 +199,21 @@ function AccountBlock({
         onClick={onNavigate}
         className="flex items-center gap-2.5 rounded-lg p-2 transition-colors hover:bg-[var(--shell-hover)]"
       >
-        <span
-          aria-hidden
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[var(--shell-active-bg)] text-sm font-semibold text-[var(--shell-active-text)]"
-        >
-          {initial}
-        </span>
+        {me.avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- avatar sources are arbitrary user uploads, not app assets next/image can optimise
+          <img
+            src={me.avatarUrl}
+            alt=""
+            className="h-9 w-9 shrink-0 rounded-lg object-cover"
+          />
+        ) : (
+          <span
+            aria-hidden
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[var(--shell-active-bg)] text-sm font-semibold text-[var(--shell-active-text)]"
+          >
+            {initial}
+          </span>
+        )}
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[13px] font-medium text-[var(--shell-text)]">
             {me.displayName}

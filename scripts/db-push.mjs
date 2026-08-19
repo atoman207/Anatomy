@@ -1,5 +1,5 @@
 /**
- * Applies every SQL file in supabase/migrations, in order.
+ * Applies the schema in supabase/migrations as a single SQL call.
  *
  * Requires a direct Postgres connection string, which is separate from the
  * REST API keys:
@@ -39,6 +39,10 @@ if (files.length === 0) {
   process.exit(1);
 }
 
+const sql = files
+  .map((f) => readFileSync(join(dir, f), "utf8").trimEnd())
+  .join("\n\n");
+
 const client = new pg.Client({
   connectionString: url,
   ssl: { rejectUnauthorized: false },
@@ -51,13 +55,9 @@ try {
   await client.connect();
   const { rows } = await client.query("select current_database() db, version() v");
   console.log(`Connected to ${rows[0].db}`);
-
-  for (const f of files) {
-    const sql = readFileSync(join(dir, f), "utf8");
-    process.stdout.write(`  applying ${f} ... `);
-    await client.query(sql);
-    console.log("ok");
-  }
+  console.log(`Applying schema (${files.join(", ")}) in one call ...`);
+  await client.query(sql);
+  console.log("ok");
 
   const { rows: tables } = await client.query(
     `select table_name from information_schema.tables

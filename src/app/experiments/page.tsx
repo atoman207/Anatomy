@@ -8,8 +8,8 @@ export const dynamic = "force-dynamic";
 export default async function ExperimentsPage() {
   if (!isSupabaseConfigured()) {
     return (
-      <Callout tone="info" title="Supabaseが設定されていません">
-        実験を保存するには、プロジェクトURLとキーを <code>.env.local</code> に追加してください。データ整理、統計解析、実験ノートは設定なしでも使えます。
+      <Callout tone="info" title="実験の保存は現在利用できません">
+        管理者にお問い合わせください。データ整理、統計解析、実験ノートは利用できます。
       </Callout>
     );
   }
@@ -19,9 +19,9 @@ export default async function ExperimentsPage() {
     return (
       <div className="flex flex-col gap-4">
         <h1 className="text-xl font-semibold text-ink">実験一覧</h1>
-        <Callout tone="info" title="実験を保存するにはログインしてください">
+        <Callout tone="info" title="ログインしてください">
           <Link href="/login" className="text-accent underline">ログイン</Link>
-          すると、実験・ノート・図を保存できます。それ以外は未ログインでも使えます。
+          すると、実験を保存できます。
         </Callout>
       </div>
     );
@@ -40,7 +40,7 @@ export default async function ExperimentsPage() {
         {memberError.message}
         {/relation|does not exist|Could not find the table/i.test(memberError.message) && (
           <p className="mt-1.5">
-            スキーマがまだ適用されていません。<code>npm run db:push</code> を実行してください。
+            データベースの準備が完了していません。管理者にお問い合わせください。
           </p>
         )}
       </Callout>

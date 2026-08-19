@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 import { cx } from "@/components/ui";
+import { Icon } from "@/components/icons";
 import { signOutAction } from "@/lib/auth/actions";
 import { titleForPath } from "./navigation";
+import { subscribeTheme, getTheme, getThemeServer, toggleTheme } from "./themePreference";
 import type { MeResponse } from "@/app/api/me/route";
 import type { NotificationsResponse, Notice } from "@/app/api/notifications/route";
 
@@ -44,9 +46,33 @@ export function Header({
         {title}
       </p>
 
+      <ThemeToggle />
       <NotificationBell notifications={notifications} />
       <UserButton me={me} />
     </header>
+  );
+}
+
+/**
+ * Flips the whole app between light and dark surfaces.
+ *
+ * The icon shows the current mode (sun on white, moon on black), matching the
+ * control people already know from other consoles.
+ */
+function ThemeToggle() {
+  const theme = useSyncExternalStore(subscribeTheme, getTheme, getThemeServer);
+  const dark = theme === "dark";
+
+  return (
+    <button
+      onClick={toggleTheme}
+      aria-pressed={dark}
+      aria-label={dark ? "ライト表示に切り替え" : "ダーク表示に切り替え"}
+      title={dark ? "ライト表示に切り替え" : "ダーク表示に切り替え"}
+      className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[var(--shell-text-dim)] transition-colors hover:bg-[var(--shell-hover)] hover:text-[var(--shell-text)]"
+    >
+      <Icon name={dark ? "moon" : "sun"} className="h-5 w-5" />
+    </button>
   );
 }
 
@@ -185,8 +211,9 @@ function UserButton({ me }: { me: MeResponse | null }) {
     return (
       <Link
         href={`/login?next=${encodeURIComponent(pathname)}`}
-        className="rounded-lg bg-[var(--shell-accent)] px-3.5 py-1.5 text-[13px] font-medium text-[#08210f] transition-opacity hover:opacity-90"
+        className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--shell-accent)] px-3.5 py-1.5 text-[13px] font-medium text-[#08210f] transition-opacity hover:opacity-90"
       >
+        <Icon name="login" className="h-3.5 w-3.5" />
         ログイン
       </Link>
     );
@@ -202,12 +229,21 @@ function UserButton({ me }: { me: MeResponse | null }) {
         aria-haspopup="menu"
         className="flex items-center gap-2 rounded-lg py-1 pl-1 pr-2 transition-colors hover:bg-[var(--shell-hover)]"
       >
-        <span
-          aria-hidden
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--shell-active-bg)] text-[13px] font-semibold text-[var(--shell-active-text)]"
-        >
-          {initial}
-        </span>
+        {me.avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- avatar sources are arbitrary user uploads, not app assets next/image can optimise
+          <img
+            src={me.avatarUrl}
+            alt=""
+            className="h-8 w-8 shrink-0 rounded-lg object-cover"
+          />
+        ) : (
+          <span
+            aria-hidden
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--shell-active-bg)] text-[13px] font-semibold text-[var(--shell-active-text)]"
+          >
+            {initial}
+          </span>
+        )}
         <span className="hidden max-w-[9rem] truncate text-[13px] text-[var(--shell-text)] sm:block">
           {me.displayName}
         </span>
@@ -273,8 +309,9 @@ function UserButton({ me }: { me: MeResponse | null }) {
                 setPending(true);
                 void signOutAction();
               }}
-              className="w-full rounded-lg px-2.5 py-1.5 text-left text-[13px] text-[var(--shell-text-dim)] transition-colors hover:bg-[var(--shell-hover)] hover:text-[var(--shell-text)] disabled:opacity-50"
+              className="flex w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] text-[var(--shell-text-dim)] transition-colors hover:bg-[var(--shell-hover)] hover:text-[var(--shell-text)] disabled:opacity-50"
             >
+              <Icon name="logout" className="h-3.5 w-3.5" />
               {pending ? "…" : "ログアウト"}
             </button>
           </div>

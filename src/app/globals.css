@@ -41,34 +41,6 @@
   --duration-normal: 350ms;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --surface-0: #1a1a1a;
-    --surface-1: #242424;
-    --surface-2: #2e2e2e;
-    --surface-3: #1e3324;
-    --border: #444444;
-    --border-strong: #666666;
-    --text-primary: #f0f0f0;
-    --text-secondary: #b0b0b0;
-    --text-muted: #888888;
-    --accent: #14d05f;
-    --accent-hover: #0fa14a;
-    --accent-light: #1bcd62;
-    --accent-contrast: #ffffff;
-    --accent-soft: #1e3324;
-    --accent-gradient: linear-gradient(to right, #00913a 0%, #14d05f 100%);
-    --accent-gradient-hover: linear-gradient(to right, #007830 0%, #0fa14a 100%);
-    --good: #14d05f;
-    --warn: #e97f02;
-    --danger: #e66767;
-    --danger-soft: #3a1f1f;
-    --warn-soft: #33290f;
-    --good-soft: #10291f;
-    --footer-bg: #1a1a1a;
-  }
-}
-
 :root[data-theme="dark"] {
   --surface-0: #1a1a1a;
   --surface-1: #242424;
@@ -130,14 +102,18 @@
 }
 
 html {
-  color-scheme: light dark;
+  color-scheme: light;
   scroll-behavior: smooth;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 body {
   background: var(--surface-0);
   color: var(--text-primary);
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1.75;
   letter-spacing: 0.02em;
 }
@@ -235,36 +211,13 @@ h3 {
   animation-delay: 400ms;
 }
 
-/* HATME-style button hover slide */
+/* Primary actions: solid fill, no overlay. */
 .btn-hatme {
-  position: relative;
-  overflow: hidden;
-  background: var(--accent-gradient);
+  background: var(--accent);
   color: var(--accent-contrast);
-  transition: color var(--duration-fast) var(--ease-out);
 }
-
-.btn-hatme::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: var(--surface-1);
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform var(--duration-normal) var(--ease-out);
-}
-
-.btn-hatme:hover::before {
-  transform: scaleX(1);
-}
-
 .btn-hatme:hover {
-  color: var(--accent);
-}
-
-.btn-hatme > * {
-  position: relative;
-  z-index: 1;
+  background: var(--accent-hover);
 }
 
 /* Card hover lift */
@@ -357,22 +310,28 @@ textarea::placeholder {
   .card-hover:hover {
     transform: none;
   }
-
-  .btn-hatme::before {
-    transition: none;
-  }
 }
 
 /* ------------------------------------------------------------------ */
 /* Application shell                                                   */
-/*                                                                     */
-/* The sidebar and header keep a fixed dark palette in both themes.    */
-/* That is the standard admin-console pattern: the chrome stays a      */
-/* stable frame the eye can ignore, while the content area follows the */
-/* light/dark preference. The brand green carries through as the       */
-/* active-state accent so identity survives the darker surface.        */
 /* ------------------------------------------------------------------ */
 :root {
+  --shell-bg: #ffffff;
+  --shell-bg-raised: #ffffff;
+  --shell-border: #d4d4d4;
+  --shell-text: #333333;
+  --shell-text-dim: #666666;
+  --shell-text-faint: #838383;
+  --shell-hover: #f0f0f0;
+  --shell-active-bg: #deede0;
+  --shell-active-text: #00913a;
+  --shell-accent: #00913a;
+  --sidebar-width: 248px;
+  --sidebar-width-collapsed: 68px;
+  --header-height: 60px;
+}
+
+:root[data-theme="dark"] {
   --shell-bg: #14161c;
   --shell-bg-raised: #1b1e26;
   --shell-border: #262a34;
@@ -383,9 +342,6 @@ textarea::placeholder {
   --shell-active-bg: #16311f;
   --shell-active-text: #2fd06a;
   --shell-accent: #14d05f;
-  --sidebar-width: 248px;
-  --sidebar-width-collapsed: 68px;
-  --header-height: 60px;
 }
 
 /* Sidebar scrollbar, styled so it does not break the dark frame. */

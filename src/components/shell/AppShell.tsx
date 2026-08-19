@@ -59,7 +59,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       } catch {
         if (!cancelled) {
           setMe({
-            signedIn: false, email: null, displayName: null,
+            signedIn: false, email: null, displayName: null, avatarUrl: null,
             isPlatformAdmin: false, canAccessAdmin: false, labs: [],
           });
         }
@@ -154,8 +154,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main className="flex-1 px-4 py-5 sm:px-6 sm:py-6">
           <div className="mx-auto w-full max-w-[1280px]">{children}</div>
         </main>
-        <footer className="border-t border-line px-4 py-4 text-center text-[11px] text-ink-3 sm:px-6">
-          統計と作図はブラウザ内で実行されます。保存を選ぶまで、データはどこにも送信されません。
+        <footer className="border-t border-line px-4 py-3 text-center text-[12px] text-ink-3 sm:px-6">
+          保存するまで、データは外部へ送信されません。
         </footer>
       </div>
     </div>

@@ -60,19 +60,21 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-col gap-4">
+    <div className="mx-auto flex w-full max-w-[480px] flex-col gap-6 py-4">
       <header>
-        <h1 className="text-xl font-semibold text-ink">
-          パスワード再設定
-        </h1>
+        <h1 className="font-serif text-2xl font-semibold text-ink">パスワード再設定</h1>
       </header>
 
       {checking ? (
-        <Card><p className="text-sm text-ink-3">リンクを確認中…</p></Card>
+        <Card className="border-t-[3px] border-t-accent shadow-[var(--shadow-md)]">
+          <p className="text-[15px] text-ink-3">リンクを確認中…</p>
+        </Card>
       ) : !hasSession ? (
         <Callout tone="warn" title="リンクが無効です">
           再設定リンクは有効期限があり、一度しか使用できません。{" "}
-          <Link href="/login" className="underline">ログインページ</Link>
+          <Link href="/login" className="font-medium text-accent underline decoration-accent/30 underline-offset-2 hover:decoration-accent">
+            ログインページ
+          </Link>
           から新しいリンクをリクエストしてください。
         </Callout>
       ) : done ? (
@@ -80,8 +82,8 @@ export default function ResetPasswordPage() {
           実験一覧へ移動します…
         </Callout>
       ) : (
-        <Card>
-          <form onSubmit={submit} className="flex flex-col gap-3">
+        <Card className="animate-fade-in-up animate-delay-1 border-t-[3px] border-t-accent shadow-[var(--shadow-md)]">
+          <form onSubmit={submit} className="flex flex-col gap-5">
             <Field label="新しいパスワード" htmlFor="p1" hint="8文字以上">
               <TextInput
                 id="p1" type="password" required minLength={8} autoComplete="new-password"
@@ -95,8 +97,8 @@ export default function ResetPasswordPage() {
               />
             </Field>
             {error && <Callout tone="danger" title="続行できません">{error}</Callout>}
-            <Button type="submit" variant="primary" disabled={busy}>
-              {busy ? "…" : "設定"}
+            <Button type="submit" variant="primary" disabled={busy} icon="lock" className="mt-1 w-full">
+              {busy ? "…" : "設定する"}
             </Button>
           </form>
         </Card>

@@ -10,6 +10,7 @@ export function SignOutButton({ size = "sm" }: { size?: "sm" | "md" }) {
     <Button
       size={size}
       variant="secondary"
+      icon="logout"
       disabled={pending}
       onClick={() => start(() => void signOutAction())}
     >

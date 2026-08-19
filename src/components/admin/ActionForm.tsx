@@ -3,6 +3,7 @@
 import { useActionState, type ReactNode } from "react";
 import { useFormStatus } from "react-dom";
 import { Button, Callout } from "@/components/ui";
+import type { IconName } from "@/components/icons";
 
 export interface ActionResult {
   ok: boolean;
@@ -20,7 +21,7 @@ type Action = (prev: ActionResult | null, formData: FormData) => Promise<ActionR
  */
 export function ActionForm({
   action, children, submitLabel, variant = "primary", className, hidden,
-  confirm,
+  confirm, icon,
 }: {
   action: Action;
   children?: ReactNode;
@@ -31,6 +32,7 @@ export function ActionForm({
   hidden?: Record<string, string>;
   /** Browser confirmation shown before an irreversible action. */
   confirm?: string;
+  icon?: IconName;
 }) {
   const [state, formAction] = useActionState<ActionResult | null, FormData>(action, null);
 
@@ -50,14 +52,14 @@ export function ActionForm({
       {state && (
         <Callout tone={state.ok ? "good" : "danger"}>{state.message}</Callout>
       )}
-      <SubmitButton variant={variant}>{submitLabel}</SubmitButton>
+      <SubmitButton variant={variant} icon={icon ?? (variant === "danger" ? "trash" : "check")}>{submitLabel}</SubmitButton>
     </form>
   );
 }
 
 /** Inline variant for row-level controls, where a full form block is too heavy. */
 export function InlineActionForm({
-  action, children, submitLabel, variant = "secondary", hidden, confirm,
+  action, children, submitLabel, variant = "secondary", hidden, confirm, icon,
 }: {
   action: Action;
   children?: ReactNode;
@@ -65,6 +67,7 @@ export function InlineActionForm({
   variant?: "primary" | "secondary" | "danger";
   hidden?: Record<string, string>;
   confirm?: string;
+  icon?: IconName;
 }) {
   const [state, formAction] = useActionState<ActionResult | null, FormData>(action, null);
 
@@ -81,7 +84,7 @@ export function InlineActionForm({
           <input key={k} type="hidden" name={k} value={v} />
         ))}
       {children}
-      <SubmitButton variant={variant} size="sm">{submitLabel}</SubmitButton>
+      <SubmitButton variant={variant} size="sm" icon={icon ?? (variant === "danger" ? "trash" : "check")}>{submitLabel}</SubmitButton>
       {state && (
         <span
           role="status"
@@ -95,16 +98,17 @@ export function InlineActionForm({
 }
 
 function SubmitButton({
-  children, variant, size = "md",
+  children, variant, size = "md", icon,
 }: {
   children: ReactNode;
   variant: "primary" | "secondary" | "danger";
   size?: "sm" | "md";
+  icon?: IconName;
 }) {
   // useFormStatus must be read from a child of the form, not the form itself.
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" variant={variant} size={size} disabled={pending}>
+    <Button type="submit" variant={variant} size={size} disabled={pending} icon={icon}>
       {pending ? "処理中…" : children}
     </Button>
   );

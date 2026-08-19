@@ -137,12 +137,14 @@ export default async function UsersPage() {
                           action={confirmUserAction}
                           hidden={{ user_id: u.id }}
                           submitLabel="確認済にする"
+                          icon="check"
                         />
                       )}
                       <InlineActionForm
                         action={sendPasswordResetAction}
                         hidden={{ email: u.email }}
                         submitLabel="再設定メール"
+                        icon="mail"
                       />
                       {u.id !== ctx.user.id && (
                         <InlineActionForm
@@ -171,7 +173,7 @@ export default async function UsersPage() {
 
       <Card
         title="ユーザーを作成"
-        subtitle="確認済みで作成されるため、メール待ちなしですぐにサインインできます。"
+        subtitle="確認済みのアカウントとして作成します。"
       >
         <Callout tone="info">
           このプロジェクトではメール確認が必要ですが、新しい Supabase プロジェクトの
@@ -179,7 +181,7 @@ export default async function UsersPage() {
           その制限を回避できます。
         </Callout>
         <div className="mt-3">
-          <ActionForm action={createUserAction} submitLabel="作成">
+          <ActionForm action={createUserAction} submitLabel="作成" icon="plus">
             <div className="grid gap-3 sm:grid-cols-3">
               <Field label="メール" htmlFor="new-email">
                 <TextInput id="new-email" name="email" type="email" required />
@@ -197,10 +199,7 @@ export default async function UsersPage() {
 
       <Card title="システム管理者">
         <Callout tone="info">
-          システム管理者権限はデータベースの行ではなく、サーバー環境の{" "}
-          <code>PLATFORM_ADMIN_EMAILS</code> から付与されます。データベースへの書き込み権限を
-          得た第三者が付与することはできません。変更するには <code>.env.local</code> を編集し、
-          再起動してください。
+          システム管理者はサーバー設定で指定されます。追加・変更は運用担当者に依頼してください。
         </Callout>
       </Card>
     </div>

@@ -9,7 +9,7 @@ import { signOutAction } from "@/lib/auth/actions";
 import type { MeResponse } from "@/app/api/me/route";
 
 const SIGNED_OUT: MeResponse = {
-  signedIn: false, email: null, displayName: null,
+  signedIn: false, email: null, displayName: null, avatarUrl: null,
   isPlatformAdmin: false, canAccessAdmin: false, labs: [],
 };
 

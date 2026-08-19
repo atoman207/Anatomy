@@ -18,6 +18,10 @@ export type Profile = {
   id: string;
   email: string | null;
   display_name: string | null;
+  avatar_url: string | null;
+  date_of_birth: string | null;
+  phone_number: string | null;
+  major: string | null;
   created_at: string;
   updated_at: string;
 }

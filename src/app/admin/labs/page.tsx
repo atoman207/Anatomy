@@ -101,12 +101,12 @@ export default async function LabsPage() {
 
       <Card
         title="研究室を作成"
-        subtitle="作成者がオーナーになります。実験・データセット・図は研究室単位で管理されます。"
+        subtitle="作成者がオーナーになります。"
       >
-        <ActionForm action={createLabAction} submitLabel="作成">
+        <ActionForm action={createLabAction} submitLabel="作成" icon="plus">
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="名称" htmlFor="lab-name">
-              <TextInput id="lab-name" name="name" required placeholder="軟骨生物学研究室" />
+              <TextInput id="lab-name" name="name" required />
             </Field>
             <Field label="説明" htmlFor="lab-desc">
               <TextInput id="lab-desc" name="description" placeholder="任意" />
@@ -117,7 +117,7 @@ export default async function LabsPage() {
 
       {editable.map((v) => (
         <Card key={v.id} title={`設定 — ${v.name}`}>
-          <ActionForm action={updateLabAction} hidden={{ lab_id: v.id }} submitLabel="保存">
+          <ActionForm action={updateLabAction} hidden={{ lab_id: v.id }} submitLabel="保存" icon="save">
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="名称">
                 <TextInput name="name" defaultValue={v.name} required />
@@ -133,7 +133,7 @@ export default async function LabsPage() {
       {ownedByMe.length > 0 && (
         <Card
           title="研究室の削除"
-          subtitle="オーナーのみ。実験・データセット・解析・図・ノートブックがすべて削除されます。"
+          subtitle="オーナーのみ。すべてのデータが削除されます。"
         >
           <Callout tone="danger" title="取り消せません">
             研究室を削除するとすべてのデータが永久に失われます。必要なデータは事前にエクスポートしてください。
@@ -172,10 +172,10 @@ function NoLabs() {
         下から作成して実験の記録を始めてください。
       </EmptyState>
       <Card title="研究室を作成">
-        <ActionForm action={createLabAction} submitLabel="作成">
+        <ActionForm action={createLabAction} submitLabel="作成" icon="plus">
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="名称">
-              <TextInput name="name" required placeholder="軟骨生物学研究室" />
+              <TextInput name="name" required />
             </Field>
             <Field label="説明">
               <TextInput name="description" placeholder="任意" />

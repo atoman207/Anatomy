@@ -25,8 +25,7 @@ const roboto = Roboto({
 
 export const metadata: Metadata = {
   title: "研究データ管理",
-  description:
-    "Rawファイル整理、サンプルシート、統計解析（t検定、ANOVA、PCA、クラスタリング）、図作成、実験ノート自動化。",
+  description: "研究データの整理、解析、実験ノート。",
   icons: {
     icon: "/LOGO.png",
     shortcut: "/LOGO.png",
@@ -38,8 +37,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="ja"
+      suppressHydrationWarning
       className={`${notoSans.variable} ${notoSerif.variable} ${roboto.variable} h-full antialiased`}
     >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem("chondro.theme");if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t);}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body className="min-h-dvh font-sans">
         <WorkspaceProvider>
           <AppShell>{children}</AppShell>

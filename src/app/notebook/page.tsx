@@ -62,10 +62,7 @@ export default function NotebookPage() {
   return (
     <div className="flex flex-col gap-5">
       <header>
-        <h1 className="text-xl font-semibold text-ink">実験ノート自動化</h1>
-        <p className="mt-1 text-sm text-ink-2">
-          テンプレートを一度埋め、キューした解析ブロックを貼り付けて、完成したエントリを書き出します。
-        </p>
+        <h1 className="text-xl font-semibold text-ink">実験ノート</h1>
       </header>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
@@ -84,7 +81,7 @@ export default function NotebookPage() {
 
           <Card
             title="入力"
-            subtitle="星印の項目だけ必須です。残りは進めながら埋められます。"
+            subtitle="星印の項目は必須です。"
           >
             <div className="flex flex-col gap-3">
               {template.fields.map((f) => {
@@ -134,10 +131,10 @@ export default function NotebookPage() {
 
           <Card
             title={`解析ブロック（${ws.clips.length}）`}
-            subtitle="データ整理と統計解析のページからキューされます。"
+            subtitle="データ整理と統計解析から追加されます。"
             actions={
               ws.clips.length > 0 && (
-                <Button size="sm" variant="danger" onClick={ws.clearClips}>
+                <Button size="sm" variant="danger" icon="trash" onClick={ws.clearClips}>
                   すべて消去
                 </Button>
               )
@@ -160,7 +157,7 @@ export default function NotebookPage() {
                         {new Date(c.createdAt).toLocaleString()} · {c.markdown.length} 文字
                       </p>
                     </div>
-                    <Button size="sm" variant="ghost" onClick={() => ws.removeClip(c.id)}>
+                    <Button size="sm" variant="ghost" icon="x" onClick={() => ws.removeClip(c.id)}>
                       削除
                     </Button>
                   </li>
@@ -184,6 +181,7 @@ export default function NotebookPage() {
               <>
                 <Button
                   size="sm"
+                  icon="copy"
                   onClick={async () => {
                     try {
                       await navigator.clipboard.writeText(full);
@@ -194,11 +192,12 @@ export default function NotebookPage() {
                     }
                   }}
                 >
-                  {copied ? "コピー済 ✓" : "コピー"}
+                  {copied ? "コピー済" : "コピー"}
                 </Button>
                 <Button
                   size="sm"
                   variant="primary"
+                  icon="download"
                   onClick={() =>
                     download(
                       `${dateStr}_${title}`.replace(/[^\w.-]+/g, "_") + ".md",
