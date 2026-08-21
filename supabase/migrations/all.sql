@@ -1208,3 +1208,79 @@ create policy reviewer_profiles_select on public.reviewer_profiles
 drop policy if exists reviewer_profiles_update on public.reviewer_profiles;
 create policy reviewer_profiles_update on public.reviewer_profiles
   for update using (public.is_platform_admin()) with check (public.is_platform_admin());
+
+-- ============================================================================
+-- Plan prices
+--
+-- Which Stripe Price object each paid plan sells, held in the database rather
+-- than in environment variables.
+--
+-- Price ids used to live in STRIPE_PRICE_PRO / STRIPE_PRICE_TEAM, which meant
+-- changing a price required editing an env var on every deployment target and
+-- redeploying - and a local machine and a hosted build could silently disagree
+-- about what a plan costs. Keeping them here means one source both read, and a
+-- price change is an administrative action (see /admin/billing) rather than a
+-- code change.
+--
+-- `amount_jpy` is a cached copy of what Stripe holds, for display only. Stripe
+-- is always the authority on what a card is actually charged; this column
+-- exists so the pricing page does not need a Stripe round trip to render, and
+-- is refreshed from Stripe whenever a price is created or synced.
+--
+-- Safe to re-run: every statement is guarded.
+-- ============================================================================
+
+create table if not exists public.plan_prices (
+  plan            public.billing_plan primary key,
+  stripe_price_id text,
+  amount_jpy      integer,
+  updated_by      uuid references auth.users (id) on delete set null,
+  updated_at      timestamptz not null default now()
+);
+
+-- A negative amount is never a real price, only a bug on its way to a
+-- customer-facing page. Added separately so the table statement above stays
+-- re-runnable on a database that already has it.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.plan_prices'::regclass
+      and conname = 'plan_prices_amount_jpy_nonnegative'
+  ) then
+    alter table public.plan_prices
+      add constraint plan_prices_amount_jpy_nonnegative
+      check (amount_jpy is null or amount_jpy >= 0);
+  end if;
+end $$;
+
+-- One row per paid plan, created empty. The free plan has no Stripe price.
+insert into public.plan_prices (plan) values ('pro'), ('team')
+on conflict (plan) do nothing;
+
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['plan_prices']
+  loop
+    execute format(
+      'drop trigger if exists touch_%1$s on public.%1$s;
+       create trigger touch_%1$s before update on public.%1$s
+       for each row execute function public.touch_updated_at();', t);
+  end loop;
+end $$;
+
+-- Readable by anyone: the pricing page shows these amounts to every visitor,
+-- and a Stripe price id is not a secret (it is submitted to Stripe from the
+-- browser in ordinary Checkout integrations). Writable only by a platform
+-- administrator, since it decides what customers are charged.
+alter table public.plan_prices enable row level security;
+
+drop policy if exists plan_prices_select on public.plan_prices;
+create policy plan_prices_select on public.plan_prices
+  for select using (true);
+
+drop policy if exists plan_prices_update on public.plan_prices;
+create policy plan_prices_update on public.plan_prices
+  for update using (public.is_platform_admin()) with check (public.is_platform_admin());

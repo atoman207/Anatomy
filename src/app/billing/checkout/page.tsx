@@ -3,6 +3,7 @@ import { Card } from "@/components/ui";
 import { requireUser } from "@/lib/auth/guards";
 import { isPlanId, formatJpy, PLANS } from "@/lib/billing/plans";
 import { isMockCheckoutAllowed } from "@/lib/billing/stripe";
+import { getPlanPrices } from "@/lib/billing/priceStore";
 import { MockPayButton } from "@/components/billing/MockPayButton";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +39,11 @@ export default async function MockCheckoutPage(props: PageProps<"/billing/checko
 
   const plan = PLANS[planParam];
 
+  // The figure shown here has to be the one `/billing` advertised. That page
+  // reads `plan_prices`, so this one does too - a price set at /admin/billing
+  // before the Stripe keys were removed would otherwise quote two amounts.
+  const amountJpy = (await getPlanPrices())[planParam]?.amountJpy ?? plan.amountJpy;
+
   return (
     <div className="mx-auto flex w-full max-w-[480px] flex-col gap-5 py-4">
       <header>
@@ -52,7 +58,7 @@ export default async function MockCheckoutPage(props: PageProps<"/billing/checko
               <p className="font-serif text-lg font-semibold text-ink">{plan.name}プラン</p>
             </div>
             <p className="font-serif text-2xl font-semibold text-ink">
-              {formatJpy(plan.amountJpy)}
+              {formatJpy(amountJpy)}
               <span className="text-[13px] font-normal text-ink-3"> / 月</span>
             </p>
           </div>
@@ -66,7 +72,7 @@ export default async function MockCheckoutPage(props: PageProps<"/billing/checko
             ))}
           </ul>
 
-          <MockPayButton labId={labId} plan={planParam} amountJpy={plan.amountJpy} />
+          <MockPayButton labId={labId} plan={planParam} amountJpy={amountJpy} />
 
           <p className="text-center text-[11px] text-ink-3">テスト環境のため、実際の請求は発生しません。</p>
         </div>

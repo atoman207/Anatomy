@@ -21,8 +21,9 @@ import { createAdminSupabase } from "@/lib/supabase/server";
 import { assertIsLabOwner, getSessionContext, logAudit } from "@/lib/auth/guards";
 import { isPlanId, PLANS, type PlanId } from "./plans";
 import {
-  getStripe, isMockCheckoutAllowed, isStripeConfigured, priceIdForPlan, siteOrigin,
+  getStripe, isMockCheckoutAllowed, isStripeConfigured, siteOrigin,
 } from "./stripe";
+import { resolvePriceId } from "./priceStore";
 import { ensureCustomer, isMockId, MOCK_ID_PREFIX, persistSubscription } from "./store";
 
 export interface ActionResult<T = undefined> {
@@ -99,13 +100,13 @@ export async function startCheckout(
       };
     }
 
-    const price = priceIdForPlan(plan);
+    const price = await resolvePriceId(plan);
     if (!price) {
       return {
         ok: false,
         error:
-          `${PLANS[plan].name}プランの価格IDが設定されていません` +
-          `（STRIPE_PRICE_${plan.toUpperCase()}）。`,
+          `${PLANS[plan].name}プランの価格がまだ作成されていません。` +
+          "システム管理者が「管理 → 料金設定」で価格を作成してください。",
       };
     }
 

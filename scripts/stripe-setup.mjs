@@ -84,8 +84,25 @@ if (liveMode) {
 
 const stripe = new Stripe(secret, { maxNetworkRetries: 2 });
 
-/** A product per plan, found by metadata so re-runs do not duplicate it. */
+/**
+ * A product per plan, so re-runs do not duplicate it.
+ *
+ * By deterministic id first, then by metadata. The id makes the lookup exact
+ * - Stripe's search index lags creation by up to a minute - and the metadata
+ * search still finds a product an earlier version of this script created
+ * without one, so both paths keep converging on a single product per plan.
+ * `src/lib/billing/priceActions.ts` looks it up the same way.
+ */
 async function findOrCreateProduct(plan) {
+  const id = `chondro_${plan.id}`;
+
+  try {
+    const existing = await stripe.products.retrieve(id);
+    return existing.active ? existing : await stripe.products.update(id, { active: true });
+  } catch {
+    // Not created yet under that id.
+  }
+
   const search = await stripe.products.search({
     query: `metadata['chondro_plan']:'${plan.id}' AND active:'true'`,
     limit: 1,
@@ -93,6 +110,7 @@ async function findOrCreateProduct(plan) {
   if (search.data[0]) return search.data[0];
 
   return stripe.products.create({
+    id,
     name: plan.name,
     metadata: { chondro_plan: plan.id },
   });
@@ -125,12 +143,50 @@ async function findOrCreatePrice(product, plan) {
 }
 
 const lines = [];
+const created = [];
 
 for (const plan of PAID_PLANS) {
   const product = await findOrCreateProduct(plan);
   const price = await findOrCreatePrice(product, plan);
   console.log(`${plan.id.padEnd(5)} ¥${String(plan.amountJpy).padStart(3)}/月  ${price.id}  (product ${product.id})`);
   lines.push(`${plan.envVar}=${price.id}`);
+  created.push({ plan: plan.id, priceId: price.id, amountJpy: price.unit_amount ?? plan.amountJpy });
+}
+
+/*
+ * Store the ids in plan_prices as well as printing them.
+ *
+ * This is what makes the script enough on its own: the app reads the database
+ * first, so a deployed build starts selling at these prices without anyone
+ * copying the ids into a hosting dashboard and redeploying. The printed env
+ * lines below are still offered as a fallback for a deployment that has no
+ * database write access.
+ */
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+let storedInDatabase = false;
+
+if (supabaseUrl && serviceKey) {
+  const { createClient } = await import("@supabase/supabase-js");
+  const admin = createClient(supabaseUrl, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const { error } = await admin.from("plan_prices").upsert(
+    created.map((c) => ({ plan: c.plan, stripe_price_id: c.priceId, amount_jpy: c.amountJpy })),
+    { onConflict: "plan" },
+  );
+  if (error) {
+    console.warn(`\n⚠  Could not write plan_prices: ${error.message}`);
+    console.warn("   Apply supabase/migrations/all.sql, or paste the env lines below.\n");
+  } else {
+    storedInDatabase = true;
+    console.log(
+      "\n✓ Saved to plan_prices - every deployment reading this database picks",
+      "\n  them up. No env vars or redeploy needed.",
+    );
+  }
+} else {
+  console.warn("\n⚠  Supabase not configured here; skipping the plan_prices write.");
 }
 
 const nextSteps = liveMode
@@ -151,7 +207,11 @@ const nextSteps = liveMode
     "and copy the printed signing secret into STRIPE_WEBHOOK_SECRET.\n";
 
 console.log(
-  "\nAdd these to .env.local:\n\n" +
+  (storedInDatabase
+    ? "\nPrices are stored in the database. Change them later at /admin/billing"
+      + " -\nno env vars and no redeploy.\n\n"
+      + "Optional fallback, only for a deployment that cannot reach the database:\n\n"
+    : "\nAdd these to .env.local AND to your hosting provider's environment:\n\n") +
     lines.map((l) => `  ${l}`).join("\n") +
     "\n\n" +
     nextSteps,

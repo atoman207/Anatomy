@@ -5,13 +5,17 @@
  * database - so the pricing page, the server actions and the tests all read
  * the same definitions, and the numbers can be checked without a network.
  *
- * **These amounts are what customers are charged.** They started as beta
- * prices - deliberately under ¥100 so the subscribe → renew → cancel path
- * could be exercised against real cards for almost nothing - and they are
- * still ¥50 and ¥90. Editing a number here does not change what an existing
- * subscriber pays: Stripe prices are immutable, so a new amount means
- * re-running `npm run stripe:setup` for new price ids, and migrating anyone
- * already subscribed at the old price.
+ * **The amounts here are defaults, not the live prices.** What a customer is
+ * actually charged is the Stripe Price recorded in `plan_prices`, set at
+ * `/admin/billing` and read through `priceStore`; these numbers are the
+ * starting point `npm run stripe:setup` creates prices at, and the label the
+ * pricing page falls back to for a plan whose amount has never been fetched
+ * from Stripe. Editing one changes neither an existing subscriber's bill nor
+ * a configured plan's price - see `planOffers` for which number is shown.
+ *
+ * They started as beta prices - deliberately under ¥100 so the subscribe →
+ * renew → cancel path could be exercised against real cards for almost
+ * nothing - and they are still ¥50 and ¥90.
  *
  * The limits below mirror `plan_limits` in supabase/migrations/all.sql.
  * The database is the authority - it is what the quota triggers consult - and

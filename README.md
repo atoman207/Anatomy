@@ -401,8 +401,9 @@ are refused.
 # 1. Test-mode secret key from the Stripe dashboard
 echo 'STRIPE_SECRET_KEY=sk_test_...' >> .env.local
 
-# 2. Create the products and the ¥50 / ¥90 monthly prices, then paste the
-#    printed STRIPE_PRICE_PRO / STRIPE_PRICE_TEAM lines into .env.local
+# 2. Create the products and the ¥50 / ¥90 monthly prices. With Supabase
+#    configured here, the script also writes them into plan_prices - nothing
+#    to paste anywhere.
 npm run stripe:setup
 
 # 3. Forward webhooks while developing, and copy the printed signing secret
@@ -410,9 +411,36 @@ npm run stripe:setup
 stripe listen --forward-to localhost:3000/api/stripe/webhook
 ```
 
-`npm run stripe:setup` reads its amounts from `src/lib/billing/plans.ts`, so
-the price Stripe charges and the price the app shows cannot drift apart. A
-test asserts the two agree, and that no plan exceeds the beta ceiling.
+`npm run stripe:setup` reads its starting amounts from
+`src/lib/billing/plans.ts`. A test asserts the two agree, and that no plan
+exceeds the beta ceiling.
+
+### Changing a price
+
+Prices live in the `plan_prices` table, not in environment variables, so
+changing one is an administrative action rather than a redeploy:
+
+**管理 → 料金設定** (`/admin/billing`, platform administrators only). Type the
+new monthly amount, press the button, and every deployment reading the same
+database sells at it from the next checkout onwards.
+
+A few things worth knowing before you do:
+
+- **Existing subscribers keep their price.** Stripe prices are immutable, so a
+  change creates a *new* Price and points new sign-ups at it. Anyone already
+  subscribed keeps paying what they agreed to until they are migrated in the
+  Stripe dashboard. That is deliberate — silently re-pricing existing
+  customers is how chargebacks start.
+- **The pricing page follows automatically.** `/billing` shows the amount
+  Stripe actually holds, so the cards and the Checkout session can no longer
+  disagree.
+- **A plan with no price is not offered.** Its card reads 準備中 rather than a
+  button whose only outcome is an error.
+- **`STRIPE_PRICE_PRO` / `STRIPE_PRICE_TEAM` still work**, as a fallback for a
+  deployment configured before this table existed. A price set at
+  `/admin/billing` overrides them; a plan with no stored id falls back to the
+  variable, so nothing breaks by leaving them in place. `/admin/billing`
+  labels which source each plan is using.
 
 In production, add the endpoint at
 `https://<your-host>/api/stripe/webhook` under Developers → Webhooks, and
@@ -442,14 +470,16 @@ around it do:
   prefers the configured value, falls back to the host headers the platform
   sets, and otherwise refuses to create the session with an error naming the
   variable rather than charging a card it cannot return from.
-- **Check the prices before running the setup script.** `plans.ts` still holds
-  the beta amounts, ¥50 and ¥90 per month. They are real charges now. Editing
-  them later does not re-price existing subscribers - Stripe prices are
-  immutable, so a change means new price ids and a migration for anyone
-  already subscribed.
+- **Set the real prices.** The catalogue still holds the beta amounts, ¥50 and
+  ¥90 per month, and they are real charges now. Set what you actually intend
+  to charge at `/admin/billing` before announcing the site. Doing it later
+  does not re-price existing subscribers - Stripe prices are immutable, so a
+  change means a new price and a migration for anyone already subscribed.
 - **Run `npm run stripe:setup` again with the live key.** Test-mode and
-  live-mode prices are different objects even for the same amount; the script
-  prints new `STRIPE_PRICE_PRO` / `STRIPE_PRICE_TEAM` values for live mode.
+  live-mode prices are different objects even for the same amount, and
+  `plan_prices` holds whichever mode it was last written in. Re-running with
+  the live key replaces the stored ids with live ones; a test-mode id left
+  behind fails at checkout.
 - **The billing portal configuration is per-mode.** A configuration saved
   under Developers → Test mode does not carry over; save one under Live mode
   too (Settings → Billing → Customer portal), or `openBillingPortal` will
@@ -571,7 +601,7 @@ be audited or reversed months later.
 | `NCBI_API_KEY` / `NCBI_EMAIL` | optional | PubMed lookups |
 | `STRIPE_SECRET_KEY` | optional | Billing stays disabled while unset; every lab is on the free plan. **Server-only.** |
 | `STRIPE_WEBHOOK_SECRET` | with Stripe | Verifies webhook signatures. The endpoint rejects every request without it |
-| `STRIPE_PRICE_PRO` / `STRIPE_PRICE_TEAM` | with Stripe | Price IDs from `npm run stripe:setup` (¥50 / ¥90 monthly) |
+| `STRIPE_PRICE_PRO` / `STRIPE_PRICE_TEAM` | optional | Fallback price IDs. Prices normally live in `plan_prices` and are set at `/admin/billing`; a stored price wins over these |
 
 ---
 
@@ -581,7 +611,7 @@ be audited or reversed months later.
 npm run dev            # development server
 npm run build          # production build
 npm run check          # typecheck + lint + unit tests
-npm test               # unit tests (195)
+npm test               # unit tests (215)
 npm run test:e2e       # browser smoke test; needs a server on :3210
 npm run test:e2e:auth  # login, administration and permission denials
 npm run test:e2e:ai    # voice structuring and literature search (uses real API calls)

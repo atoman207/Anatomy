@@ -2,7 +2,7 @@ import "server-only";
 
 import { headers } from "next/headers";
 import Stripe from "stripe";
-import { isPlanId, type PlanId } from "./plans";
+import type { PlanId } from "./plans";
 
 /**
  * The Stripe client and the configuration around it.
@@ -28,31 +28,24 @@ export function stripeWebhookSecret(): string | null {
 }
 
 /**
- * Stripe Price ids, one per paid plan.
+ * Stripe Price ids from the environment - the fallback source, not the
+ * primary one.
  *
- * Prices are created in the Stripe dashboard (or by `npm run stripe:setup`)
- * rather than in code, because the amount that gets charged has to be the one
- * Stripe holds - a number in this repository could drift from it silently.
- * `PLANS[*].amountJpy` is only ever used for display.
+ * Which price a plan sells at now lives in `plan_prices` and is read through
+ * `priceStore`, so it can be changed at `/admin/billing` without a redeploy.
+ * These variables are still honoured for a deployment configured before that
+ * table existed, which is why this function remains: `mergePriceSources`
+ * takes what it returns and lets any id stored in the database win.
+ *
+ * Nothing outside `priceStore` should read these directly. A helper here that
+ * answered "the price for plan X" from the environment alone would look
+ * authoritative and quietly ignore whatever an administrator had set.
  */
 export function stripePriceIds(): Partial<Record<PlanId, string>> {
   return {
     pro: process.env.STRIPE_PRICE_PRO || undefined,
     team: process.env.STRIPE_PRICE_TEAM || undefined,
   };
-}
-
-export function priceIdForPlan(plan: PlanId): string | null {
-  return stripePriceIds()[plan] ?? null;
-}
-
-/** The plan a Stripe price belongs to, or null if it is not one of ours. */
-export function planForPriceId(priceId: string | null | undefined): PlanId | null {
-  if (!priceId) return null;
-  for (const [plan, id] of Object.entries(stripePriceIds())) {
-    if (id && id === priceId && isPlanId(plan)) return plan;
-  }
-  return null;
 }
 
 export function isStripeConfigured(): boolean {
@@ -87,16 +80,18 @@ export interface StripeConfigStatus {
 }
 
 /**
- * What is set and what is not, so the billing page can say precisely which
- * variable is missing instead of failing with a Stripe error.
+ * Whether the Stripe credentials are in place.
+ *
+ * Only covers the two secrets, which are environment-only. Whether a plan has
+ * a price to sell is a separate question with a separate answer per plan -
+ * that lives in `plan_prices` and is read through `priceStore`, so it is not
+ * something this synchronous env-only check can report on.
  */
 export function stripeConfigStatus(): StripeConfigStatus {
   const missing: string[] = [];
   const key = stripeSecretKey();
   if (!key) missing.push("STRIPE_SECRET_KEY");
   if (!stripeWebhookSecret()) missing.push("STRIPE_WEBHOOK_SECRET");
-  if (!priceIdForPlan("pro")) missing.push("STRIPE_PRICE_PRO");
-  if (!priceIdForPlan("team")) missing.push("STRIPE_PRICE_TEAM");
   return {
     configured: missing.length === 0,
     missing,

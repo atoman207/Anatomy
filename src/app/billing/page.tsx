@@ -4,7 +4,9 @@ import { LabPicker } from "@/components/admin/LabPicker";
 import { PlanPicker } from "@/components/billing/PlanPicker";
 import { requireUser } from "@/lib/auth/guards";
 import { formatUsage, STATUS_LABELS, withinLimit, type PlanId } from "@/lib/billing/plans";
-import { stripeConfigStatus } from "@/lib/billing/stripe";
+import { isMockCheckoutAllowed, stripeConfigStatus } from "@/lib/billing/stripe";
+import { getPlanPrices } from "@/lib/billing/priceStore";
+import { planOffers } from "@/lib/billing/priceResolution";
 import { getLabEntitlement, getLabUsage } from "@/lib/billing/subscription";
 
 export const dynamic = "force-dynamic";
@@ -42,12 +44,16 @@ export default async function BillingPage(props: PageProps<"/billing">) {
   const membership = ctx.memberships.find((m) => m.labId === labId);
   const canManage = membership?.role === "owner" || ctx.isPlatformAdmin;
 
-  const [entitlement, usage] = await Promise.all([
+  const [entitlement, usage, prices] = await Promise.all([
     getLabEntitlement(labId),
     getLabUsage(labId),
+    getPlanPrices(),
   ]);
 
   const stripeStatus = stripeConfigStatus();
+  // The amounts on the cards are the ones Stripe would actually charge, not
+  // the catalogue defaults - see `planOffers`.
+  const offers = planOffers(prices, { mockCheckout: isMockCheckoutAllowed() });
 
   const checkoutOutcome =
     search.checkout === "success" ? "success" :
@@ -125,6 +131,7 @@ export default async function BillingPage(props: PageProps<"/billing">) {
         stripeConfigured={stripeStatus.configured}
         hasSubscription={entitlement.hasStripeSubscription}
         checkoutOutcome={checkoutOutcome}
+        offers={offers}
       />
 
       <Card title="上限に達したときの動作">

@@ -12,7 +12,8 @@ import "server-only";
 
 import { createAdminSupabase } from "@/lib/supabase/server";
 import type { PlanId } from "./plans";
-import { getStripe, planForPriceId } from "./stripe";
+import { getStripe } from "./stripe";
+import { buildPlanForPriceId } from "./priceStore";
 import { labSubscriptionWrite, snapshotFromStripe } from "./sync";
 
 /**
@@ -38,6 +39,7 @@ export async function persistSubscription(
   eventAt: Date = new Date(),
 ): Promise<PlanId> {
   const snapshot = snapshotFromStripe(subscription);
+  const planForPriceId = await buildPlanForPriceId();
   const write = labSubscriptionWrite(snapshot, labId, planForPriceId, eventAt);
 
   const admin = createAdminSupabase();

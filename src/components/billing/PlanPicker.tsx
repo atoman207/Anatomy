@@ -7,6 +7,7 @@ import { useToast } from "@/components/shell/Toast";
 import {
   formatJpy, PLAN_LIST, type PlanId,
 } from "@/lib/billing/plans";
+import type { PlanOfferMap } from "@/lib/billing/priceResolution";
 import {
   cancelMockSubscription, openBillingPortal, startCheckout, syncSubscription,
 } from "@/lib/billing/actions";
@@ -38,10 +39,20 @@ export interface PlanPickerProps {
   hasSubscription: boolean;
   /** `success` or `cancel`, when checkout has just sent the browser back. */
   checkoutOutcome: "success" | "cancel" | null;
+  /**
+   * What each plan currently sells at, resolved on the server.
+   *
+   * Passed in rather than read from the catalogue here, so that a price
+   * changed at `/admin/billing` is the one advertised - a card showing the
+   * catalogue's ¥50 next to a Checkout session that charges ¥480 is a
+   * mis-sale, not a display bug.
+   */
+  offers: PlanOfferMap;
 }
 
 export function PlanPicker({
   labId, labName, currentPlan, canManage, stripeConfigured, hasSubscription, checkoutOutcome,
+  offers,
 }: PlanPickerProps) {
   const router = useRouter();
   const { toast } = useToast();
@@ -165,6 +176,7 @@ export function PlanPicker({
         {PLAN_LIST.map((plan) => {
           const isCurrent = plan.id === currentPlan;
           const paid = plan.amountJpy > 0;
+          const offer = offers[plan.id];
           return (
             <section
               key={plan.id}
@@ -181,7 +193,7 @@ export function PlanPicker({
 
               <p className="mt-4 flex items-baseline gap-1">
                 <span className="font-serif text-[28px] font-semibold text-ink">
-                  {plan.amountJpy === 0 ? "無料" : formatJpy(plan.amountJpy)}
+                  {offer.amountJpy === 0 ? "無料" : formatJpy(offer.amountJpy)}
                 </span>
                 {paid && <span className="text-[13px] text-ink-3">/ 月（税込）</span>}
               </p>
@@ -207,6 +219,20 @@ export function PlanPicker({
                   >
                     ダウングレードする
                   </Button>
+                ) : !offer.purchasable ? (
+                  /*
+                   * No price exists for this plan yet, so Checkout has nothing
+                   * to sell. Saying so is better than an enabled button whose
+                   * only possible outcome is an error toast.
+                   */
+                  <>
+                    <Button variant="secondary" className="w-full" disabled>
+                      準備中
+                    </Button>
+                    <p className="mt-2 text-[12px] leading-snug text-ink-3">
+                      価格が未設定のため、現在はお申し込みいただけません。
+                    </p>
+                  </>
                 ) : (
                   <Button
                     variant="primary"

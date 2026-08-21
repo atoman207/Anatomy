@@ -10,6 +10,9 @@ import {
   type PlanId,
 } from "../src/lib/billing/plans";
 import {
+  mergePriceSources, planForPriceIdFrom, planOffers,
+} from "../src/lib/billing/priceResolution";
+import {
   eventTimestamp, isFresherThan, labSubscriptionWrite, snapshotFromStripe,
 } from "../src/lib/billing/sync";
 
@@ -283,4 +286,128 @@ test("Stripe event timestamps are unix seconds", () => {
   // subsequent event look stale.
   assert.ok(eventTimestamp(null).getTime() > Date.now() - 5_000);
   assert.ok(eventTimestamp(undefined).getTime() > Date.now() - 5_000);
+});
+
+/* ------------------------------------------------------------------ */
+/* Which price a plan is sold at                                       */
+/* ------------------------------------------------------------------ */
+
+test("a price set in the database is what the plan sells at", () => {
+  const prices = mergePriceSources(
+    { pro: "price_env_pro", team: "price_env_team" },
+    [
+      { plan: "pro", stripe_price_id: "price_db_pro", amount_jpy: 480, updated_at: "2026-08-21T00:00:00Z" },
+    ],
+  );
+  assert.equal(prices.pro?.priceId, "price_db_pro");
+  assert.equal(prices.pro?.amountJpy, 480);
+  assert.equal(prices.pro?.source, "database");
+});
+
+test("an environment price still works for a plan the database has no id for", () => {
+  // The row exists (every plan gets one) but is empty until an admin sets a
+  // price - it must not shadow a working env var, or an existing deployment
+  // would stop being able to sell the moment the table was created.
+  const prices = mergePriceSources(
+    { pro: "price_env_pro", team: "price_env_team" },
+    [
+      { plan: "pro", stripe_price_id: "price_db_pro", amount_jpy: 480, updated_at: null },
+      { plan: "team", stripe_price_id: null, amount_jpy: null, updated_at: null },
+    ],
+  );
+  assert.equal(prices.team?.priceId, "price_env_team");
+  assert.equal(prices.team?.source, "environment");
+});
+
+test("a plan with neither source reports none rather than looking configured", () => {
+  const prices = mergePriceSources({}, []);
+  for (const plan of PAID_PLANS) {
+    assert.equal(prices[plan.id]?.priceId, null, `${plan.id} should have no price`);
+    assert.equal(prices[plan.id]?.source, "none");
+  }
+});
+
+test("every paid plan gets an entry even when both sources are empty", () => {
+  const prices = mergePriceSources({}, []);
+  assert.deepEqual(
+    Object.keys(prices).sort(),
+    PAID_PLANS.map((p) => p.id).sort(),
+  );
+  // The free plan has no Stripe price and must not appear.
+  assert.equal(prices["free" as PlanId], undefined);
+});
+
+test("a row for a plan that is not sold is ignored rather than inventing an entry", () => {
+  const prices = mergePriceSources(
+    {},
+    [{ plan: "free", stripe_price_id: "price_bogus", amount_jpy: 0, updated_at: null }],
+  );
+  assert.equal(prices["free" as PlanId], undefined);
+});
+
+test("the webhook can map a stored price id back to its plan", () => {
+  const resolve = planForPriceIdFrom(
+    mergePriceSources({}, [
+      { plan: "pro", stripe_price_id: "price_db_pro", amount_jpy: 480, updated_at: null },
+      { plan: "team", stripe_price_id: "price_db_team", amount_jpy: 980, updated_at: null },
+    ]),
+  );
+  assert.equal(resolve("price_db_pro"), "pro");
+  assert.equal(resolve("price_db_team"), "team");
+  // An unrecognised price must not guess a plan - labSubscriptionWrite falls
+  // back to free rather than granting something the customer did not buy.
+  assert.equal(resolve("price_someone_elses"), null);
+  assert.equal(resolve(null), null);
+});
+
+/* ------------------------------------------------------------------ */
+/* What the pricing page advertises                                    */
+/* ------------------------------------------------------------------ */
+
+test("the pricing page advertises the price Stripe would actually charge", () => {
+  // The whole point of the table: an administrator raised pro to ¥480, and
+  // the card must not keep showing the catalogue's ¥50 next to a Checkout
+  // session that charges ¥480.
+  const offers = planOffers(
+    mergePriceSources({}, [
+      { plan: "pro", stripe_price_id: "price_db_pro", amount_jpy: 480, updated_at: null },
+    ]),
+  );
+  assert.equal(offers.pro.amountJpy, 480);
+  assert.equal(offers.pro.fromStripe, true);
+  assert.equal(offers.pro.purchasable, true);
+});
+
+test("a plan configured by environment variable falls back to the catalogue label", () => {
+  // The id is known but the amount was never fetched from Stripe, so there is
+  // no better number to show than the catalogue's - and `fromStripe` says so
+  // rather than claiming the figure is authoritative.
+  const offers = planOffers(mergePriceSources({ pro: "price_env_pro" }, []));
+  assert.equal(offers.pro.amountJpy, PLANS.pro.amountJpy);
+  assert.equal(offers.pro.fromStripe, false);
+  assert.equal(offers.pro.purchasable, true);
+});
+
+test("a plan with no price is not offered for sale", () => {
+  const offers = planOffers(mergePriceSources({}, []));
+  for (const plan of PAID_PLANS) {
+    assert.equal(offers[plan.id].purchasable, false, `${plan.id} has nothing to sell`);
+  }
+  // Free is always available - downgrading needs no Stripe price at all.
+  assert.equal(offers.free.purchasable, true);
+  assert.equal(offers.free.amountJpy, 0);
+});
+
+test("the mock checkout can sell a plan that has no Stripe price", () => {
+  // Development without Stripe keys never reaches a price lookup, so the
+  // cards must stay clickable or the mock flow is unreachable.
+  const offers = planOffers(mergePriceSources({}, []), { mockCheckout: true });
+  for (const plan of PAID_PLANS) {
+    assert.equal(offers[plan.id].purchasable, true, `${plan.id} should sell via the mock`);
+  }
+});
+
+test("every plan in the catalogue gets an offer", () => {
+  const offers = planOffers(mergePriceSources({}, []));
+  assert.deepEqual(Object.keys(offers).sort(), PLAN_IDS.slice().sort());
 });

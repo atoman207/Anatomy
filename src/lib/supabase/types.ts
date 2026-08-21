@@ -324,6 +324,17 @@ export type ReviewerProfileRow = {
   updated_at: string;
 }
 
+/* Plan prices - see the plan_prices section of supabase/migrations/all.sql. */
+
+export type PlanPriceRow = {
+  plan: BillingPlan;
+  stripe_price_id: string | null;
+  /** Cached from Stripe for display; Stripe remains the authority on charges. */
+  amount_jpy: number | null;
+  updated_by: string | null;
+  updated_at: string;
+}
+
 /**
  * Insert shapes: server-generated columns are optional, and so is any column
  * that is nullable in the database (a caller may simply omit it and let it
@@ -379,6 +390,7 @@ export type Database = {
       >;
       peer_reviews: TableDef<PeerReviewRow, Insert<PeerReviewRow, "document_kind">>;
       reviewer_profiles: TableDef<ReviewerProfileRow, Insert<ReviewerProfileRow, "rubric_notes">>;
+      plan_prices: TableDef<PlanPriceRow, Insert<PlanPriceRow>>;
     };
     Views: Record<string, never>;
     Functions: {

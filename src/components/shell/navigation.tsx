@@ -219,6 +219,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/users", label: "ユーザー", icon: icons.users, platformOnly: true },
       { href: "/admin/peer-review", label: "AI査読者", icon: icons.peerReview, platformOnly: true },
       { href: "/admin/content", label: "コンテンツ管理", icon: icons.content, platformOnly: true },
+      { href: "/admin/billing", label: "料金設定", icon: icons.billing, platformOnly: true },
       { href: "/admin/audit", label: "監査ログ", icon: icons.audit, adminOnly: true },
     ],
   },
