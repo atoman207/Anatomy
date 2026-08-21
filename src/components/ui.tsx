@@ -212,6 +212,40 @@ export function DataTable({
   );
 }
 
+/**
+ * A dimmed, centered overlay for an action long enough that the button's own
+ * "処理中…" label is not enough on its own - AI Peer Review's 1-2 minute
+ * wait is the case this exists for. Blocks interaction with the rest of the
+ * page while it is up, on purpose: clicking "PDFを選択" or navigating away
+ * mid-review would abandon a request already in flight with nothing to show
+ * for it.
+ */
+export function PendingOverlay({
+  title, hint,
+}: {
+  title: ReactNode;
+  hint?: ReactNode;
+}) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 px-4"
+    >
+      <div className="flex max-w-sm flex-col items-center gap-4 rounded-lg border border-line bg-surface-1 px-8 py-8 text-center shadow-[var(--shadow-md)]">
+        <span
+          aria-hidden
+          className="h-10 w-10 rounded-full border-[3px] border-line border-t-accent motion-safe:animate-spin"
+        />
+        <div>
+          <p className="font-serif text-base font-semibold text-ink">{title}</p>
+          {hint && <p className="mt-1.5 text-[13px] leading-relaxed text-ink-3">{hint}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function StatTile({
   label, value, hint, tone,
 }: {

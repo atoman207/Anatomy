@@ -20,7 +20,9 @@ import { revalidatePath } from "next/cache";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { assertIsLabOwner, getSessionContext, logAudit } from "@/lib/auth/guards";
 import { isPlanId, PLANS, type PlanId } from "./plans";
-import { getStripe, isStripeConfigured, priceIdForPlan, siteOrigin } from "./stripe";
+import {
+  getStripe, isMockCheckoutAllowed, isStripeConfigured, priceIdForPlan, siteOrigin,
+} from "./stripe";
 import { ensureCustomer, isMockId, MOCK_ID_PREFIX, persistSubscription } from "./store";
 
 export interface ActionResult<T = undefined> {
@@ -77,6 +79,16 @@ export async function startCheckout(
     }
 
     if (!isStripeConfigured()) {
+      // Development without keys falls back to the mock checkout. A deployed
+      // build never does - see `isMockCheckoutAllowed` - because granting a
+      // paid plan with no payment behind it would be indistinguishable from
+      // working correctly until the invoices failed to arrive.
+      if (!isMockCheckoutAllowed()) {
+        return {
+          ok: false,
+          error: "決済が設定されていません（STRIPE_SECRET_KEY）。管理者にお問い合わせください。",
+        };
+      }
       await logAudit({
         labId, userId: ctx.user.id, action: "billing.mock_checkout_started",
         entity: "lab_subscription", entityId: labId, detail: { plan },
@@ -136,7 +148,7 @@ export async function startCheckout(
       }
     }
 
-    const origin = siteOrigin();
+    const origin = await siteOrigin();
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer,
@@ -180,9 +192,10 @@ export async function openBillingPortal(labId: string): Promise<ActionResult<str
     }
 
     const customer = await ensureCustomer(labId, ctx.email);
+    const returnUrl = `${await siteOrigin()}/billing?lab=${labId}`;
     const session = await getStripe().billingPortal.sessions.create({
       customer,
-      return_url: `${siteOrigin()}/billing?lab=${labId}`,
+      return_url: returnUrl,
       locale: "ja",
     });
 
@@ -268,11 +281,11 @@ export async function syncSubscription(labId: string): Promise<ActionResult<Plan
 /**
  * Grants a plan without Stripe, from the mock checkout page.
  *
- * Refuses outright once real keys are configured, so this can never become a
- * free-upgrade path that survives into a production deployment by accident -
- * the only way to reach it is for `isStripeConfigured()` to already be false,
- * and the same check runs again here rather than trusting the page that
- * linked here.
+ * Guarded twice over, because this is the one function in the app that hands
+ * out a paid plan for nothing: it refuses once real keys are configured, and
+ * it refuses on any production build even without keys. Both checks run here
+ * rather than being trusted from the page that linked in, since a
+ * `"use server"` export is an endpoint the browser can call directly by name.
  */
 export async function completeMockCheckout(
   labId: string,
@@ -286,6 +299,9 @@ export async function completeMockCheckout(
     }
     if (isStripeConfigured()) {
       return { ok: false, error: "Stripe が接続されています。決済ページからお手続きください。" };
+    }
+    if (!isMockCheckoutAllowed()) {
+      return { ok: false, error: "この環境ではテスト決済を利用できません。" };
     }
 
     const admin = createAdminSupabase();

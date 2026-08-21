@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import type Stripe from "stripe";
 
 import {
-  BETA_MAX_JPY, PLANS, PLAN_IDS, PLAN_LIST, PAID_PLANS, STRIPE_MIN_JPY,
+  MAX_REASONABLE_JPY, PLANS, PLAN_IDS, PLAN_LIST, PAID_PLANS, STRIPE_MIN_JPY,
   effectivePlan, formatJpy, formatUsage, isPlanId, isSubscriptionStatus,
   planOrFree, smallestPlanFor, statusGrantsAccess, withinLimit,
   type PlanId,
@@ -17,11 +17,13 @@ import {
 /* Plan catalogue                                                      */
 /* ------------------------------------------------------------------ */
 
-test("every plan price is a beta price: under ¥100, and never below Stripe's JPY floor", () => {
+test("every plan price is a whole yen amount Stripe will actually accept", () => {
   for (const plan of PLAN_LIST) {
+    // Not a product limit - just a guard against a typo that would charge a
+    // real customer a hundred times the intended amount.
     assert.ok(
-      plan.amountJpy < BETA_MAX_JPY,
-      `${plan.id} is ¥${plan.amountJpy}, which is not under the ¥${BETA_MAX_JPY} beta ceiling`,
+      plan.amountJpy < MAX_REASONABLE_JPY,
+      `${plan.id} is ¥${plan.amountJpy}; that is past the ¥${MAX_REASONABLE_JPY} sanity ceiling - typo?`,
     );
     assert.ok(Number.isInteger(plan.amountJpy), `${plan.id} must be a whole yen amount`);
     if (plan.amountJpy > 0) {

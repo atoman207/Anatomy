@@ -1,5 +1,6 @@
 import "server-only";
 
+import { headers } from "next/headers";
 import Stripe from "stripe";
 import { isPlanId, type PlanId } from "./plans";
 
@@ -58,6 +59,25 @@ export function isStripeConfigured(): boolean {
   return Boolean(stripeSecretKey());
 }
 
+/**
+ * True on a deployed build.
+ *
+ * Used to shut off the mock checkout. That flow grants a paid plan with no
+ * payment behind it, which is exactly what is wanted while developing and
+ * exactly what must never happen on a live site - if the Stripe environment
+ * variables are simply missing from the hosting dashboard, an app that
+ * quietly fell back to the mock would hand every visitor a free paid
+ * subscription and look like it was working.
+ */
+export function isProductionBuild(): boolean {
+  return process.env.NODE_ENV === "production";
+}
+
+/** True when the mock (no-payment) checkout may be used at all. */
+export function isMockCheckoutAllowed(): boolean {
+  return !isStripeConfigured() && !isProductionBuild();
+}
+
 export interface StripeConfigStatus {
   configured: boolean;
   /** Environment variable names that still need a value. */
@@ -114,13 +134,52 @@ export function resetStripeClient(): void {
   cached = null;
 }
 
+/** True for anything that only resolves on the machine running the server. */
+function isLocalOrigin(origin: string): boolean {
+  return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(origin);
+}
+
+/** Best-effort origin from the proxy headers a host sets in front of the app. */
+async function originFromRequest(): Promise<string | null> {
+  try {
+    const h = await headers();
+    const host = h.get("x-forwarded-host") ?? h.get("host");
+    if (!host) return null;
+    const proto = h.get("x-forwarded-proto") ?? "https";
+    const origin = `${proto}://${host}`;
+    return isLocalOrigin(origin) ? null : origin;
+  } catch {
+    // Called outside a request scope; the caller falls through to the error.
+    return null;
+  }
+}
+
 /**
  * The absolute origin Stripe should send the browser back to.
  *
- * Checkout rejects a relative URL, so this has to be configured rather than
- * inferred; the auth emails already depend on the same variable.
+ * Checkout rejects a relative URL, so this has to resolve to a real origin.
+ * In production it must never resolve to localhost: `success_url` is where a
+ * customer lands *after their card has been charged*, so a stale
+ * `NEXT_PUBLIC_SITE_URL` from local development would take real money and
+ * then strand the payer on a page that only exists on the deploy machine.
+ * Rather than let that happen silently, production prefers the configured
+ * value, falls back to the host headers the platform sets, and finally
+ * refuses to create the session at all with an error naming the variable to
+ * fix.
  */
-export function siteOrigin(): string {
-  const raw = process.env.NEXT_PUBLIC_SITE_URL || "";
-  return raw.replace(/\/+$/, "") || "http://localhost:3000";
+export async function siteOrigin(): Promise<string> {
+  const configured = (process.env.NEXT_PUBLIC_SITE_URL || "").trim().replace(/\/+$/, "");
+  const production = process.env.NODE_ENV === "production";
+
+  if (configured && !(production && isLocalOrigin(configured))) return configured;
+
+  if (!production) return configured || "http://localhost:3000";
+
+  const derived = await originFromRequest();
+  if (derived) return derived;
+
+  throw new Error(
+    "NEXT_PUBLIC_SITE_URL に公開URL（https://…）を設定してください。" +
+      "未設定のままでは決済後の戻り先が正しく生成できません。",
+  );
 }

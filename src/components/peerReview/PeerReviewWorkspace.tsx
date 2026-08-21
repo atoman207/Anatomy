@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  Badge, Button, Callout, Card, EmptyState, Field, StatTile, TextInput, cx,
+  Badge, Button, Callout, Card, EmptyState, Field, PendingOverlay, StatTile, TextInput, cx,
 } from "@/components/ui";
 import { useToast } from "@/components/shell/Toast";
 import { useDownload, useWorkspace } from "@/components/workspace";
@@ -40,6 +40,8 @@ export function PeerReviewWorkspace({
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
+  /** Distinct from `busy`: only true for the AI call itself, so the overlay does not appear for the quick re-review-history fetch. */
+  const [reviewing, setReviewing] = useState(false);
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [showText, setShowText] = useState(false);
 
@@ -88,6 +90,7 @@ export function PeerReviewWorkspace({
   async function runReview() {
     if (!file) return;
     setBusy(true);
+    setReviewing(true);
     try {
       const form = new FormData();
       form.append("file", file);
@@ -107,6 +110,7 @@ export function PeerReviewWorkspace({
       toast(e instanceof Error ? e.message : "査読に失敗しました。", { tone: "danger" });
     } finally {
       setBusy(false);
+      setReviewing(false);
     }
   }
 
@@ -169,6 +173,18 @@ export function PeerReviewWorkspace({
 
   return (
     <div className="flex flex-col gap-5">
+      {reviewing && (
+        <PendingOverlay
+          title="AI査読を実行しています…"
+          hint={
+            <>
+              {profiles.methods.name}・{profiles.novelty.name}・{profiles.structure.name}{" "}
+              が論文を読んでいます。1〜2分ほどお待ちください。
+            </>
+          }
+        />
+      )}
+
       <header>
         <h1 className="text-xl font-semibold text-ink">AI査読</h1>
         <p className="mt-1 text-[13px] text-ink-2">

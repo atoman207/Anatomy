@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { Card } from "@/components/ui";
 import { requireUser } from "@/lib/auth/guards";
 import { isPlanId, formatJpy, PLANS } from "@/lib/billing/plans";
-import { isStripeConfigured } from "@/lib/billing/stripe";
+import { isMockCheckoutAllowed } from "@/lib/billing/stripe";
 import { MockPayButton } from "@/components/billing/MockPayButton";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +19,10 @@ export const dynamic = "force-dynamic";
  * request, never as proof of who is allowed to pay.
  */
 export default async function MockCheckoutPage(props: PageProps<"/billing/checkout">) {
-  if (isStripeConfigured()) redirect("/billing");
+  // Off once Stripe is connected, and off on any production build even
+  // without it - a live site must never present a page that grants a paid
+  // plan for free.
+  if (!isMockCheckoutAllowed()) redirect("/billing");
 
   const ctx = await requireUser("/billing");
   const search = await props.searchParams;

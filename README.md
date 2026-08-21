@@ -430,10 +430,23 @@ around it do:
   the browser - Checkout and the billing portal are both server-initiated
   redirects to a Stripe-hosted page - so there is nothing to do with a
   `pk_live_...` key even if you have one.
+- **The mock checkout is off in production.** Without keys, development falls
+  back to an in-app page that grants a plan with no payment behind it. A
+  production build refuses instead (`isMockCheckoutAllowed`), because missing
+  environment variables on a live host would otherwise hand every visitor a
+  free paid subscription while looking like it was working.
 - **`NEXT_PUBLIC_SITE_URL` has to be your real `https://` domain.** Checkout's
   `success_url`/`cancel_url` and the billing portal's `return_url` are built
   from it; left at `http://localhost:3000` in production, a customer would be
-  sent to your laptop after paying.
+  sent to your laptop after paying. A production build will not do that: it
+  prefers the configured value, falls back to the host headers the platform
+  sets, and otherwise refuses to create the session with an error naming the
+  variable rather than charging a card it cannot return from.
+- **Check the prices before running the setup script.** `plans.ts` still holds
+  the beta amounts, ¥50 and ¥90 per month. They are real charges now. Editing
+  them later does not re-price existing subscribers - Stripe prices are
+  immutable, so a change means new price ids and a migration for anyone
+  already subscribed.
 - **Run `npm run stripe:setup` again with the live key.** Test-mode and
   live-mode prices are different objects even for the same amount; the script
   prints new `STRIPE_PRICE_PRO` / `STRIPE_PRICE_TEAM` values for live mode.

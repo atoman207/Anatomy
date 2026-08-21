@@ -5,10 +5,13 @@
  * database - so the pricing page, the server actions and the tests all read
  * the same definitions, and the numbers can be checked without a network.
  *
- * **Beta pricing.** Every amount here is deliberately under ¥100 so the whole
- * subscribe → renew → cancel path can be exercised against real cards without
- * the test costing anything meaningful. They are not the intended production
- * prices.
+ * **These amounts are what customers are charged.** They started as beta
+ * prices - deliberately under ¥100 so the subscribe → renew → cancel path
+ * could be exercised against real cards for almost nothing - and they are
+ * still ¥50 and ¥90. Editing a number here does not change what an existing
+ * subscriber pays: Stripe prices are immutable, so a new amount means
+ * re-running `npm run stripe:setup` for new price ids, and migrating anyone
+ * already subscribed at the old price.
  *
  * The limits below mirror `plan_limits` in supabase/migrations/all.sql.
  * The database is the authority - it is what the quota triggers consult - and
@@ -50,8 +53,15 @@ export interface Plan {
  */
 export const STRIPE_MIN_JPY = 50;
 
-/** The ceiling this beta deliberately stays under. */
-export const BETA_MAX_JPY = 100;
+/**
+ * A sanity ceiling, not a product decision.
+ *
+ * The beta deliberately priced under ¥100; live billing has no such limit, so
+ * this only exists to catch a typo that would charge a customer a hundred
+ * times the intended amount (¥5000 where ¥50 was meant). Raise it when the
+ * real prices are set.
+ */
+export const MAX_REASONABLE_JPY = 100_000;
 
 export const PLANS: Record<PlanId, Plan> = {
   free: {

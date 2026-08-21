@@ -8,10 +8,10 @@
  * that copies one into the other. It prints the resulting price ids to paste
  * into .env.local.
  *
- * **Beta pricing.** Every amount is deliberately under ¥100. JPY is a
- * zero-decimal currency, so `unit_amount: 50` is ¥50 - not 50 sen - and ¥50 is
- * also Stripe's minimum charge for the currency, which is why the cheapest
- * paid plan sits exactly there.
+ * JPY is a zero-decimal currency, so `unit_amount: 50` is ¥50 - not 50 sen -
+ * and ¥50 is also Stripe's minimum charge for the currency, which is why the
+ * cheapest plan sits exactly there. With a live key this creates prices that
+ * charge real cards, so it prints the amounts and says so before doing it.
  *
  * Safe to re-run: products and prices are looked up by a stable lookup key and
  * reused. Stripe prices are immutable, so changing an amount creates a new
@@ -59,17 +59,27 @@ const PAID_PLANS = [
 ];
 
 const STRIPE_MIN_JPY = 50;
-const BETA_MAX_JPY = 100;
+/** Not a product limit - a guard against a typo that would charge 100x the intent. */
+const MAX_REASONABLE_JPY = 100_000;
 
 for (const plan of PAID_PLANS) {
   if (plan.amountJpy < STRIPE_MIN_JPY) {
     console.error(`\n${plan.id}: ¥${plan.amountJpy} is below Stripe's ¥${STRIPE_MIN_JPY} minimum for JPY.\n`);
     process.exit(1);
   }
-  if (plan.amountJpy >= BETA_MAX_JPY) {
-    console.error(`\n${plan.id}: ¥${plan.amountJpy} is not under the ¥${BETA_MAX_JPY} beta ceiling.\n`);
+  if (plan.amountJpy >= MAX_REASONABLE_JPY) {
+    console.error(`\n${plan.id}: ¥${plan.amountJpy} is past the ¥${MAX_REASONABLE_JPY} sanity ceiling - typo?\n`);
     process.exit(1);
   }
+}
+
+if (liveMode) {
+  console.log(
+    `\nPrices about to be created (LIVE - real cards will be charged):\n` +
+      PAID_PLANS.map((p) => `  ${p.id.padEnd(5)} ¥${p.amountJpy}/month`).join("\n") +
+      "\n\nThese come from src/lib/billing/plans.ts. Stop now and edit that file\n" +
+      "if these are still the beta amounts rather than your real prices.\n",
+  );
 }
 
 const stripe = new Stripe(secret, { maxNetworkRetries: 2 });
