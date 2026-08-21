@@ -5,7 +5,9 @@ import {
   Badge, Button, Callout, Card, DataTable, EmptyState, Field,
   Select, StatTile, TextInput, cx,
 } from "@/components/ui";
+import { useToast } from "@/components/shell/Toast";
 import { useDownload, useWorkspace, type LoadedDataset } from "@/components/workspace";
+import { ExperimentPicker } from "@/components/ExperimentPicker";
 import { buildDemoData } from "@/lib/data/demo";
 import { parseDelimited } from "@/lib/data/csv";
 import { profileTable, buildMatrix, sampleQc } from "@/lib/data/table";
@@ -16,6 +18,7 @@ import {
 } from "@/lib/stats/matrix";
 import { StatsPanel } from "@/components/analyze/StatsPanel";
 import { FiguresPanel } from "@/components/analyze/FiguresPanel";
+import { saveDataset } from "@/lib/analyze/actions";
 
 type Tab = "import" | "stats" | "figures";
 
@@ -100,6 +103,8 @@ export default function AnalyzePage() {
         <h1 className="text-xl font-semibold text-ink">統計解析・図作成</h1>
       </header>
 
+      <ExperimentPicker helpText="ここで選んだ実験に、解析結果と図を保存できます。" />
+
       <div role="tablist" className="scroll-x flex gap-1 border-b border-line">
         {TABS.map((t) => (
           <button
@@ -162,22 +167,22 @@ function ImportPanel({
   const download = useDownload();
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
   const [preview, setPreview] = useState<{ headers: string[]; rows: string[][] } | null>(null);
+  const [datasetSaveState, setDatasetSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   const load = useCallback(
     (d: LoadedDataset, pv?: { headers: string[]; rows: string[][] }) => {
       ws.setDataset(d);
       setGroups({});
       setPreview(pv ?? null);
-      setError(null);
+      setDatasetSaveState("idle");
     },
     [ws, setGroups],
   );
 
   async function handleFile(file: File) {
     setBusy(true);
-    setError(null);
     try {
       const lower = file.name.toLowerCase();
       if (lower.endsWith(".csv") || lower.endsWith(".tsv") || lower.endsWith(".txt")) {
@@ -220,7 +225,7 @@ function ImportPanel({
         );
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "取り込みに失敗しました。");
+      toast(e instanceof Error ? e.message : "取り込みに失敗しました。", { tone: "danger" });
     } finally {
       setBusy(false);
     }
@@ -282,7 +287,6 @@ function ImportPanel({
             }}
           />
         </div>
-        {error && <div className="mt-3"><Callout tone="danger" title="取り込み失敗">{error}</Callout></div>}
       </Card>
 
       {!dataset && (
@@ -302,6 +306,45 @@ function ImportPanel({
               value={`${missingPct(prepared.matrix).toFixed(1)}%`}
               tone={missingPct(prepared.matrix) > 20 ? "warn" : "good"}
             />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="primary"
+              icon="save"
+              disabled={!ws.experimentId || !ws.labId || datasetSaveState === "saving"}
+              title={ws.experimentId ? undefined : "上で実験を選択してください"}
+              onClick={async () => {
+                if (!ws.experimentId || !ws.labId) return;
+                setDatasetSaveState("saving");
+                const res = await saveDataset({
+                  labId: ws.labId,
+                  experimentId: ws.experimentId,
+                  name: dataset.name,
+                  sourceFilename: dataset.sourceFilename,
+                  sourceSheet: dataset.sourceSheet,
+                  featureCount: dataset.matrix.features.length,
+                  sampleCount: dataset.matrix.samples.length,
+                  matrix: dataset.matrix,
+                  profile: dataset.profile,
+                  notes: dataset.notes,
+                });
+                if (res.ok) {
+                  setDatasetSaveState("saved");
+                  toast("データセットを保存しました。", { tone: "good" });
+                } else {
+                  setDatasetSaveState("error");
+                  toast(res.error ?? "保存に失敗しました。", { tone: "danger" });
+                }
+              }}
+            >
+              {datasetSaveState === "saving"
+                ? "保存中…"
+                : datasetSaveState === "saved"
+                  ? "データセットを保存済み"
+                  : "データセットを実験に保存"}
+            </Button>
           </div>
 
           {[...dataset.notes, ...prepared.notes].length > 0 && (

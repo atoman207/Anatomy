@@ -86,6 +86,45 @@ export interface TranscriptState {
 export const EMPTY_TRANSCRIPT: TranscriptState = { final: "", interim: "" };
 
 /**
+ * SpeechRecognitionResultList / Result are host objects. Chromium exposes
+ * numeric indexers; some WebKit builds only implement `.item(i)`. Reading
+ * `results[i][0]` then silently yields `undefined` and the transcript never
+ * appears — which is exactly the failure mode the voice page was showing.
+ */
+function listEntry(
+  list: SpeechRecognitionResultListLike,
+  index: number,
+): SpeechRecognitionResultLike | undefined {
+  const byIndex = list[index];
+  if (byIndex) return byIndex;
+  const item = (list as { item?: (n: number) => SpeechRecognitionResultLike }).item;
+  return typeof item === "function" ? item.call(list, index) : undefined;
+}
+
+function alternativeOf(
+  result: SpeechRecognitionResultLike,
+): SpeechRecognitionAlternativeLike | undefined {
+  const byIndex = result[0];
+  if (byIndex) return byIndex;
+  const item = (result as { item?: (n: number) => SpeechRecognitionAlternativeLike }).item;
+  return typeof item === "function" ? item.call(result, 0) : undefined;
+}
+
+/** Rebuilds committed + in-progress text from a complete result list. */
+export function foldResultList(results: SpeechRecognitionResultListLike): TranscriptState {
+  let final = "";
+  let interim = "";
+  for (let i = 0; i < results.length; i++) {
+    const result = listEntry(results, i);
+    const alternative = result ? alternativeOf(result) : undefined;
+    if (!result || !alternative) continue;
+    if (result.isFinal) final += alternative.transcript;
+    else interim += alternative.transcript;
+  }
+  return { final, interim };
+}
+
+/**
  * Folds one recognition event into the running transcript.
  *
  * The event carries the whole result list, not just what changed, and
@@ -102,9 +141,9 @@ export function applyResult(
   let interim = "";
 
   for (let i = event.resultIndex; i < event.results.length; i++) {
-    const result = event.results[i];
-    const alternative = result[0];
-    if (!alternative) continue;
+    const result = listEntry(event.results, i);
+    const alternative = result ? alternativeOf(result) : undefined;
+    if (!result || !alternative) continue;
     if (result.isFinal) finalAddition += alternative.transcript;
     else interim += alternative.transcript;
   }
@@ -183,7 +222,7 @@ export function classifyError(code: string): ClassifiedError {
       return {
         kind: "network",
         message:
-          "音声認識サービスに接続できません。このブラウザが対応していないか、ネットワークが遮断されています。OpenAI での文字起こしに切り替えてください。",
+          "音声認識サービスに接続できません。このブラウザが対応していないか、ネットワークが遮断されています。有料のAI文字起こしに切り替えてください。",
         recoverable: false,
       };
     case "no-speech":
@@ -234,10 +273,14 @@ export interface SpeechSessionOptions {
 export class SpeechSession {
   private recognition: SpeechRecognitionLike | null = null;
   private state: TranscriptState = EMPTY_TRANSCRIPT;
+  /** Text committed by previous recognizer instances; the current instance's
+   *  result list is folded on top of this so a restart cannot drop or duplicate. */
+  private committed = "";
   private wantListening = false;
   private sawAnyEvent = false;
   private restarts = 0;
   private watchdog: ReturnType<typeof setTimeout> | null = null;
+  private restartTimer: ReturnType<typeof setTimeout> | null = null;
 
   private static readonly MAX_RESTARTS = 200;
 
@@ -252,6 +295,7 @@ export class SpeechSession {
 
   /** Replaces the transcript, e.g. after the researcher edits it by hand. */
   setTranscript(final: string): void {
+    this.committed = final;
     this.state = { final, interim: "" };
     this.callbacks.onTranscript(this.state);
   }
@@ -264,6 +308,7 @@ export class SpeechSession {
         message: "このブラウザは音声認識に対応していません。",
         recoverable: false,
       });
+      this.callbacks.onStateChange(false);
       return;
     }
 
@@ -274,7 +319,9 @@ export class SpeechSession {
 
     // Nothing at all within the watchdog window means the engine is present
     // but non-functional, which is how a Chromium build without Google's
-    // speech key behaves.
+    // speech key behaves. Permission prompts can eat several seconds, so
+    // this is generous — a working engine fires `onstart` almost immediately.
+    this.clearWatchdog();
     this.watchdog = setTimeout(() => {
       if (!this.sawAnyEvent && this.wantListening) {
         this.stop();
@@ -283,7 +330,45 @@ export class SpeechSession {
     }, this.options.watchdogMs ?? 4000);
   }
 
+  private clearWatchdog(): void {
+    if (this.watchdog) {
+      clearTimeout(this.watchdog);
+      this.watchdog = null;
+    }
+  }
+
+  private clearRestartTimer(): void {
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+  }
+
+  /** Drops the current recognizer without treating it as a user stop. */
+  private detachRecognition(): void {
+    const recognition = this.recognition;
+    this.recognition = null;
+    if (!recognition) return;
+    recognition.onstart = null;
+    recognition.onend = null;
+    recognition.onerror = null;
+    recognition.onresult = null;
+    recognition.onaudiostart = null;
+    recognition.onspeechstart = null;
+    try {
+      recognition.abort();
+    } catch {
+      // Already gone.
+    }
+  }
+
   private spawn(Ctor: SpeechRecognitionCtor): void {
+    this.detachRecognition();
+    // Anything the previous instance finalized stays in `committed`; the new
+    // instance starts with an empty result list.
+    this.committed = joinJapanese(this.state.final, this.state.interim);
+    this.state = { final: this.committed, interim: "" };
+
     const recognition = new Ctor();
     recognition.lang = this.options.lang ?? "ja-JP";
     recognition.continuous = true;
@@ -292,10 +377,7 @@ export class SpeechSession {
 
     const alive = () => {
       this.sawAnyEvent = true;
-      if (this.watchdog) {
-        clearTimeout(this.watchdog);
-        this.watchdog = null;
-      }
+      this.clearWatchdog();
     };
 
     recognition.onstart = () => {
@@ -307,7 +389,14 @@ export class SpeechSession {
 
     recognition.onresult = (event) => {
       alive();
-      this.state = applyResult(this.state, event);
+      // Fold the *current* recognizer's full list. Using `resultIndex` against
+      // a restarted instance is how Chrome drops spoken text: after `onend`
+      // the list resets but `resultIndex` can still point past the new length.
+      const slice = foldResultList(event.results);
+      this.state = {
+        final: joinJapanese(this.committed, slice.final),
+        interim: slice.interim,
+      };
       this.callbacks.onTranscript(this.state);
     };
 
@@ -317,6 +406,7 @@ export class SpeechSession {
       // Routine pauses are not worth showing; the restart in onend covers them.
       if (!classified.recoverable) {
         this.wantListening = false;
+        this.clearRestartTimer();
         this.callbacks.onError(classified);
         this.callbacks.onStateChange(false);
       }
@@ -330,11 +420,16 @@ export class SpeechSession {
       }
       if (this.wantListening && this.restarts < SpeechSession.MAX_RESTARTS) {
         this.restarts++;
-        try {
-          recognition.start();
+        // Chrome throws InvalidStateError if start() is called on the same
+        // instance from inside onend. A fresh instance after a tick is stable.
+        const Next = getConstructor();
+        if (Next) {
+          this.clearRestartTimer();
+          this.restartTimer = setTimeout(() => {
+            this.restartTimer = null;
+            if (this.wantListening) this.spawn(Next);
+          }, 60);
           return;
-        } catch {
-          // Some builds refuse an immediate restart; fall through to stopped.
         }
       }
       this.callbacks.onStateChange(false);
@@ -349,15 +444,14 @@ export class SpeechSession {
         message: e instanceof Error ? e.message : "音声認識を開始できませんでした。",
         recoverable: false,
       });
+      this.callbacks.onStateChange(false);
     }
   }
 
   stop(): void {
     this.wantListening = false;
-    if (this.watchdog) {
-      clearTimeout(this.watchdog);
-      this.watchdog = null;
-    }
+    this.clearWatchdog();
+    this.clearRestartTimer();
     try {
       this.recognition?.stop();
     } catch {
@@ -368,22 +462,8 @@ export class SpeechSession {
 
   dispose(): void {
     this.wantListening = false;
-    if (this.watchdog) clearTimeout(this.watchdog);
-    this.watchdog = null;
-    const r = this.recognition;
-    if (r) {
-      r.onstart = null;
-      r.onend = null;
-      r.onerror = null;
-      r.onresult = null;
-      r.onaudiostart = null;
-      r.onspeechstart = null;
-      try {
-        r.abort();
-      } catch {
-        // Already gone.
-      }
-    }
-    this.recognition = null;
+    this.clearWatchdog();
+    this.clearRestartTimer();
+    this.detachRecognition();
   }
 }

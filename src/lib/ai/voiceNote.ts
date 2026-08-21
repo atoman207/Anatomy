@@ -1,6 +1,6 @@
 import "server-only";
 
-import { respondStructured, type StructuredResult } from "./openai";
+import { aiConfig, respondStructured, type StructuredResult } from "./openai";
 
 /**
  * Structured form of a spoken lab memo.
@@ -125,6 +125,13 @@ export interface StructureVoiceNoteOptions {
   model?: string;
 }
 
+/**
+ * Runs on the cost tier by default: this is extraction against an explicit
+ * schema (find the date, the reagents, the lot numbers that were actually
+ * said) rather than open-ended reasoning, Structured Outputs already
+ * guarantees the shape, and the researcher checks the result against their
+ * own transcript before anything is saved.
+ */
 export async function structureVoiceNote(
   opts: StructureVoiceNoteOptions,
 ): Promise<StructuredResult<StructuredVoiceNote>> {
@@ -133,7 +140,7 @@ export async function structureVoiceNote(
     : `書き起こし:\n${opts.transcript}`;
 
   return respondStructured<StructuredVoiceNote>({
-    model: opts.model,
+    model: opts.model ?? aiConfig().cheap,
     system: SYSTEM_PROMPT,
     user: context,
     schemaName: "voice_note",

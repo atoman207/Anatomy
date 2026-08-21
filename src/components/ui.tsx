@@ -42,7 +42,7 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 export function Button({
-  variant = "secondary", size = "md", icon, className, children, ...rest
+  variant = "secondary", size = "md", icon, className, children, type = "button", ...rest
 }: ButtonProps) {
   const base =
     "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50";
@@ -56,7 +56,7 @@ export function Button({
     danger: "border border-danger/30 bg-surface-1 text-danger hover:bg-danger-soft",
   }[variant];
   return (
-    <button className={cx(base, sizes, variants, className)} {...rest}>
+    <button type={type} className={cx(base, sizes, variants, className)} {...rest}>
       {icon && <Icon name={icon} className={size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4"} />}
       {children}
     </button>

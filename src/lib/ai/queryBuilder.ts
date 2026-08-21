@@ -1,6 +1,6 @@
 import "server-only";
 
-import { respondStructured, type StructuredResult } from "./openai";
+import { aiConfig, respondStructured, type StructuredResult } from "./openai";
 import type { PubMedArticle } from "../literature/pubmed";
 
 /**
@@ -66,12 +66,19 @@ const QUERY_SYSTEM = `あなたは PubMed の検索式を組み立てる専門�
 7. broader_query は概念を1つ減らすなどして緩めた式、narrower_query は限定を加えた式にします。不要なら null。
 8. 論文そのものや著者名を創作してはいけません。検索式のみを出力します。`;
 
+/**
+ * Runs on the cost tier by default: turning a question into PubMed advanced
+ * search syntax is a well-specified, mechanical transformation (the 8-rule
+ * system prompt spells out exactly how), and the result is shown to the
+ * researcher as an editable field before it ever runs - a suboptimal query
+ * is visible and fixable, not a silent error.
+ */
 export async function buildPubMedQuery(
   question: string,
   model?: string,
 ): Promise<StructuredResult<BuiltQuery>> {
   return respondStructured<BuiltQuery>({
-    model,
+    model: model ?? aiConfig().cheap,
     system: QUERY_SYSTEM,
     user: question,
     schemaName: "pubmed_query",
@@ -126,6 +133,13 @@ const SUMMARY_SYSTEM = `与えられた論文の書誌情報と抄録のみに�
 4. 検索結果から答えられない場合は、その旨を caveats に明記してください。無理に結論を出さないでください。
 5. 出力は質問と同じ言語で書いてください。`;
 
+/**
+ * Stays on the accurate tier: summarizing across up to 30 abstracts while
+ * staying grounded to only what they say is a real synthesis task, not
+ * extraction, and `pruneHallucinatedPmids` only catches a citation that does
+ * not exist - it cannot catch a claim that quietly drifted from what an
+ * abstract actually said.
+ */
 export async function summarizeLiterature(
   question: string,
   articles: PubMedArticle[],
@@ -151,7 +165,7 @@ export async function summarizeLiterature(
     .join("\n\n---\n\n");
 
   return respondStructured<LiteratureSummary>({
-    model,
+    model: model ?? aiConfig().text,
     system: SUMMARY_SYSTEM,
     user: `質問:\n${question}\n\n検索で得られた論文 (${articles.length} 件):\n\n${corpus}`,
     schemaName: "literature_summary",

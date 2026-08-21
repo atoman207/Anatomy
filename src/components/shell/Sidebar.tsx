@@ -33,7 +33,10 @@ export function Sidebar({
     canAccessAdmin: me?.canAccessAdmin ?? false,
     isPlatformAdmin: me?.isPlatformAdmin ?? false,
   };
-  const groups = visibleGroups(visibility);
+  const groups = visibleGroups(visibility).filter((group) => {
+    if (!pathname.startsWith("/admin")) return true;
+    return group.id !== "record" && group.id !== "tools";
+  });
 
   return (
     <div className="flex h-full flex-col bg-[var(--shell-bg)]">
@@ -176,7 +179,7 @@ function AccountBlock({
     return (
       <div className="shrink-0 border-t border-[var(--shell-border)] p-2">
         <Link
-          href="/admin/account"
+          href="/account"
           onClick={onNavigate}
           title={`${me.displayName} (${me.email})`}
           className="mx-auto grid h-9 w-9 place-items-center overflow-hidden rounded-lg bg-[var(--shell-hover)] text-xs font-semibold text-[var(--shell-active-text)]"
@@ -195,7 +198,7 @@ function AccountBlock({
   return (
     <div className="shrink-0 border-t border-[var(--shell-border)] p-3">
       <Link
-        href="/admin/account"
+        href="/account"
         onClick={onNavigate}
         className="flex items-center gap-2.5 rounded-lg p-2 transition-colors hover:bg-[var(--shell-hover)]"
       >
@@ -225,11 +228,16 @@ function AccountBlock({
       </Link>
 
       <div className="mt-2 flex flex-col gap-1 px-2">
-        {me.isPlatformAdmin && (
-          <span className="inline-flex w-fit items-center rounded px-1.5 py-0.5 text-[10px] font-medium text-[var(--shell-active-text)] ring-1 ring-inset ring-[var(--shell-active-text)]/30">
-            システム管理者
-          </span>
-        )}
+        <span
+          className={cx(
+            "inline-flex w-fit items-center rounded px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset",
+            me.isPlatformAdmin
+              ? "text-[var(--shell-active-text)] ring-[var(--shell-active-text)]/30"
+              : "text-[var(--shell-text-faint)] ring-[var(--shell-border)]",
+          )}
+        >
+          {me.platformRole === "admin" ? "管理者" : "ユーザー"}
+        </span>
         {primaryLab && (
           <span className="truncate text-[10px] text-[var(--shell-text-faint)]">
             {primaryLab.name}

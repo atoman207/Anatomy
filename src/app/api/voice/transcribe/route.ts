@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { transcribeAudio, AiError, isAiEnabled, aiConfig } from "@/lib/ai/openai";
+import { requireAiAccess } from "@/lib/billing/subscription";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -32,6 +33,13 @@ export async function POST(request: Request) {
     const file = form.get("audio");
     const language = String(form.get("language") ?? "ja") || "ja";
     const prompt = form.get("prompt");
+
+    // Transcription spends money per call on the deployment key, so the
+    // laboratory's plan is checked before any audio is forwarded.
+    const gate = await requireAiAccess(String(form.get("labId") ?? ""));
+    if (!gate.ok) {
+      return NextResponse.json({ error: gate.error }, { status: gate.status });
+    }
 
     if (!(file instanceof File)) {
       return NextResponse.json({ error: "音声ファイルがありません。" }, { status: 400 });

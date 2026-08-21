@@ -28,7 +28,13 @@ export type IconName =
   | "paste"
   | "clear"
   | "sun"
-  | "moon";
+  | "moon"
+  | "eye"
+  | "eyeOff"
+  | "calculator"
+  | "reagents"
+  | "beaker"
+  | "edit";
 
 const PATHS: Record<IconName, ReactNode> = {
   upload: <><path d="M12 16V4" /><path d="M7 9l5-5 5 5" /><path d="M4 20h16" /></>,
@@ -64,6 +70,42 @@ const PATHS: Record<IconName, ReactNode> = {
     </>
   ),
   moon: <path d="M15 4.5A8.5 8.5 0 1 0 19.5 15 7 7 0 0 1 15 4.5z" />,
+  eye: <><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></>,
+  eyeOff: (
+    <>
+      <path d="M3 3l18 18" />
+      <path d="M10.6 10.6A3 3 0 0 0 12 15a3 3 0 0 0 2.4-4.4" />
+      <path d="M9.9 5.1A11 11 0 0 1 12 5c6 0 10 7 10 7a18 18 0 0 1-4.2 4.8" />
+      <path d="M6.1 6.1A18 18 0 0 0 2 12s4 7 10 7a10 10 0 0 0 4.1-.8" />
+    </>
+  ),
+  calculator: (
+    <>
+      <rect x="4" y="2" width="16" height="20" rx="2" />
+      <path d="M8 6h8" />
+      <path d="M8 11h1M12 11h1M16 11h1M8 15h1M12 15h1M16 15h1M8 19h1M12 19h1M16 19h1" />
+    </>
+  ),
+  reagents: (
+    <>
+      <path d="M9 2h6" />
+      <path d="M10 2v6.5L5.5 17A2.5 2.5 0 0 0 7.7 21h8.6a2.5 2.5 0 0 0 2.2-3.9L14 8.5V2" />
+      <path d="M8 15h8" />
+    </>
+  ),
+  beaker: (
+    <>
+      <path d="M9 2h6" />
+      <path d="M10 2v7L4.5 18A2 2 0 0 0 6.3 21h11.4a2 2 0 0 0 1.8-3L14 9V2" />
+      <path d="M6.5 15h11" />
+    </>
+  ),
+  edit: (
+    <>
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
+      <path d="M14.5 5.5l3 3" />
+    </>
+  ),
 };
 
 export function Icon({

@@ -5,8 +5,8 @@ import { createAdminSupabase } from "@/lib/supabase/server";
 import {
   assertCanManageLab, assertIsLabOwner, getSessionContext, logAudit,
 } from "@/lib/auth/guards";
-import { LAB_ROLES, LAB_ROLE_LABELS } from "@/lib/auth/roles";
-import type { LabRole } from "@/lib/supabase/types";
+import { LAB_ROLES, LAB_ROLE_LABELS, PLATFORM_ROLES, PLATFORM_ROLE_LABELS } from "@/lib/auth/roles";
+import type { LabRole, PlatformRole } from "@/lib/supabase/types";
 
 export interface ActionResult {
   ok: boolean;
@@ -25,6 +25,11 @@ async function ctxOrThrow() {
   const ctx = await getSessionContext();
   if (!ctx) throw new Error("サインインしていません。");
   return ctx;
+}
+
+function parsePlatformRole(value: FormDataEntryValue | null): PlatformRole | null {
+  const s = String(value ?? "");
+  return (PLATFORM_ROLES as string[]).includes(s) ? (s as PlatformRole) : null;
 }
 
 function parseRole(value: FormDataEntryValue | null): LabRole | null {
@@ -300,6 +305,11 @@ export async function createLabAction(
 ): Promise<ActionResult> {
   try {
     const ctx = await ctxOrThrow();
+    // Laboratory creation is an administrator function. The page is already
+    // gated, but a server action is a public endpoint: without this check a
+    // signed-in User could still POST to it directly.
+    if (!ctx.isPlatformAdmin) return fail("システム管理者のみ利用できます。");
+
     const name = String(formData.get("name") ?? "").trim();
     const description = String(formData.get("description") ?? "").trim() || null;
     if (!name) return fail("研究室名を入力してください。");
@@ -568,5 +578,56 @@ export async function deleteUserAction(
     return done(`${email} を削除しました。`);
   } catch (e) {
     return fail(e instanceof Error ? e.message : "ユーザーを削除できませんでした。");
+  }
+}
+
+/**
+ * Promotes an account to Administrator, or demotes it back to User.
+ *
+ * Written with the service-role client because `profiles.platform_role` is
+ * deliberately unreachable from any browser session - the trigger in
+ * migration 0002 rejects the write otherwise. That is the whole point: the
+ * role can only change through this path, which re-checks the caller first.
+ *
+ * An administrator may not demote themselves. Not a courtesy: the last
+ * administrator demoting themselves would leave the deployment with no way to
+ * promote anyone, recoverable only by editing the database by hand.
+ */
+export async function setPlatformRoleAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  try {
+    const ctx = await ctxOrThrow();
+    if (!ctx.isPlatformAdmin) return fail("システム管理者のみ利用できます。");
+
+    const userId = String(formData.get("user_id") ?? "");
+    const role = parsePlatformRole(formData.get("platform_role"));
+    if (!userId) return fail("ユーザーが指定されていません。");
+    if (!role) return fail("権限の指定が不正です。");
+    if (userId === ctx.user.id && role !== "admin") {
+      return fail("自分自身の管理者権限は解除できません。");
+    }
+
+    const admin = createAdminSupabase();
+    const { data, error } = await admin
+      .from("profiles")
+      .update({ platform_role: role })
+      .eq("id", userId)
+      .select("email")
+      .maybeSingle();
+    if (error) return fail(error.message);
+    if (!data) return fail("ユーザーが見つかりません。");
+
+    await logAudit({
+      labId: null, userId: ctx.user.id, action: "user.platform_role_changed",
+      entity: "user", entityId: userId, detail: { email: data.email, role },
+    });
+
+    revalidatePath("/admin/users");
+    revalidatePath("/admin", "layout");
+    return done(`${data.email} を「${PLATFORM_ROLE_LABELS[role].ja}」にしました。`);
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "権限を変更できませんでした。");
   }
 }

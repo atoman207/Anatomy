@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Callout, Card, Field, Select, TextInput } from "./ui";
+import { Button, Card, EmptyState, Field, Select, TextInput } from "./ui";
 import { createClient } from "@/lib/supabase/client";
+import { useToast } from "@/components/shell/Toast";
 
 export interface LabOption {
   id: string;
@@ -13,44 +14,26 @@ export interface LabOption {
 }
 
 /**
- * Creates a laboratory (via the SECURITY DEFINER RPC, which also inserts the
- * owner membership) and experiments within it.
+ * Creates experiments within a laboratory the signed-in user already
+ * belongs to.
+ *
+ * Laboratory creation itself is an administrative function only, reachable
+ * from `/admin/labs` - a regular user cannot spin up a laboratory from this
+ * page, only work inside one an administrator has already added them to.
  */
 export function ExperimentCreator({ labs }: { labs: LabOption[] }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
-  const [labName, setLabName] = useState("");
   const [expName, setExpName] = useState("");
   const [expDate, setExpDate] = useState(new Date().toISOString().slice(0, 10));
   const [operator, setOperator] = useState("");
   const [labId, setLabId] = useState(labs[0]?.id ?? "");
 
-  async function createLab(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.rpc("create_laboratory", {
-        lab_name: labName.trim(),
-        lab_description: null,
-      });
-      if (error) throw error;
-      setLabName("");
-      router.refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "研究室を作成できませんでした。");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function createExperiment(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    setError(null);
     try {
       const supabase = createClient();
       const { data: userData } = await supabase.auth.getUser();
@@ -66,9 +49,10 @@ export function ExperimentCreator({ labs }: { labs: LabOption[] }) {
       if (error) throw error;
       setExpName("");
       setOperator("");
+      toast("実験を作成しました。", { tone: "good" });
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "実験を作成できませんでした。");
+      toast(e instanceof Error ? e.message : "実験を作成できませんでした。", { tone: "danger" });
     } finally {
       setBusy(false);
     }
@@ -76,23 +60,10 @@ export function ExperimentCreator({ labs }: { labs: LabOption[] }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {error && <Callout tone="danger" title="保存に失敗しました">{error}</Callout>}
-
       {labs.length === 0 ? (
-        <Card title="研究室を作成" subtitle="実験とデータは研究室ごとに分かれます。">
-          <form onSubmit={createLab} className="flex flex-wrap items-end gap-3">
-            <Field label="名称" className="min-w-56 flex-1">
-              <TextInput
-                value={labName}
-                onChange={(e) => setLabName(e.target.value)}
-                required
-              />
-            </Field>
-            <Button type="submit" variant="primary" icon="plus" disabled={busy || !labName.trim()}>
-              作成
-            </Button>
-          </form>
-        </Card>
+        <EmptyState title="所属している研究室がありません">
+          研究室の作成はシステム管理者のみが行えます。管理者に依頼して研究室に追加してもらってください。
+        </EmptyState>
       ) : (
         <Card title="実験を作成">
           <form onSubmit={createExperiment} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 lg:items-end">

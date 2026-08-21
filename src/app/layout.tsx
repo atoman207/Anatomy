@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Noto_Sans_JP, Noto_Serif_JP, Roboto } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/shell/AppShell";
+import { ToastProvider } from "@/components/shell/Toast";
 import { WorkspaceProvider } from "@/components/workspace";
 
 const notoSans = Noto_Sans_JP({
@@ -48,9 +49,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         />
       </head>
       <body className="min-h-dvh font-sans">
-        <WorkspaceProvider>
-          <AppShell>{children}</AppShell>
-        </WorkspaceProvider>
+        <ToastProvider>
+          <WorkspaceProvider>
+            <AppShell>{children}</AppShell>
+          </WorkspaceProvider>
+        </ToastProvider>
       </body>
     </html>
   );

@@ -14,9 +14,22 @@ const API = "https://api.openai.com/v1";
 
 export interface AiConfig {
   enabled: boolean;
-  /** Balanced model for structuring and query building. */
+  /**
+   * The accurate tier, reserved for tasks whose output is hard to verify and
+   * expensive to get wrong: AI Peer Review's critical reading of a manuscript,
+   * and literature summarization's multi-abstract synthesis. Both involve
+   * judgment a cheaper model is more likely to get subtly wrong in a way
+   * nothing downstream catches.
+   */
   text: string;
-  /** Cheaper model for bulk or low-stakes work. */
+  /**
+   * The cost tier, for well-specified, mechanical tasks a researcher already
+   * reviews before anything is saved: building a PubMed query (shown and
+   * editable before it runs) and structuring a voice memo (checked against
+   * the original transcript before it is saved). Both are closer to
+   * extraction/formatting than to open-ended reasoning, which is exactly
+   * where a cheaper model holds up.
+   */
   cheap: string;
   /** File-upload transcription. */
   transcribe: string;
@@ -91,10 +104,10 @@ async function post(
     return await fetch(`${API}${path}`, { ...init, signal: controller.signal });
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") {
-      throw new AiError(`OpenAI への要求が ${timeoutMs / 1000} 秒でタイムアウトしました。`, 504);
+      throw new AiError(`AIへの要求が ${timeoutMs / 1000} 秒でタイムアウトしました。`, 504);
     }
     throw new AiError(
-      e instanceof Error ? e.message : "OpenAI への接続に失敗しました。",
+      e instanceof Error ? e.message : "AIへの接続に失敗しました。",
       502,
     );
   } finally {
@@ -111,7 +124,7 @@ async function failure(res: Response): Promise<AiError> {
     // Non-JSON error body; the status alone will have to do.
   }
   if (res.status === 401) {
-    return new AiError(`OpenAI キーが拒否されました: ${detail}`, 401);
+    return new AiError(`AIキーが拒否されました: ${detail}`, 401);
   }
   if (res.status === 429) {
     return new AiError(`レート制限に達しました: ${detail}`, 429);
@@ -263,7 +276,7 @@ export async function checkAi(): Promise<{
   models: string[];
 }> {
   if (!isAiEnabled()) {
-    return { ok: false, detail: "OPENAI_API_KEY が未設定です", models: [] };
+    return { ok: false, detail: "AI APIキーが未設定です", models: [] };
   }
   try {
     const key = requireKey();
@@ -290,7 +303,7 @@ export async function checkAi(): Promise<{
         models: wanted,
       };
     }
-    return { ok: true, detail: `${available.size} モデル利用可能`, models: wanted };
+    return { ok: true, detail: "接続済み", models: wanted };
   } catch (e) {
     return {
       ok: false,

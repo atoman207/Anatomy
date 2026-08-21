@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useSyncExternalStore } from "react";
-import { Button, Callout, Card, Field, Select, TextInput } from "@/components/ui";
+import { Badge, Button, Callout, Card, Field, Select, TextInput } from "@/components/ui";
 import { useDownload, useWorkspace } from "@/components/workspace";
 import type { DataMatrix } from "@/lib/stats/matrix";
 import { topVariableFeatures } from "@/lib/stats/matrix";
@@ -11,7 +11,9 @@ import { renderVolcano } from "@/lib/plots/volcano";
 import { renderHeatmap } from "@/lib/plots/heatmap";
 import { renderPcaPlot } from "@/lib/plots/pcaPlot";
 import { getTheme, groupStyles, foldGroups, type Mode } from "@/lib/plots/theme";
+import { svgToDataUri } from "@/lib/plots/svg";
 import type { CorrectionMethod } from "@/lib/stats/multiple";
+import { saveFigure } from "@/lib/analyze/actions";
 
 type FigureKind = "volcano" | "heatmap" | "pca";
 
@@ -106,17 +108,20 @@ export function FiguresPanel({
  * paper is exactly what they reviewed on screen.
  */
 function FigureFrame({
-  svg, filename, title, notes, children,
+  svg, filename, title, notes, children, kind, options,
 }: {
   svg: string;
   filename: string;
   title: string;
   notes?: string[];
   children?: React.ReactNode;
+  kind: FigureKind;
+  options: unknown;
 }) {
   const download = useDownload();
   const ws = useWorkspace();
   const [busy, setBusy] = useState(false);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   async function downloadPng(scale: number) {
     setBusy(true);
@@ -162,12 +167,31 @@ function FigureFrame({
           <Button
             size="sm"
             icon="notebook"
-            onClick={() =>
-              ws.addClip(title, `### ${title}\n\n_図を ${filename} として書き出しました。_\n`)
-            }
+            onClick={async () => {
+              // The actual image is embedded, not just a filename reference,
+              // so the note still shows the figure even if it is reopened
+              // after the underlying data has changed.
+              const dataUri = svgToDataUri(svg);
+              ws.addClip(title, `### ${title}\n\n![${title}](${dataUri})\n`);
+              if (!ws.experimentId || !ws.labId) return;
+              setSaveState("saving");
+              const res = await saveFigure({
+                labId: ws.labId,
+                experimentId: ws.experimentId,
+                analysisId: null,
+                kind,
+                title,
+                options,
+                svg,
+              });
+              setSaveState(res.ok ? "saved" : "error");
+            }}
+            disabled={saveState === "saving"}
           >
-            ノートへ
+            {saveState === "saving" ? "保存中…" : "ノートへ"}
           </Button>
+          {saveState === "saved" && <Badge tone="good">実験に記録済み</Badge>}
+          {saveState === "error" && <Badge tone="danger">記録に失敗</Badge>}
         </>
       }
     >
@@ -287,6 +311,8 @@ function VolcanoFigure({
           filename={`volcano_${a}_vs_${b}.svg`}
           title={`ボルケーノプロット — ${a} vs ${b}`}
           notes={result.notes}
+          kind="volcano"
+          options={{ groupA: a, groupB: b, correction, pThreshold, fcThreshold, labelTop, highlight }}
         />
       )}
     </>
@@ -379,6 +405,8 @@ function HeatmapFigure({
         filename="heatmap.svg"
         title={`ヒートマップ — ${datasetName}`}
         notes={render.notes}
+        kind="heatmap"
+        options={{ topN, scaling, clusterRows, clusterColumns, linkage, metric }}
       />
     </>
   );
@@ -473,6 +501,8 @@ function PcaFigure({
         filename="pca_plot.svg"
         title={`PCAスコアプロット — ${datasetName}`}
         notes={render.notes}
+        kind="pca"
+        options={{ center, scale, xComponent: xc, yComponent: yc, showEllipses: ellipses, showSampleLabels: labels }}
       />
     </>
   );

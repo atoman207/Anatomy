@@ -88,7 +88,7 @@ identity is never colour-alone.
 
 ## AI features
 
-Two features use OpenAI. Both are built so the model does the part it is good
+Three features use OpenAI. Each is built so the model does the part it is good
 at and nothing more.
 
 ### 音声メモ (`/voice`)
@@ -99,7 +99,7 @@ Record while you work, then get a structured notebook entry.
 録音 (MediaRecorder)
   → /api/voice/transcribe   gpt-4o-transcribe    音声 → 書き起こし
   → 研究者が書き起こしを確認・修正
-  → /api/voice/structure    gpt-5.6-terra        書き起こし → JSON (Structured Outputs)
+  → /api/voice/structure    gpt-5.6-luna         書き起こし → JSON (Structured Outputs)
   → ノートの Markdown
 ```
 
@@ -127,7 +127,7 @@ Japanese lab speech — the only one to get both `TMT標識` and `IL-1β` right.
 
 ```
 日本語の質問
-  → gpt-5.6-terra            → PubMed 検索式 (MeSH + Title/Abstract)
+  → gpt-5.6-luna             → PubMed 検索式 (MeSH + Title/Abstract)
   → NCBI E-utilities         → 実在する論文（書誌 + 抄録）
   → gpt-5.6-terra (任意)      → 取得した抄録のみに基づく要約
   → Crossref (任意)           → DOI の照合
@@ -150,9 +150,57 @@ Three further guards:
 - **DOIを照合** checks each DOI against Crossref and compares titles, so a
   mistyped identifier is caught before it reaches a manuscript.
 
-Both features degrade rather than fail: without `OPENAI_API_KEY`, the voice page
-still accepts a pasted transcript and literature search passes your text
-straight to PubMed as a literal query.
+Voice and literature degrade rather than fail: without `OPENAI_API_KEY`, the
+voice page still accepts a pasted transcript and literature search passes your
+text straight to PubMed as a literal query. AI Peer Review has no such
+fallback — three model calls are the feature — so it returns 503 while
+unconfigured and requires a Pro-plan-or-above laboratory once billing is set up
+(see Billing below).
+
+### AI査読 (`/peer-review`)
+
+Three independent reviewers, not one blended opinion — the same reason a real
+journal sends a manuscript to a panel instead of one reader:
+
+```
+論文PDF
+  → unpdf                         PDF → 本文テキスト（サーバー側で抽出、原本は保持しない）
+  → gpt-5.6-terra × 3（順に実行）  Reviewer 1: 方法・統計
+                                   Reviewer 2: 研究内容・新規性
+                                   Reviewer 3: 論文構成・論理
+  → 集計（アプリ側で計算）          9項目のカテゴリスコア + 総合評価
+```
+
+Each reviewer runs its own model call with its own system prompt and never
+sees the other two reviewers' output, so a harsh statistics review cannot talk
+a lenient novelty review into agreeing with it. The **総合評価** is the plain
+arithmetic mean of the three reviewers' scores, computed in application code
+rather than by a fourth model call summarizing the other three: a number a
+researcher can recompute by hand from the three scores next to it is more
+trustworthy than one only the model can explain.
+
+Every prompt opens with the same grounding rule as the voice structuring
+prompt: judge only what the text actually says, and when there is not enough
+information to judge a criterion, say so in `minor_concerns` rather than
+guessing or defaulting to a middling score. A review tool that invents a
+"major concern" about content the paper never contained is worse than no
+review at all — the researcher has no easy way to notice the fabrication
+without re-reading the whole paper.
+
+Like the `.xlsx` exception this README opens with, the uploaded PDF is parsed
+on the server and never written to disk or stored — only the extracted text is
+kept (in `peer_reviews.extracted_text`), so a review is always traceable to
+exactly what was reviewed without a multi-megabyte file sitting in the
+database.
+
+**再査読**: revising a manuscript and reviewing the new draft chains the two
+records together (`previous_review_id`), so a laboratory can see whether a
+score actually improved after addressing the concerns, not just look at two
+unconnected reports.
+
+Gated the same way as voice and literature: `requireAiAccess` checks the
+laboratory's plan before the PDF is even read, since three sequential model
+calls cost meaningfully more than the single-call AI features.
 
 ### Models
 
@@ -161,11 +209,21 @@ on the dashboard:
 
 | Variable | Value | Used for |
 |---|---|---|
-| `OPENAI_MODEL_TEXT` | `gpt-5.6-terra` | Structuring, query building, summarizing |
-| `OPENAI_MODEL_CHEAP` | `gpt-5.6-luna` | Reserved for bulk/low-stakes work |
+| `OPENAI_MODEL_TEXT` | `gpt-5.6-terra` | AI Peer Review's three reviewers, literature summarization |
+| `OPENAI_MODEL_CHEAP` | `gpt-5.6-luna` | PubMed query building, voice memo structuring |
 | `OPENAI_MODEL_TRANSCRIBE` | `gpt-4o-transcribe` | File-upload transcription |
 | `OPENAI_MODEL_REALTIME` | `gpt-live-transcribe` | Streaming (not yet wired up) |
 | `OPENAI_MODEL_IMAGE` | `gpt-image-2` | Reserved for figure illustrations |
+
+The two text tiers are chosen per task, not per feature: whichever one is
+cheaper that still holds up on that specific job. `TEXT` is reserved for work
+where a wrong answer looks just as confident as a right one and nothing
+downstream catches it - judging a manuscript, synthesizing across abstracts.
+`CHEAP` runs the well-specified, mechanical tasks a researcher already
+reviews before anything is saved - a PubMed query shown as an editable field,
+a structured voice note checked against its own transcript. Downgrading
+those two cut the model-tier cost of every voice memo and literature search
+without touching the one place accuracy is worth paying for.
 
 ### What is sent where
 
@@ -184,13 +242,31 @@ Two independent levels of authority:
 
 | Level | Source of truth | Grants |
 |---|---|---|
+| **Platform role** | `profiles.platform_role` in the database | The deployment itself: every user, laboratory, experiment and template |
 | **Laboratory role** | `lab_members.role` in the database | Access to one laboratory's data, enforced by row-level security |
-| **Platform admin** | `PLATFORM_ADMIN_EMAILS` in the server environment | Every laboratory, plus user management |
 
-Platform access is deliberately **not** a database column. A row an attacker
-could flip would be a privilege-escalation path; an environment variable with no
-`NEXT_PUBLIC_` prefix never reaches the browser and cannot be changed by anyone
-who gains write access to the database.
+There are exactly two platform roles, and they are the two the product talks
+about:
+
+| Platform role | Japanese | What it can do |
+|---|---|---|
+| `admin` | 管理者 | The whole administration area: full CRUD over accounts, laboratories, experiments and templates, plus the audit trail |
+| `user` | ユーザー | Research tools only. No administration area, and no laboratory creation |
+
+Being an owner or 管理者 *of a laboratory* does not open the administration
+area. Those are research roles; running the deployment is a platform role. That
+separation is what makes `/admin` a genuinely different surface rather than a
+superset of the user one.
+
+**A user cannot grant themselves the role.** `profiles.platform_role` is
+writable only by the service role - a trigger in migration `0002` rejects the
+write otherwise - so the ordinary "edit your own profile" policy is not a
+privilege-escalation path. The role changes only through 管理 → ユーザー, which
+re-checks the caller first.
+
+`PLATFORM_ADMIN_EMAILS` is still read, but only as a lockout-recovery path: a
+listed address is an administrator even if its row says otherwise. It can add an
+administrator, never remove one, so a bad seed cannot lock everyone out.
 
 Laboratory roles, from least to most: **閲覧者** (read-only) → **メンバー**
 (create and edit) → **管理者** (manage members) → **オーナー** (also delete or
@@ -203,12 +279,15 @@ transfer the laboratory).
 | `/login` | Anyone — sign in, sign up, request a password reset |
 | `/auth/callback` | Lands every emailed link (confirmation, recovery, invitation) |
 | `/auth/reset` | Set a new password after a recovery link |
-| `/admin` | Lab admins and owners; platform admins see every laboratory |
-| `/admin/members` | Add, re-role and remove members; transfer ownership |
-| `/admin/labs` | Create, rename and delete laboratories |
-| `/admin/users` | **Platform admins only** — every account on the deployment |
-| `/admin/audit` | Append-only record of every administrative action |
-| `/admin/account` | Any signed-in user — display name, password, memberships |
+| `/` | Any visitor — research tools; 管理者 additionally see the management tiles |
+| `/account` | Any signed-in user — display name, password, memberships, own role |
+| `/admin` | **管理者 only** — deployment-wide statistics and recent activity |
+| `/admin/users` | **管理者 only** — every account: create, confirm, re-role, reset, delete |
+| `/admin/labs` | **管理者 only** — create, rename and delete laboratories |
+| `/admin/members` | **管理者 only** — add, re-role and remove members; transfer ownership |
+| `/admin/experiments` | **管理者 only** — every experiment in every laboratory |
+| `/admin/templates` | **管理者 only** — create, view, edit and delete any template |
+| `/admin/audit` | **管理者 only** — append-only record of every administrative action |
 
 Enforcement happens in three independent places: the proxy redirects signed-out
 visitors, the server layout refuses to render, and every server action
@@ -227,11 +306,32 @@ npm run admin:create -- --email you@example.com --password 'your-password' \
                         --name 'Your Name' --lab 'Cartilage Biology Lab'
 ```
 
-The account is created already confirmed. Add the same address to
-`PLATFORM_ADMIN_EMAILS` in `.env.local` and restart to grant platform access.
+The account is created already confirmed, but `admin:create` does not grant the
+platform role. Prefer `npm run db:seed`, which does both.
+
+Put the credentials in `.env.local` (git-ignored, which is why the password is
+not written into a committed migration):
+
+```ini
+SEED_ADMIN_EMAIL=you@example.com
+SEED_ADMIN_PASSWORD=your-password
+SEED_ADMIN_NAME=Administrator
+SEED_LAB_NAME=          # optional: also create this lab, owned by the admin
+```
+
+Then apply the schema and seed, **in that order** - the seed writes
+`platform_role`, so the migration has to land first:
+
+```bash
+npm run db:push   # needs SUPABASE_DB_URL, or paste the SQL into the SQL Editor
+npm run db:seed
+```
+
+Both are safe to re-run: an existing account has its password reset and its role
+re-applied rather than being duplicated.
 
 Once signed in, further accounts can be created from 管理 → ユーザー without
-touching email at all.
+touching email at all, and promoted or demoted from the same page.
 
 ### Testing it
 
@@ -247,6 +347,159 @@ inherit the highest role present in their laboratory.
 
 ---
 
+## Billing (Stripe)
+
+Plans are **per laboratory**, not per user. Everything in the schema is
+lab-scoped and access is granted through `lab_members`, so the laboratory is
+the only unit where "is this allowed?" has one answer. The owner subscribes,
+and every member of that lab gets the plan.
+
+Billing is optional: with no Stripe keys configured every laboratory sits on
+the free plan and the app behaves exactly as it did before.
+
+### Plans
+
+> **Beta pricing.** Every price is deliberately under ¥100 so the whole
+> subscribe → renew → cancel path can be exercised with real cards for
+> almost nothing. ¥50 is Stripe's minimum charge for JPY, so the cheapest paid
+> plan sits exactly on that floor. These are not the intended production
+> prices.
+
+| | フリー | プロ | チーム |
+|---|---|---|---|
+| Price (monthly) | 無料 | **¥50** | **¥90** |
+| Members | 3 | 10 | unlimited |
+| Experiments | 20 | 200 | unlimited |
+| Datasets | 20 | 200 | unlimited |
+| AI features | — | ✓ | ✓ |
+
+JPY is a zero-decimal currency, so `unit_amount: 50` is ¥50 — not 50 sen.
+
+### What the paid plans gate
+
+Both gates are enforced on the server; neither is a disabled button.
+
+- **AI features** — voice transcription and structuring, literature
+  summarisation, and AI query building. These spend money per call on the
+  deployment's OpenAI key, so the route handlers check the lab's plan before
+  forwarding anything (`requireAiAccess`). Literature *search* degrades
+  instead of failing: PubMed itself costs nothing, so a free lab still gets
+  results with the question passed through as a literal query.
+- **Row quotas** — members, experiments and datasets are capped by
+  `BEFORE INSERT` triggers in the database, not by application code.
+  Experiments are inserted straight from the browser through RLS, and members
+  are added by a service-role action that bypasses RLS entirely; a check in
+  either one would leave the other open. The trigger is the only place both
+  paths must pass through.
+
+Lowering a plan never deletes anything. Existing rows stay; only new inserts
+are refused.
+
+### Setting it up
+
+```bash
+# 1. Test-mode secret key from the Stripe dashboard
+echo 'STRIPE_SECRET_KEY=sk_test_...' >> .env.local
+
+# 2. Create the products and the ¥50 / ¥90 monthly prices, then paste the
+#    printed STRIPE_PRICE_PRO / STRIPE_PRICE_TEAM lines into .env.local
+npm run stripe:setup
+
+# 3. Forward webhooks while developing, and copy the printed signing secret
+#    into STRIPE_WEBHOOK_SECRET
+stripe listen --forward-to localhost:3000/api/stripe/webhook
+```
+
+`npm run stripe:setup` reads its amounts from `src/lib/billing/plans.ts`, so
+the price Stripe charges and the price the app shows cannot drift apart. A
+test asserts the two agree, and that no plan exceeds the beta ceiling.
+
+In production, add the endpoint at
+`https://<your-host>/api/stripe/webhook` under Developers → Webhooks, and
+subscribe it to `checkout.session.completed`,
+`customer.subscription.created|updated|deleted` and `invoice.payment_failed`.
+
+### Going live
+
+Switching `STRIPE_SECRET_KEY` from `sk_test_...` to `sk_live_...` is the only
+switch: every code path reads `isStripeConfigured()` and behaves identically
+either way, so nothing else needs to change in the app itself. A few things
+around it do:
+
+- **No publishable key is used anywhere.** This app never loads Stripe.js in
+  the browser - Checkout and the billing portal are both server-initiated
+  redirects to a Stripe-hosted page - so there is nothing to do with a
+  `pk_live_...` key even if you have one.
+- **`NEXT_PUBLIC_SITE_URL` has to be your real `https://` domain.** Checkout's
+  `success_url`/`cancel_url` and the billing portal's `return_url` are built
+  from it; left at `http://localhost:3000` in production, a customer would be
+  sent to your laptop after paying.
+- **Run `npm run stripe:setup` again with the live key.** Test-mode and
+  live-mode prices are different objects even for the same amount; the script
+  prints new `STRIPE_PRICE_PRO` / `STRIPE_PRICE_TEAM` values for live mode.
+- **The billing portal configuration is per-mode.** A configuration saved
+  under Developers → Test mode does not carry over; save one under Live mode
+  too (Settings → Billing → Customer portal), or `openBillingPortal` will
+  fail with the same "no configuration" error the app already explains.
+- **Reset any labs still on a mock subscription.** Before Stripe was
+  connected, `startCheckout` sent the browser to an in-app mock payment page
+  instead (`/billing/checkout`); "paying" there wrote a plan directly with no
+  real Stripe object behind it. Nothing about adding live keys retires those
+  rows on its own, so run this once to find and clear them:
+
+  ```bash
+  npm run stripe:reset-mock              # lists affected labs; changes nothing
+  npm run stripe:reset-mock -- --apply   # resets them to the free plan
+  ```
+
+### How state stays correct
+
+Stripe is the source of truth for money; `lab_subscriptions` mirrors it, so an
+entitlement check is one local read rather than an API call per request — and
+a Stripe outage degrades to "the plan we last knew about" rather than to a
+broken app.
+
+The webhook defends itself on three fronts:
+
+1. **Signature** — the raw body is verified against `STRIPE_WEBHOOK_SECRET`
+   before it is parsed. The endpoint is public; without this anyone could post
+   themselves a subscription.
+2. **Idempotency** — each event id is inserted into `billing_events` first. A
+   retried delivery loses on the primary key and stops there.
+3. **Ordering** — deliveries are not ordered, so every write records the
+   event's own timestamp and an event older than the stored one is discarded.
+   Otherwise a retried `updated` from ten minutes ago would resurrect a
+   subscription that has since been cancelled.
+
+`past_due` still grants the plan. Stripe retries a failed payment for days, and
+locking a lab out of its own experiment records the morning a card expires is
+the worse failure. `public.lab_plan()` and `statusGrantsAccess()` implement the
+same window, and a test fails if they drift.
+
+### Who can pay
+
+Only the laboratory's **owner** (or a platform administrator). Lab admins
+manage members and data, but spending the lab's money is the owner's decision.
+Every billing server action re-derives that from the database rather than
+trusting the lab id it was handed.
+
+`lab_subscriptions` has row-level security with a select policy and **no write
+policy** — the webhook writes it with the service-role key. A user cannot
+grant their own laboratory a paid plan by writing that row.
+
+### Pages
+
+| Path | What |
+|---|---|
+| `/billing` | Plans, current subscription, usage against each quota, upgrade and portal buttons |
+| `/api/stripe/webhook` | Stripe → app. The only unauthenticated writer of subscription state |
+| `/admin/labs` | Platform administrators see every lab's plan and status |
+
+Cancelling, changing the card and downloading receipts happen in the Stripe
+billing portal rather than being rebuilt here.
+
+---
+
 ## Database
 
 The app is fully usable without Supabase. The database is only needed to save
@@ -254,12 +507,13 @@ experiments, notebook entries, datasets, analyses and figures.
 
 ### Applying the schema
 
-`supabase/migrations/0001_init.sql` creates 14 tables, enum types, triggers,
-helper functions and row-level security policies. Everything is scoped to a
-laboratory; RLS is enforced on every table, so a leaked publishable key cannot
-read another lab's data.
+`supabase/migrations/all.sql` is the single schema file: core tables, enums,
+triggers, RLS, billing quotas, peer review, and reviewer profiles. Everything
+is scoped to a laboratory; RLS is enforced on every table, so a leaked
+publishable key cannot read another lab's data.
 
-Either paste the file into the Supabase SQL editor, or:
+Append new schema changes to the end of `all.sql` — do not add numbered
+migration files. Either paste the file into the Supabase SQL editor, or:
 
 ```bash
 # Project Settings -> Database -> Connection string -> URI
@@ -272,12 +526,14 @@ The dashboard shows connection status and tells you if the schema is missing.
 ### Schema
 
 ```
-profiles · laboratories · lab_members          identity and membership
+profiles · laboratories · lab_members          identity, platform role, membership
 projects · experiments                         the work
 notebook_templates · notebook_entries          the record
 raw_files · sample_sheets · rename_operations  data organization + provenance
 datasets · analyses · figures                  results
 audit_logs                                     append-only trail
+plan_limits · lab_subscriptions · billing_events   plans, Stripe mirror, webhook log
+peer_reviews                                    AI peer review reports, chained by re-review
 ```
 
 `rename_operations` stores the full before/after mapping so a batch rename can
@@ -293,11 +549,16 @@ be audited or reversed months later.
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | for saving | Publishable key (browser-safe) |
 | `SUPABASE_SERVICE_ROLE_KEY` | server only | Health check and admin operations. **Never expose to the browser.** |
 | `SUPABASE_DB_URL` | migrations only | Direct Postgres URI for `npm run db:push` |
-| `PLATFORM_ADMIN_EMAILS` | for admin | Comma-separated addresses with platform-wide rights. **Server-only — never give it a `NEXT_PUBLIC_` prefix.** |
+| `PLATFORM_ADMIN_EMAILS` | optional | Lockout recovery only. Comma-separated addresses treated as 管理者 regardless of `profiles.platform_role`. **Server-only — never give it a `NEXT_PUBLIC_` prefix.** |
+| `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | for `db:seed` | The first administrator. Kept out of committed SQL on purpose |
+| `SEED_ADMIN_NAME` / `SEED_LAB_NAME` | optional | Display name, and a laboratory to create alongside |
 | `NEXT_PUBLIC_SITE_URL` | for email links | Public origin used in confirmation, recovery and invitation links |
 | `OPENAI_API_KEY` | optional | AI features stay disabled while unset |
 | `OPENAI_MODEL_*` | optional | Model IDs are configurable rather than hard-coded |
 | `NCBI_API_KEY` / `NCBI_EMAIL` | optional | PubMed lookups |
+| `STRIPE_SECRET_KEY` | optional | Billing stays disabled while unset; every lab is on the free plan. **Server-only.** |
+| `STRIPE_WEBHOOK_SECRET` | with Stripe | Verifies webhook signatures. The endpoint rejects every request without it |
+| `STRIPE_PRICE_PRO` / `STRIPE_PRICE_TEAM` | with Stripe | Price IDs from `npm run stripe:setup` (¥50 / ¥90 monthly) |
 
 ---
 
@@ -307,12 +568,14 @@ be audited or reversed months later.
 npm run dev            # development server
 npm run build          # production build
 npm run check          # typecheck + lint + unit tests
-npm test               # unit tests (132)
+npm test               # unit tests (195)
 npm run test:e2e       # browser smoke test; needs a server on :3210
 npm run test:e2e:auth  # login, administration and permission denials
 npm run test:e2e:ai    # voice structuring and literature search (uses real API calls)
 npm run admin:create   # create the first administrator account
 npm run db:push        # apply migrations (needs SUPABASE_DB_URL)
+npm run stripe:setup       # create the Stripe products and prices (needs STRIPE_SECRET_KEY)
+npm run stripe:reset-mock  # clear any labs still on a mock (pre-Stripe) subscription
 ```
 
 ### Testing

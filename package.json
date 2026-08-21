@@ -3,19 +3,22 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node --max-http-header-size=262144 ./node_modules/next/dist/bin/next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node --max-http-header-size=262144 ./node_modules/next/dist/bin/next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "tsx --conditions=react-server --test tests/*.test.ts",
     "test:e2e": "node tests/e2e.mjs",
     "db:push": "node scripts/db-push.mjs",
+    "db:seed": "node scripts/seed.mjs",
     "check": "npm run typecheck && npm run lint && npm test",
     "admin:create": "node scripts/create-admin.mjs",
     "test:e2e:auth": "node tests/e2e-auth.mjs",
     "test:e2e:ai": "node tests/e2e-ai.mjs",
-    "test:e2e:speech": "node tests/e2e-speech.mjs"
+    "test:e2e:speech": "node tests/e2e-speech.mjs",
+    "stripe:setup": "node scripts/stripe-setup.mjs",
+    "stripe:reset-mock": "node scripts/stripe-reset-mock.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
@@ -24,7 +27,9 @@
     "next": "16.3.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "stripe": "^22.5.0",
+    "unpdf": "^1.8.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

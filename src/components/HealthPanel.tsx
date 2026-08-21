@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Badge, Button, Callout, Card } from "./ui";
+import { useToast } from "@/components/shell/Toast";
 import type { HealthReport } from "@/app/api/health/route";
 
 /**
@@ -13,16 +14,18 @@ import type { HealthReport } from "@/app/api/health/route";
 export function HealthPanel() {
   const [report, setReport] = useState<HealthReport | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
   async function check() {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch("/api/health", { cache: "no-store" });
       setReport((await res.json()) as HealthReport);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "接続確認に失敗しました");
+      toast(e instanceof Error ? e.message : "接続確認に失敗しました", {
+        tone: "danger",
+        title: "エラー",
+      });
     } finally {
       setLoading(false);
     }
@@ -38,7 +41,12 @@ export function HealthPanel() {
         const json = (await res.json()) as HealthReport;
         if (!cancelled) setReport(json);
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "接続確認に失敗しました");
+        if (!cancelled) {
+          toast(e instanceof Error ? e.message : "接続確認に失敗しました", {
+            tone: "danger",
+            title: "エラー",
+          });
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -46,7 +54,7 @@ export function HealthPanel() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [toast]);
 
   const tone = !report ? "neutral" : report.ok ? "good" : report.configured ? "warn" : "neutral";
 
@@ -71,22 +79,20 @@ export function HealthPanel() {
         </>
       }
     >
-      {error && <Callout tone="danger" title="接続確認に失敗しました">{error}</Callout>}
-
       {report && (
         <div className="flex flex-col gap-3">
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <StatusRow label="認証" ok={report.auth.ok} detail={report.auth.detail} />
             <StatusRow label="REST API" ok={report.rest.ok} detail={report.rest.detail} />
             <StatusRow label="スキーマ" ok={report.schema.ok} detail={report.schema.detail} />
-            <StatusRow label="AI (OpenAI)" ok={report.ai.ok} detail={report.ai.detail} />
+            <StatusRow label="AI" ok={report.ai.ok} detail={report.ai.detail} />
           </div>
 
           {report.configured && !report.schema.ok && report.schema.missing.length > 0 && (
             <Callout tone="warn" title="データベーススキーマが未適用です">
               <p className="mt-1">
                 実験・ノート・図の保存には{" "}
-                <code>supabase/migrations/0001_init.sql</code>{" "}
+                <code>supabase/migrations/all.sql</code>{" "}
                 のテーブルが必要です。<code>SUPABASE_DB_URL</code>{" "}
                 を設定したうえで <code>npm run db:push</code>{" "}
                 を実行するか、Supabase SQL エディタに貼り付けてください。
@@ -104,14 +110,14 @@ export function HealthPanel() {
           {report.configured && !report.ai.ok && (
             <Callout tone="info" title="AI機能">
               {report.ai.enabled
-                ? `OpenAI に接続できません: ${report.ai.detail}`
-                : "OPENAI_API_KEY が未設定です。音声メモと論文検索のAI機能は無効ですが、他の機能はすべて利用できます。"}
+                ? `AIサービスに接続できません: ${report.ai.detail}`
+                : "AI APIキーが未設定です。音声メモと論文検索のAI機能は無効ですが、他の機能はすべて利用できます。"}
             </Callout>
           )}
 
-          {report.ai.ok && report.ai.models.length > 0 && (
+          {report.ai.ok && (
             <Callout tone="good" title="AI機能は有効です">
-              使用モデル: {report.ai.models.join(", ")}
+              音声メモの整形と論文検索などのAI機能が利用できます。
             </Callout>
           )}
 

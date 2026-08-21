@@ -8,6 +8,16 @@ import { Icon } from "@/components/icons";
 import { signOutAction } from "@/lib/auth/actions";
 import { titleForPath } from "./navigation";
 import { subscribeTheme, getTheme, getThemeServer, toggleTheme } from "./themePreference";
+import {
+  subscribeNotifications,
+  getClientNotices,
+  getClientNoticesServer,
+  getReadIds,
+  getReadIdsServer,
+  mergeNotices,
+  countUnread,
+  markNoticesRead,
+} from "./notificationStore";
 import type { MeResponse } from "@/app/api/me/route";
 import type { NotificationsResponse, Notice } from "@/app/api/notifications/route";
 
@@ -69,7 +79,7 @@ function ThemeToggle() {
       aria-pressed={dark}
       aria-label={dark ? "ライト表示に切り替え" : "ダーク表示に切り替え"}
       title={dark ? "ライト表示に切り替え" : "ダーク表示に切り替え"}
-      className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[var(--shell-text-dim)] transition-colors hover:bg-[var(--shell-hover)] hover:text-[var(--shell-text)]"
+      className="grid h-9 w-9 place-items-center rounded-lg text-[var(--shell-text-dim)] transition-colors hover:bg-[var(--shell-hover)] hover:text-[var(--shell-text)]"
     >
       <Icon name={dark ? "moon" : "sun"} className="h-5 w-5" />
     </button>
@@ -79,41 +89,63 @@ function ThemeToggle() {
 function NotificationBell({ notifications }: { notifications: NotificationsResponse | null }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const clientNotices = useSyncExternalStore(
+    subscribeNotifications,
+    getClientNotices,
+    getClientNoticesServer,
+  );
+  const readIds = useSyncExternalStore(
+    subscribeNotifications,
+    getReadIds,
+    getReadIdsServer,
+  );
+
+  const notices = mergeNotices(notifications?.notices ?? [], clientNotices);
+  const unread = countUnread(notices, readIds);
+
+  const close = () => {
+    // Closing the panel counts as reading everything currently listed, so the
+    // red badge clears after the user has had a chance to see the items.
+    markNoticesRead(notices.map((n) => n.id));
+    setOpen(false);
+  };
 
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) close();
     };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open]);
+    // close closes over the current notice ids; re-bind when the list changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, notices]);
 
-  const notices = notifications?.notices ?? [];
-  // Only genuine problems raise the badge; informational items sit quietly in
-  // the list. A count that includes everything trains people to ignore it.
-  const urgent = notices.filter((n) => n.tone === "warn" || n.tone === "danger").length;
+  const toggleOpen = () => {
+    if (open) close();
+    else setOpen(true);
+  };
 
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggleOpen}
         aria-expanded={open}
         aria-haspopup="menu"
-        aria-label={urgent > 0 ? `通知 ${urgent} 件の要対応` : "通知"}
+        aria-label={unread > 0 ? `通知 未読 ${unread} 件` : "通知"}
         className="relative grid h-9 w-9 place-items-center rounded-lg text-[var(--shell-text-dim)] transition-colors hover:bg-[var(--shell-hover)] hover:text-[var(--shell-text)]"
       >
         <svg viewBox="0 0 24 24" aria-hidden className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
           <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0" />
         </svg>
-        {urgent > 0 && (
+        {unread > 0 && (
           <span className="absolute right-1.5 top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--danger)] px-1 text-[9px] font-bold text-white">
-            {urgent > 9 ? "9+" : urgent}
+            {unread > 9 ? "9+" : unread}
           </span>
         )}
       </button>
@@ -125,7 +157,16 @@ function NotificationBell({ notifications }: { notifications: NotificationsRespo
         >
           <div className="flex items-center justify-between border-b border-[var(--shell-border)] px-3 py-2.5">
             <p className="text-[13px] font-semibold text-[var(--shell-text)]">通知</p>
-            <span className="text-[11px] text-[var(--shell-text-faint)]">{notices.length} 件</span>
+            {unread > 0 ? (
+              <span
+                aria-label={`未読 ${unread} 件`}
+                className="grid h-5 min-w-5 place-items-center rounded-full bg-[var(--danger)] px-1.5 text-[10px] font-bold text-white"
+              >
+                {unread > 9 ? "9+" : unread}
+              </span>
+            ) : (
+              <span className="text-[11px] text-[var(--shell-text-faint)]">{notices.length} 件</span>
+            )}
           </div>
           <div className="shell-scroll max-h-96 overflow-y-auto">
             {notices.length === 0 ? (
@@ -135,7 +176,12 @@ function NotificationBell({ notifications }: { notifications: NotificationsRespo
             ) : (
               <ul>
                 {notices.map((n) => (
-                  <NoticeRow key={n.id} notice={n} onNavigate={() => setOpen(false)} />
+                  <NoticeRow
+                    key={n.id}
+                    notice={n}
+                    unread={!readIds.has(n.id)}
+                    onNavigate={close}
+                  />
                 ))}
               </ul>
             )}
@@ -146,7 +192,13 @@ function NotificationBell({ notifications }: { notifications: NotificationsRespo
   );
 }
 
-function NoticeRow({ notice, onNavigate }: { notice: Notice; onNavigate: () => void }) {
+function NoticeRow({
+  notice, unread, onNavigate,
+}: {
+  notice: Notice;
+  unread: boolean;
+  onNavigate: () => void;
+}) {
   const tone = {
     info: { dot: "bg-[var(--shell-text-faint)]", label: "情報" },
     good: { dot: "bg-[var(--shell-accent)]", label: "完了" },
@@ -159,8 +211,15 @@ function NoticeRow({ notice, onNavigate }: { notice: Notice; onNavigate: () => v
       <span aria-hidden className={cx("mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full", tone.dot)} />
       <span className="min-w-0 flex-1">
         <span className="sr-only">{tone.label}: </span>
-        <span className="block text-[12px] font-medium text-[var(--shell-text)]">{notice.title}</span>
-        <span className="block text-[11px] text-[var(--shell-text-dim)]">{notice.detail}</span>
+        <span className={cx(
+          "block text-[12px] text-[var(--shell-text)]",
+          unread ? "font-semibold" : "font-medium",
+        )}>
+          {notice.title}
+        </span>
+        {notice.detail && (
+          <span className="block text-[11px] text-[var(--shell-text-dim)]">{notice.detail}</span>
+        )}
         {notice.at && (
           <span className="mt-0.5 block text-[10px] text-[var(--shell-text-faint)]">
             {new Date(notice.at).toLocaleString("ja-JP")}
@@ -171,7 +230,10 @@ function NoticeRow({ notice, onNavigate }: { notice: Notice; onNavigate: () => v
   );
 
   return (
-    <li className="border-b border-[var(--shell-border)] last:border-0">
+    <li className={cx(
+      "border-b border-[var(--shell-border)] last:border-0",
+      unread && "bg-[var(--shell-hover)]/40",
+    )}>
       {notice.href ? (
         <Link
           href={notice.href}
@@ -282,7 +344,7 @@ function UserButton({ me }: { me: MeResponse | null }) {
 
           <nav className="flex flex-col py-1">
             <Link
-              href="/admin/account"
+              href="/account"
               role="menuitem"
               onClick={() => setOpen(false)}
               className="px-3 py-2 text-[13px] text-[var(--shell-text-dim)] transition-colors hover:bg-[var(--shell-hover)] hover:text-[var(--shell-text)]"

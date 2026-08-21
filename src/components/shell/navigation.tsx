@@ -89,6 +89,18 @@ const icons = {
       <path d="M8 3h8M7.5 14h9" />
     </Icon>
   ),
+  calculator: (
+    <Icon>
+      <rect x="4" y="2" width="16" height="20" rx="2" />
+      <path d="M8 6h8M8 11h1M12 11h1M16 11h1M8 15h1M12 15h1M16 15h1M8 19h1M12 19h1M16 19h1" />
+    </Icon>
+  ),
+  reagents: (
+    <Icon>
+      <path d="M9 2h6M10 2v6.5L5.5 17A2.5 2.5 0 0 0 7.7 21h8.6a2.5 2.5 0 0 0 2.2-3.9L14 8.5V2" />
+      <path d="M8 15h8" />
+    </Icon>
+  ),
   adminHome: (
     <Icon>
       <path d="M12 3 4 7v5c0 4.4 3.2 8.3 8 9 4.8-.7 8-4.6 8-9V7z" />
@@ -113,10 +125,36 @@ const icons = {
       <path d="M5 20a7 7 0 0 1 14 0" />
     </Icon>
   ),
+  templates: (
+    <Icon>
+      <path d="M5 4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z" />
+      <path d="M9 3v18M12 8h4M12 12h4M12 16h4" />
+    </Icon>
+  ),
+  content: (
+    <Icon>
+      <ellipse cx="12" cy="5.5" rx="8" ry="2.5" />
+      <path d="M4 5.5V12c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5V5.5" />
+      <path d="M4 12v6.5c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5V12" />
+    </Icon>
+  ),
   audit: (
     <Icon>
       <path d="M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
       <path d="M14 3v5h5M8 13h8M8 17h5" />
+    </Icon>
+  ),
+  peerReview: (
+    <Icon>
+      <path d="M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
+      <path d="M14 3v5h5" />
+      <path d="m9 14.5 2 2 4.5-4.5" />
+    </Icon>
+  ),
+  billing: (
+    <Icon>
+      <rect x="2.5" y="5" width="19" height="14" rx="2" />
+      <path d="M2.5 10h19M6 15h4" />
     </Icon>
   ),
   account: (
@@ -133,6 +171,13 @@ export const NAV_GROUPS: NavGroup[] = [
     label: null,
     items: [
       { href: "/", label: "ダッシュボード", icon: icons.dashboard, exact: true },
+    ],
+  },
+  {
+    id: "peer-review",
+    label: "AI査読",
+    items: [
+      { href: "/peer-review", label: "AI査読", icon: icons.peerReview },
     ],
   },
   {
@@ -154,6 +199,14 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    id: "tools",
+    label: "ツール",
+    items: [
+      { href: "/calculator", label: "計算ツール", icon: icons.calculator },
+      { href: "/reagents", label: "試薬・Lot", icon: icons.reagents },
+    ],
+  },
+  {
     id: "admin",
     label: "管理",
     adminOnly: true,
@@ -161,7 +214,11 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/admin", label: "概要", icon: icons.adminHome, exact: true, adminOnly: true },
       { href: "/admin/members", label: "メンバー", icon: icons.members, adminOnly: true },
       { href: "/admin/labs", label: "研究室", icon: icons.labs, adminOnly: true },
+      { href: "/admin/experiments", label: "実験", icon: icons.experiments, adminOnly: true },
+      { href: "/admin/templates", label: "テンプレート", icon: icons.templates, adminOnly: true },
       { href: "/admin/users", label: "ユーザー", icon: icons.users, platformOnly: true },
+      { href: "/admin/peer-review", label: "AI査読者", icon: icons.peerReview, platformOnly: true },
+      { href: "/admin/content", label: "コンテンツ管理", icon: icons.content, platformOnly: true },
       { href: "/admin/audit", label: "監査ログ", icon: icons.audit, adminOnly: true },
     ],
   },
@@ -169,7 +226,8 @@ export const NAV_GROUPS: NavGroup[] = [
     id: "personal",
     label: null,
     items: [
-      { href: "/admin/account", label: "アカウント設定", icon: icons.account, authOnly: true },
+      { href: "/billing", label: "料金・支払い", icon: icons.billing, authOnly: true },
+      { href: "/account", label: "アカウント設定", icon: icons.account, authOnly: true },
     ],
   },
 ];

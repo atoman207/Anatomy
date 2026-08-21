@@ -3,7 +3,7 @@ import { PageHeader } from "@/components/shell/PageHeader";
 import { Badge, Callout, Card, EmptyState, StatTile } from "@/components/ui";
 import { requireAdmin } from "@/lib/auth/guards";
 import { createAdminSupabase } from "@/lib/supabase/server";
-import { LAB_ROLE_LABELS } from "@/lib/auth/roles";
+import { LAB_ROLE_LABELS, PLATFORM_ROLE_LABELS } from "@/lib/auth/roles";
 import type { LabRole } from "@/lib/supabase/types";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +21,7 @@ interface Counts {
   analyses: number;
   figures: number;
   notebook_entries: number;
+  notebook_templates: number;
   members: number;
 }
 
@@ -28,13 +29,14 @@ interface Counts {
 async function countsForLabs(labIds: string[]): Promise<Counts> {
   const empty: Counts = {
     experiments: 0, datasets: 0, analyses: 0, figures: 0,
-    notebook_entries: 0, members: 0,
+    notebook_entries: 0, notebook_templates: 0, members: 0,
   };
   if (labIds.length === 0) return empty;
 
   const admin = createAdminSupabase();
   const tables = [
-    "experiments", "datasets", "analyses", "figures", "notebook_entries", "lab_members",
+    "experiments", "datasets", "analyses", "figures", "notebook_entries",
+    "notebook_templates", "lab_members",
   ] as const;
 
   const out = { ...empty };
@@ -49,6 +51,16 @@ async function countsForLabs(labIds: string[]): Promise<Counts> {
   return out;
 }
 
+/** How many accounts hold each platform role. */
+async function platformRoleCounts(): Promise<{ admins: number; users: number }> {
+  const admin = createAdminSupabase();
+  const [{ count: admins }, { count: total }] = await Promise.all([
+    admin.from("profiles").select("id", { count: "exact", head: true }).eq("platform_role", "admin"),
+    admin.from("profiles").select("id", { count: "exact", head: true }),
+  ]);
+  return { admins: admins ?? 0, users: (total ?? 0) - (admins ?? 0) };
+}
+
 export default async function AdminOverviewPage(props: PageProps<"/admin">) {
   const ctx = await requireAdmin();
   const search = await props.searchParams;
@@ -56,6 +68,7 @@ export default async function AdminOverviewPage(props: PageProps<"/admin">) {
 
   const visibleLabs = ctx.isPlatformAdmin ? await allLabs() : ctx.adminLabs;
   const counts = await countsForLabs(visibleLabs.map((l) => l.labId));
+  const roleCounts = await platformRoleCounts();
 
   const recent = await recentAudit(
     ctx.isPlatformAdmin ? null : visibleLabs.map((l) => l.labId),
@@ -83,24 +96,33 @@ export default async function AdminOverviewPage(props: PageProps<"/admin">) {
         </Callout>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <StatTile label="研究室" value={visibleLabs.length} tone="accent" />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+        <StatTile label="管理者" value={roleCounts.admins} tone="accent" />
+        <StatTile label="ユーザー" value={roleCounts.users} />
+        <StatTile label="研究室" value={visibleLabs.length} />
         <StatTile label="メンバー" value={counts.members} />
         <StatTile label="実験" value={counts.experiments} />
+        <StatTile label="テンプレート" value={counts.notebook_templates} />
         <StatTile label="データセット" value={counts.datasets} />
         <StatTile label="解析" value={counts.analyses} />
-        <StatTile label="図" value={counts.figures} />
       </div>
 
       <Card
         title="あなたの権限"
+        subtitle={`${PLATFORM_ROLE_LABELS[ctx.platformRole].ja} — ${PLATFORM_ROLE_LABELS[ctx.platformRole].hint}`}
+        actions={
+          <Link href="/admin/users" className="text-xs text-accent underline">
+            ユーザーの権限を変更
+          </Link>
+        }
       >
         {ctx.memberships.length === 0 ? (
           <EmptyState title="所属している研究室がありません">
             <Link href="/admin/labs" className="text-accent underline">
               研究室を作成
             </Link>
-            してメンバーを招待してください。
+            してメンバーを招待してください。研究室の役割は、管理者権限とは別に
+            研究室内のデータ操作を決めます。
           </EmptyState>
         ) : (
           <ul className="flex flex-col divide-y divide-[var(--border)]">
@@ -121,8 +143,8 @@ export default async function AdminOverviewPage(props: PageProps<"/admin">) {
         )}
         {ctx.isPlatformAdmin && (
           <div className="mt-3">
-            <Callout tone="info" title="システム管理者">
-              すべての研究室とユーザー管理にアクセスできます。
+            <Callout tone="info" title="管理者">
+              すべてのユーザー・研究室・実験・テンプレートを閲覧し、作成・編集・削除できます。
             </Callout>
           </div>
         )}

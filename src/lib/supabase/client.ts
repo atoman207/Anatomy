@@ -1,6 +1,7 @@
 "use client";
 
 import { createBrowserClient } from "@supabase/ssr";
+import { AUTH_COOKIE_ENCODE } from "./authCookies";
 import type { Database } from "./types";
 
 /**
@@ -20,6 +21,8 @@ export function createClient() {
       "Supabase browser client is missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY.",
     );
   }
-  cached = createBrowserClient<Database>(url, key);
+  cached = createBrowserClient<Database>(url, key, {
+    cookies: { encode: AUTH_COOKIE_ENCODE },
+  });
   return cached;
 }

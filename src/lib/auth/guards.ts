@@ -3,8 +3,8 @@ import "server-only";
 import { redirect } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { createServerSupabase, createAdminSupabase, isSupabaseConfigured } from "@/lib/supabase/server";
-import type { LabRole } from "@/lib/supabase/types";
-import { canManageMembers, isPlatformAdminEmail } from "./roles";
+import type { LabRole, PlatformRole } from "@/lib/supabase/types";
+import { canManageMembers, resolvePlatformRole } from "./roles";
 
 export interface LabMembership {
   labId: string;
@@ -20,11 +20,20 @@ export interface SessionContext {
   email: string;
   displayName: string;
   avatarUrl: string | null;
+  /** "admin" or "user" - the deployment-wide role. */
+  platformRole: PlatformRole;
   isPlatformAdmin: boolean;
   memberships: LabMembership[];
   /** Labs where this user may manage members. */
   adminLabs: LabMembership[];
-  /** True when the user can reach the admin area at all. */
+  /**
+   * True when the user can reach the admin area at all.
+   *
+   * Administration is a platform role, not a lab role: a lab owner runs
+   * experiments, an Administrator runs the deployment. Keeping those apart is
+   * what makes the administrator area genuinely different from the user area
+   * rather than a superset of it.
+   */
   canAccessAdmin: boolean;
 }
 
@@ -71,23 +80,39 @@ export async function getSessionContext(): Promise<SessionContext | null> {
     });
   }
 
-  const isPlatformAdmin = isPlatformAdminEmail(user.email);
   const adminLabs = memberships.filter((m) => canManageMembers(m.role));
 
   const metaName =
     (user.user_metadata?.display_name as string | undefined) ??
     (user.user_metadata?.name as string | undefined);
-  const avatarUrl = (user.user_metadata?.avatar_url as string | undefined) || null;
+  const metaAvatar = (user.user_metadata?.avatar_url as string | undefined) || null;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("display_name, avatar_url, platform_role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  // The column decides; the env allowlist can only add an administrator.
+  // Reading it through the user-scoped client is safe because a user may read
+  // their own profile row but - by the trigger in migration 0002 - may never
+  // write this column.
+  const platformRole = resolvePlatformRole(
+    profile?.platform_role as PlatformRole | null | undefined,
+    user.email,
+  );
+  const isPlatformAdmin = platformRole === "admin";
 
   return {
     user,
     email: user.email ?? "",
-    displayName: metaName || (user.email ?? "").split("@")[0] || "user",
-    avatarUrl,
+    displayName: profile?.display_name || metaName || (user.email ?? "").split("@")[0] || "user",
+    avatarUrl: profile?.avatar_url || (metaAvatar?.startsWith("data:") ? null : metaAvatar),
+    platformRole,
     isPlatformAdmin,
     memberships,
     adminLabs,
-    canAccessAdmin: isPlatformAdmin || adminLabs.length > 0,
+    canAccessAdmin: isPlatformAdmin,
   };
 }
 
@@ -98,7 +123,14 @@ export async function requireUser(nextPath = "/admin"): Promise<SessionContext> 
   return ctx;
 }
 
-/** Requires the ability to administer at least one laboratory, or the platform. */
+/**
+ * Requires the Administrator platform role.
+ *
+ * Being an owner or admin *of a laboratory* no longer opens this door: those
+ * are research roles, and the administration area is for running the
+ * deployment. `requirePlatformAdmin` is kept as a distinct name for the pages
+ * that were always platform-only, so the intent of each page stays readable.
+ */
 export async function requireAdmin(nextPath = "/admin"): Promise<SessionContext> {
   const ctx = await requireUser(nextPath);
   if (!ctx.canAccessAdmin) redirect("/?denied=admin");

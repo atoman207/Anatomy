@@ -1,5 +1,8 @@
 /**
- * Applies the schema in supabase/migrations as a single SQL call.
+ * Applies supabase/migrations/all.sql in a single SQL call.
+ *
+ * Schema changes go only into that file — append new sections; do not add
+ * numbered migration files alongside it.
  *
  * Requires a direct Postgres connection string, which is separate from the
  * REST API keys:
@@ -8,7 +11,7 @@
  *
  * Set it as SUPABASE_DB_URL in .env.local, then run: npm run db:push
  */
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
@@ -18,7 +21,7 @@ dotenv.config({ path: ".env.local", quiet: true });
 dotenv.config({ quiet: true });
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const dir = join(root, "supabase", "migrations");
+const schemaPath = join(root, "supabase", "migrations", "all.sql");
 
 const url = process.env.SUPABASE_DB_URL;
 if (!url) {
@@ -28,20 +31,17 @@ if (!url) {
       "  Project Settings -> Database -> Connection string -> URI\n\n" +
       "Then add it to .env.local, for example:\n" +
       "  SUPABASE_DB_URL=postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres\n\n" +
-      "Alternatively, paste supabase/migrations/0001_init.sql into the SQL Editor.\n",
+      "Alternatively, paste supabase/migrations/all.sql into the SQL Editor.\n",
   );
   process.exit(1);
 }
 
-const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
-if (files.length === 0) {
-  console.error("No .sql files found in supabase/migrations");
+if (!existsSync(schemaPath)) {
+  console.error("Missing supabase/migrations/all.sql");
   process.exit(1);
 }
 
-const sql = files
-  .map((f) => readFileSync(join(dir, f), "utf8").trimEnd())
-  .join("\n\n");
+const sql = readFileSync(schemaPath, "utf8");
 
 const client = new pg.Client({
   connectionString: url,
@@ -55,7 +55,7 @@ try {
   await client.connect();
   const { rows } = await client.query("select current_database() db, version() v");
   console.log(`Connected to ${rows[0].db}`);
-  console.log(`Applying schema (${files.join(", ")}) in one call ...`);
+  console.log("Applying schema (all.sql) in one call ...");
   await client.query(sql);
   console.log("ok");
 

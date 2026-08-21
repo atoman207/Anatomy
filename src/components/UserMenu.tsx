@@ -10,7 +10,7 @@ import type { MeResponse } from "@/app/api/me/route";
 
 const SIGNED_OUT: MeResponse = {
   signedIn: false, email: null, displayName: null, avatarUrl: null,
-  isPlatformAdmin: false, canAccessAdmin: false, labs: [],
+  platformRole: "user", isPlatformAdmin: false, canAccessAdmin: false, labs: [],
 };
 
 /**
@@ -144,7 +144,7 @@ export function UserMenu() {
                 管理
               </MenuLink>
             )}
-            <MenuLink href="/admin/account" onClick={() => setOpen(false)}>
+            <MenuLink href="/account" onClick={() => setOpen(false)}>
               アカウント
             </MenuLink>
           </nav>

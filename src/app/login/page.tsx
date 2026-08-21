@@ -1,15 +1,18 @@
 "use client";
 
-import { Suspense, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState, type InputHTMLAttributes } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Button, Callout, Card, Field, TextInput } from "@/components/ui";
+import { Button, Card, Field, TextInput, cx } from "@/components/ui";
+import { useToast } from "@/components/shell/Toast";
 import { Icon } from "@/components/icons";
 import { createClient } from "@/lib/supabase/client";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 type Mode = "signin" | "signup" | "forgot";
 
 const AVATAR_MAX_SOURCE_BYTES = 8 * 1024 * 1024;
 const AVATAR_MAX_DIMENSION = 256;
+const JP_DIAL = "+81";
 
 /** Downscales an arbitrary image file to a small square-ish JPEG data URL. */
 async function resizeAvatarToDataUrl(file: File): Promise<string> {
@@ -28,6 +31,32 @@ async function resizeAvatarToDataUrl(file: File): Promise<string> {
   } finally {
     bitmap.close();
   }
+}
+
+/** Builds +81… from a national number typed without the country code. */
+function japanPhone(national: string): string | null {
+  const raw = national.trim();
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return null;
+  if (raw.startsWith("+")) return `+${digits}`;
+  const rest = digits.startsWith("0")
+    ? digits.slice(1)
+    : digits.startsWith("81")
+      ? digits.slice(2)
+      : digits;
+  return rest ? `${JP_DIAL}${rest}` : null;
+}
+
+/** Drops oversized fields (e.g. avatar data URLs) from the JWT so cookies stay small. */
+async function stripBloatedAuthMetadata(supabase: SupabaseClient): Promise<void> {
+  const { data } = await supabase.auth.getUser();
+  const meta = data.user?.user_metadata;
+  if (!meta || typeof meta !== "object") return;
+  const avatar = meta.avatar_url;
+  if (typeof avatar !== "string") return;
+  if (avatar.length < 200 && !avatar.startsWith("data:")) return;
+  await supabase.auth.updateUser({ data: { avatar_url: "" } });
 }
 
 export default function LoginPage() {
@@ -49,7 +78,7 @@ function LoginForm() {
     rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/experiments";
 
   const [mode, setMode] = useState<Mode>("signin");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(params.get("email") ?? "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -59,29 +88,41 @@ function LoginForm() {
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const avatarInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
+  const { toast } = useToast();
 
   async function onAvatarSelected(file: File | undefined) {
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-      setError("画像ファイルを選択してください。");
+      toast("画像ファイルを選択してください。", { tone: "danger" });
       return;
     }
     if (file.size > AVATAR_MAX_SOURCE_BYTES) {
-      setError("画像サイズが大きすぎます（8MB以下にしてください）。");
+      toast("画像サイズが大きすぎます（8MB以下にしてください）。", { tone: "danger" });
       return;
     }
     try {
       setAvatarPreview(await resizeAvatarToDataUrl(file));
-      setError(null);
     } catch {
-      setError("画像を処理できませんでした。");
+      toast("画像を処理できませんでした。", { tone: "danger" });
     }
   }
 
   const linkError = params.get("error");
   const signedOut = params.get("signedout");
+  const registered = params.get("registered");
+
+  // These reflect a redirect that already happened (logout, signup, a bad
+  // email link) rather than something this component just did, so they are
+  // reported once, on arrival, instead of at the moment they were set.
+  const shown = useRef(false);
+  useEffect(() => {
+    if (shown.current) return;
+    shown.current = true;
+    if (signedOut) toast("ログアウトしました。", { tone: "good" });
+    if (registered) toast("アカウントを作成しました。メールとパスワードでログインしてください。", { tone: "good" });
+    if (linkError) toast(friendlyLinkError(linkError), { tone: "danger", title: "リンクを処理できません" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function siteOrigin(): string {
     if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
@@ -91,8 +132,6 @@ function LoginForm() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    setError(null);
-    setInfo(null);
     try {
       const supabase = createClient();
 
@@ -101,8 +140,9 @@ function LoginForm() {
           redirectTo: `${siteOrigin()}/auth/callback?next=/auth/reset`,
         });
         if (error) throw error;
-        setInfo(
+        toast(
           "再設定リンクを送信しました。そのメールアドレスにアカウントが存在する場合、再設定用リンクが届きます。",
+          { tone: "good" },
         );
         setMode("signin");
         return;
@@ -112,39 +152,38 @@ function LoginForm() {
         if (password !== confirmPassword) {
           throw new Error("パスワードが一致しません。");
         }
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              display_name: displayName || email.split("@")[0],
-              avatar_url: avatarPreview,
-              date_of_birth: dateOfBirth || null,
-              phone_number: phoneNumber || null,
-              major: major || null,
-            },
-            emailRedirectTo: `${siteOrigin()}/auth/callback?next=${encodeURIComponent(next)}`,
-          },
+        const phone = japanPhone(phoneNumber);
+        const res = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email,
+            password,
+            display_name: displayName || email.split("@")[0],
+            date_of_birth: dateOfBirth || null,
+            phone_number: phone,
+            major: major.trim() || null,
+            avatar_url: avatarPreview,
+          }),
         });
-        if (error) throw error;
-        // With email confirmation on there is no session until the link is
-        // clicked, so say so rather than silently doing nothing.
-        if (!data.session) {
-          setInfo(
-            "確認メールを送信しました。メール内の確認リンクを開いてからログインしてください。",
-          );
-          setMode("signin");
-          return;
-        }
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
+        const json = (await res.json()) as { error?: string };
+        if (!res.ok) throw new Error(json.error ?? "アカウントを作成できませんでした。");
+
+        setPassword("");
+        setConfirmPassword("");
+        setMode("signin");
+        router.replace(`/login?registered=1&email=${encodeURIComponent(email)}`);
+        return;
       }
+
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      await stripBloatedAuthMetadata(supabase);
 
       router.push(next);
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "認証に失敗しました。");
+      toast(e instanceof Error ? e.message : "認証に失敗しました。", { tone: "danger" });
     } finally {
       setBusy(false);
     }
@@ -166,35 +205,25 @@ function LoginForm() {
         <h1 className="font-serif text-2xl font-semibold text-ink">{heading}</h1>
       </header>
 
-      {signedOut && <Callout tone="good">ログアウトしました。</Callout>}
-      {linkError && (
-        <Callout tone="danger" title="リンクを処理できません">
-          {linkError}
-        </Callout>
-      )}
-
       <Card className="border-t-[3px] border-t-accent">
         <form onSubmit={submit} className="flex flex-col gap-5">
           {mode === "signup" && (
             <>
               <Field label="アバター画像（任意）">
-                <div className="flex items-center gap-3">
-                  <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-full border border-line bg-surface-2 text-ink-3">
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => avatarInput.current?.click()}
+                    aria-label="アバター画像を選択"
+                    className="grid h-24 w-24 place-items-center overflow-hidden rounded-full border border-line bg-surface-2 text-ink-3 transition-colors hover:border-accent hover:text-accent"
+                  >
                     {avatarPreview ? (
                       // eslint-disable-next-line @next/next/no-img-element -- local preview of a not-yet-uploaded file, not an app asset
                       <img src={avatarPreview} alt="" className="h-full w-full object-cover" />
                     ) : (
-                      <Icon name="user" className="h-6 w-6" />
+                      <Icon name="user" className="h-10 w-10" />
                     )}
-                  </div>
-                  <Button type="button" size="sm" icon="upload" onClick={() => avatarInput.current?.click()}>
-                    画像を選択
-                  </Button>
-                  {avatarPreview && (
-                    <Button type="button" variant="ghost" size="sm" icon="trash" onClick={() => setAvatarPreview(null)}>
-                      削除
-                    </Button>
-                  )}
+                  </button>
                 </div>
                 <input
                   ref={avatarInput}
@@ -223,10 +252,21 @@ function LoginForm() {
                   />
                 </Field>
                 <Field label="電話番号（任意）" htmlFor="phone">
-                  <TextInput
-                    id="phone" type="tel" autoComplete="tel"
-                    value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)}
-                  />
+                  <div className="flex">
+                    <span className="inline-flex items-center rounded-l-md border border-r-0 border-line bg-surface-2 px-3 text-[15px] text-ink-2">
+                      {JP_DIAL}
+                    </span>
+                    <TextInput
+                      id="phone"
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="tel-national"
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      className="rounded-l-none"
+                      placeholder="90-1234-5678"
+                    />
+                  </div>
                 </Field>
               </div>
 
@@ -252,26 +292,29 @@ function LoginForm() {
               htmlFor="password"
               hint={mode === "signup" ? "8文字以上" : undefined}
             >
-              <TextInput
-                id="password" type="password" required minLength={mode === "signup" ? 8 : undefined}
+              <PasswordInput
+                id="password"
+                required
+                minLength={mode === "signup" ? 8 : undefined}
                 autoComplete={mode === "signup" ? "new-password" : "current-password"}
-                value={password} onChange={(e) => setPassword(e.target.value)}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
               />
             </Field>
           )}
 
           {mode === "signup" && (
             <Field label="パスワード確認" htmlFor="confirm-password">
-              <TextInput
-                id="confirm-password" type="password" required minLength={8}
+              <PasswordInput
+                id="confirm-password"
+                required
+                minLength={8}
                 autoComplete="new-password"
-                value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
               />
             </Field>
           )}
-
-          {error && <Callout tone="danger" title="続行できません">{error}</Callout>}
-          {info && <Callout tone="good">{info}</Callout>}
 
           <Button
             type="submit"
@@ -323,7 +366,33 @@ function LoginForm() {
 
   function switchTo(m: Mode) {
     setMode(m);
-    setError(null);
-    setInfo(null);
   }
+}
+
+function friendlyLinkError(raw: string): string {
+  if (/PKCE|code verifier|verification code|invalid_link/i.test(raw)) {
+    return "このリンクは使えません。メールとパスワードでログインしてください。";
+  }
+  return raw;
+}
+
+function PasswordInput({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="relative">
+      <TextInput
+        {...rest}
+        type={visible ? "text" : "password"}
+        className={cx("pr-10", className)}
+      />
+      <button
+        type="button"
+        onClick={() => setVisible((v) => !v)}
+        aria-label={visible ? "パスワードを隠す" : "パスワードを表示"}
+        className="absolute inset-y-0 right-0 grid w-10 place-items-center text-ink-3 hover:text-ink"
+      >
+        <Icon name={visible ? "eyeOff" : "eye"} className="h-4 w-4" />
+      </button>
+    </div>
+  );
 }

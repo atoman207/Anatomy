@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import {
   Badge, Button, Callout, Card, DataTable, Field, Select, StatTile, TextInput,
 } from "@/components/ui";
-import { useDownload, useWorkspace } from "@/components/workspace";
+import { useDownload } from "@/components/workspace";
 import type { DataMatrix } from "@/lib/stats/matrix";
 import { twoSampleTTest, pairedTTest, mannWhitneyU } from "@/lib/stats/ttest";
 import { oneWayAnova, kruskalWallis } from "@/lib/stats/anova";
@@ -17,6 +17,7 @@ import {
   tTestToMarkdown, anovaToMarkdown, pcaToMarkdown, kMeansToMarkdown,
   hierarchicalToMarkdown, differentialToMarkdown, formatP,
 } from "@/lib/notebook/report";
+import { NotebookSaveButton } from "./NotebookSaveButton";
 
 type Method = "ttest" | "anova" | "pca" | "cluster" | "differential";
 
@@ -101,7 +102,6 @@ function TTestSection({
   groups: string[];
   groupNames: string[];
 }) {
-  const ws = useWorkspace();
   const download = useDownload();
   const features = useFeatureIndex(matrix);
   const [a, setA] = useState(groupNames[0] ?? "");
@@ -227,9 +227,13 @@ function TTestSection({
           <Card
             title={`${label} — ${result.t.test}`}
             actions={
-              <Button size="sm" icon="notebook" onClick={() => ws.addClip(`t検定: ${label}`, tTestToMarkdown(result.t, `${label} — ${a} vs ${b}`))}>
-                ノートへ
-              </Button>
+              <NotebookSaveButton
+                title={`t検定: ${label}`}
+                markdown={tTestToMarkdown(result.t, `${label} — ${a} vs ${b}`)}
+                kind="ttest"
+                params={{ feature: label, groupA: a, groupB: b, variant }}
+                result={result.t}
+              />
             }
           >
             <DataTable
@@ -317,7 +321,6 @@ function AnovaSection({
   groups: string[];
   groupNames: string[];
 }) {
-  const ws = useWorkspace();
   const download = useDownload();
   const features = useFeatureIndex(matrix);
   const [selected, setSelected] = useState(0);
@@ -420,9 +423,13 @@ function AnovaSection({
           <Card
             title={`${label} — 分散分析表`}
             actions={
-              <Button size="sm" icon="notebook" onClick={() => ws.addClip(`ANOVA: ${label}`, anovaToMarkdown(anova, `${label} — 一元配置ANOVA`))}>
-                ノートへ
-              </Button>
+              <NotebookSaveButton
+                title={`ANOVA: ${label}`}
+                markdown={anovaToMarkdown(anova, `${label} — 一元配置ANOVA`)}
+                kind="anova"
+                params={{ feature: label, groups: groupNames, correction, useRank }}
+                result={anova}
+              />
             }
           >
             <DataTable
@@ -532,7 +539,6 @@ function PcaSection({
   groups: string[];
   datasetName: string;
 }) {
-  const ws = useWorkspace();
   const download = useDownload();
   const [center, setCenter] = useState(true);
   const [scale, setScale] = useState(false);
@@ -591,9 +597,13 @@ function PcaSection({
                 >
                   スコアCSV
                 </Button>
-                <Button size="sm" icon="notebook" onClick={() => ws.addClip("PCA", pcaToMarkdown(result, `PCA — ${datasetName}`))}>
-                  ノートへ
-                </Button>
+                <NotebookSaveButton
+                  title="PCA"
+                  markdown={pcaToMarkdown(result, `PCA — ${datasetName}`)}
+                  kind="pca"
+                  params={{ dataset: datasetName, center, scale }}
+                  result={result}
+                />
               </>
             }
           >
@@ -658,7 +668,6 @@ function PcaSection({
 /* ------------------------------------------------------------------ */
 
 function ClusterSection({ matrix, groups }: { matrix: DataMatrix; groups: string[] }) {
-  const ws = useWorkspace();
   const [target, setTarget] = useState<"samples" | "features">("samples");
   const [k, setK] = useState(3);
   const [linkage, setLinkage] = useState<"average" | "complete" | "single" | "ward">("average");
@@ -766,9 +775,13 @@ function ClusterSection({ matrix, groups }: { matrix: DataMatrix; groups: string
           <Card
             title="k-means"
             actions={
-              <Button size="sm" icon="notebook" onClick={() => ws.addClip("k-meansクラスタリング", kMeansToMarkdown(km, names))}>
-                ノートへ
-              </Button>
+              <NotebookSaveButton
+                title="k-meansクラスタリング"
+                markdown={kMeansToMarkdown(km, names)}
+                kind="kmeans"
+                params={{ target, k, metric, topN }}
+                result={km}
+              />
             }
           >
             <DataTable
@@ -796,9 +809,13 @@ function ClusterSection({ matrix, groups }: { matrix: DataMatrix; groups: string
           title="階層クラスタリング"
           subtitle={`${linkage} 連結 · ${hc.metric}`}
           actions={
-            <Button size="sm" icon="notebook" onClick={() => ws.addClip("階層クラスタリング", hierarchicalToMarkdown(hc, names))}>
-              ノートへ
-            </Button>
+            <NotebookSaveButton
+              title="階層クラスタリング"
+              markdown={hierarchicalToMarkdown(hc, names)}
+              kind="hierarchical"
+              params={{ target, k, linkage, metric, topN }}
+              result={hc}
+            />
           }
         >
           <DataTable
@@ -830,7 +847,6 @@ function DifferentialSection({
   groups: string[];
   groupNames: string[];
 }) {
-  const ws = useWorkspace();
   const download = useDownload();
   const [a, setA] = useState(groupNames[1] ?? groupNames[0] ?? "");
   const [b, setB] = useState(groupNames[0] ?? "");
@@ -944,9 +960,13 @@ function DifferentialSection({
                 >
                   CSV
                 </Button>
-                <Button size="sm" icon="notebook" onClick={() => ws.addClip(`差次発現 ${a} vs ${b}`, differentialToMarkdown(result))}>
-                  ノートへ
-                </Button>
+                <NotebookSaveButton
+                  title={`差次発現 ${a} vs ${b}`}
+                  markdown={differentialToMarkdown(result)}
+                  kind="differential"
+                  params={{ groupA: a, groupB: b, test, correction, pThreshold, fcThreshold, useAdjusted, dataIsLog }}
+                  result={result}
+                />
               </>
             }
           >

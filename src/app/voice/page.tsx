@@ -1,14 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Badge, Button, Callout, Card, EmptyState, Field, StatTile, TextArea, cx,
 } from "@/components/ui";
+import { useToast } from "@/components/shell/Toast";
 import { useDownload, useWorkspace } from "@/components/workspace";
+import { ExperimentPicker } from "@/components/ExperimentPicker";
 import { Recorder, type Recording } from "@/components/voice/Recorder";
 import { LiveTranscriber } from "@/components/voice/LiveTranscriber";
 import { renderMarkdown } from "@/lib/notebook/markdown";
 import type { StructuredVoiceNote } from "@/lib/ai/voiceNote";
+import {
+  startVoiceNote, updateVoiceNoteEdit, updateVoiceNoteStructured, confirmVoiceNote,
+  listVoiceNotes, type VoiceNoteSummary,
+} from "@/lib/voice/actions";
 
 type Stage = "record" | "transcript" | "structured";
 type Engine = "browser" | "openai";
@@ -35,6 +42,8 @@ interface StructureResponse {
 export default function VoicePage() {
   const ws = useWorkspace();
   const download = useDownload();
+  const router = useRouter();
+  const { toast } = useToast();
 
   // Browser recognition is the default: it is free and shows text as you
   // speak. The paid path stays one click away for accuracy or for Firefox.
@@ -44,54 +53,161 @@ export default function VoicePage() {
   const [editedTranscript, setEditedTranscript] = useState("");
   const [structured, setStructured] = useState<StructureResponse | null>(null);
   const [busy, setBusy] = useState<null | "transcribe" | "structure">(null);
-  const [error, setError] = useState<string | null>(null);
   const [meta, setMeta] = useState<{ model: string; seconds: number | null; ms: number } | null>(null);
+
+  const [voiceNoteId, setVoiceNoteId] = useState<string | null>(null);
+  const [confirmedAt, setConfirmedAt] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [history, setHistory] = useState<VoiceNoteSummary[]>([]);
 
   const stage: Stage = structured ? "structured" : rawTranscript ? "transcript" : "record";
   const transcriptEdited = rawTranscript !== editedTranscript;
+  const locked = confirmedAt !== null;
+
+  useEffect(() => {
+    if (!ws.experimentId) return;
+    let cancelled = false;
+    listVoiceNotes(ws.experimentId).then((res) => {
+      if (!cancelled && res.ok && res.data) setHistory(res.data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [ws.experimentId]);
+
+  /** Paid AI needs a Pro+ laboratory; free plans go to billing with a toast. */
+  async function selectEngine(next: Engine) {
+    if (next === "browser") {
+      setEngine("browser");
+      return;
+    }
+
+    try {
+      const q = ws.labId ? `?labId=${encodeURIComponent(ws.labId)}` : "";
+      const res = await fetch(`/api/ai/access${q}`, { cache: "no-store" });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok) {
+        toast(
+          json.error ??
+            "AI機能はフリープランではご利用いただけません。「料金・支払い」からプロプラン以上にアップグレードしてください。",
+          { tone: "danger", title: "エラー" },
+        );
+        router.push("/billing");
+        return;
+      }
+      setEngine("openai");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "プランの確認に失敗しました。", { tone: "danger", title: "エラー" });
+    }
+  }
+
+  function redirectIfPaymentRequired(status: number, message: string): boolean {
+    if (status !== 402) return false;
+    toast(message, { tone: "danger", title: "エラー" });
+    router.push("/billing");
+    return true;
+  }
+
+  /** Opens (or reuses) the persisted record for the current raw transcript. */
+  async function persistRawTranscript(
+    text: string,
+    engine: "browser" | "openai" | "manual",
+    model: string | null,
+    audioSeconds: number | null,
+  ): Promise<string | null> {
+    if (!ws.experimentId || !ws.labId || voiceNoteId) return voiceNoteId;
+    const res = await startVoiceNote({
+      labId: ws.labId, experimentId: ws.experimentId,
+      engine, model, audioSeconds, rawTranscript: text,
+    });
+    if (res.ok && res.data) {
+      setVoiceNoteId(res.data.id);
+      return res.data.id;
+    }
+    toast(res.error ?? "音声メモの記録に失敗しました。", { tone: "danger" });
+    return null;
+  }
 
   async function transcribe(rec: Recording) {
     setBusy("transcribe");
-    setError(null);
     try {
       const form = new FormData();
       const ext = rec.mimeType.includes("mp4") ? "mp4" : rec.mimeType.includes("ogg") ? "ogg" : "webm";
       form.append("audio", rec.blob, `memo.${ext}`);
       form.append("language", "ja");
+      // The plan that pays for this call belongs to the workspace laboratory.
+      if (ws.labId) form.append("labId", ws.labId);
 
       const res = await fetch("/api/voice/transcribe", { method: "POST", body: form });
       const json = (await res.json()) as TranscribeResponse;
-      if (!res.ok) throw new Error(json.error ?? `文字起こしに失敗しました (${res.status})`);
+      if (!res.ok) {
+        const message = json.error ?? `文字起こしに失敗しました (${res.status})`;
+        if (redirectIfPaymentRequired(res.status, message)) return;
+        throw new Error(message);
+      }
 
       setRawTranscript(json.text);
       setEditedTranscript(json.text);
       setMeta({ model: json.model, seconds: json.audioSeconds, ms: json.elapsedMs });
+      void persistRawTranscript(json.text, "openai", json.model, json.audioSeconds);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "文字起こしに失敗しました。");
+      toast(e instanceof Error ? e.message : "文字起こしに失敗しました。", { tone: "danger" });
     } finally {
       setBusy(null);
     }
   }
 
-  async function structure() {
+  async function structure(idOverride?: string | null) {
     setBusy("structure");
-    setError(null);
     try {
+      const noteId = idOverride ?? voiceNoteId;
+      if (noteId && transcriptEdited) {
+        await updateVoiceNoteEdit(noteId, editedTranscript);
+      }
       const res = await fetch("/api/voice/structure", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          labId: ws.labId,
           transcript: editedTranscript,
           referenceDate: new Date().toISOString().slice(0, 10),
         }),
       });
       const json = (await res.json()) as StructureResponse;
-      if (!res.ok) throw new Error(json.error ?? `構造化に失敗しました (${res.status})`);
+      if (!res.ok) {
+        const message = json.error ?? `構造化に失敗しました (${res.status})`;
+        if (redirectIfPaymentRequired(res.status, message)) return;
+        throw new Error(message);
+      }
       setStructured(json);
+      if (noteId) {
+        await updateVoiceNoteStructured(noteId, json.note, json.model);
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "構造化に失敗しました。");
+      toast(e instanceof Error ? e.message : "構造化に失敗しました。", { tone: "danger" });
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function confirm() {
+    if (!voiceNoteId || !ws.labId || !structured) return;
+    setConfirming(true);
+    try {
+      const res = await confirmVoiceNote({
+        id: voiceNoteId, labId: ws.labId, finalMarkdown: structured.markdown,
+      });
+      if (!res.ok) throw new Error(res.error ?? "確定に失敗しました。");
+      setConfirmedAt(new Date().toISOString());
+      toast("確定しました。この記録は今後変更できません。", { tone: "good" });
+      if (ws.experimentId) {
+        const refreshed = await listVoiceNotes(ws.experimentId);
+        if (refreshed.ok && refreshed.data) setHistory(refreshed.data);
+      }
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "確定に失敗しました。", { tone: "danger" });
+    } finally {
+      setConfirming(false);
     }
   }
 
@@ -101,8 +217,9 @@ export default function VoicePage() {
     setRawTranscript("");
     setEditedTranscript("");
     setStructured(null);
-    setError(null);
     setMeta(null);
+    setVoiceNoteId(null);
+    setConfirmedAt(null);
   }
 
   const previewHtml = useMemo(
@@ -115,6 +232,8 @@ export default function VoicePage() {
       <header>
         <h1 className="text-xl font-semibold text-ink">音声メモ</h1>
       </header>
+
+      <ExperimentPicker helpText="ここで選んだ実験に、書き起こし・AI整形・確定の各段階を記録します。" />
 
       <ol className="flex flex-wrap items-center gap-2 text-xs">
         {[
@@ -136,23 +255,21 @@ export default function VoicePage() {
         ))}
       </ol>
 
-      {error && <Callout tone="danger" title="エラー">{error}</Callout>}
-
       <Card title="文字起こしの方法">
         <div className="grid gap-2 sm:grid-cols-2">
             <EngineOption
               selected={engine === "browser"}
-              onSelect={() => setEngine("browser")}
-              title="ブラウザ音声認識"
-              badge={<Badge tone="good">無料</Badge>}
-              detail="Chrome / Edge / Safari でリアルタイムに文字にします。"
+              onSelect={() => void selectEngine("browser")}
+              title="無料"
+              badge={<Badge tone="good">ブラウザ</Badge>}
+              detail="ブラウザの音声認識でリアルタイムに文字にします。追加費用はかかりません。Chrome / Edge / Safari で利用できます。"
             />
             <EngineOption
               selected={engine === "openai"}
-              onSelect={() => setEngine("openai")}
-              title="OpenAI で文字起こし"
+              onSelect={() => void selectEngine("openai")}
+              title="有料"
               badge={<Badge tone="neutral">従量課金</Badge>}
-              detail="録音してから文字にします。すべてのブラウザで使えます。"
+              detail="録音した音声をAIが文字起こしします。書き起こし後は内容をノート形式に自動整形でき、すべてのブラウザで利用できます。研究室がプロプラン以上を契約している必要があります。"
             />
           </div>
       </Card>
@@ -172,12 +289,13 @@ export default function VoicePage() {
               setRawTranscript(text);
               setEditedTranscript(text);
               setMeta(null);
-              setError(null);
+              void persistRawTranscript(text, "browser", null, null);
             }}
             onUnavailable={(reason) => {
-              // Fall back rather than dead-end: the paid path works everywhere.
-              setError(reason);
-              setEngine("openai");
+              // Fall back rather than dead-end: the paid path works everywhere,
+              // subject to the same plan gate as clicking the option directly.
+              toast(reason, { tone: "danger", title: "エラー" });
+              void selectEngine("openai");
             }}
           />
         </Card>
@@ -235,9 +353,10 @@ export default function VoicePage() {
               variant="primary"
               icon="notebook"
               disabled={!editedTranscript.trim() || busy !== null}
-              onClick={() => {
+              onClick={async () => {
                 setRawTranscript(editedTranscript);
-                void structure();
+                const id = await persistRawTranscript(editedTranscript, "manual", null, null);
+                void structure(id);
               }}
             >
               ノートに整形
@@ -251,12 +370,13 @@ export default function VoicePage() {
           title="書き起こし"
           subtitle={
             meta
-              ? `${meta.model} · 音声 ${meta.seconds ? meta.seconds.toFixed(1) + " 秒" : "長さ不明"}`
+              ? `音声 ${meta.seconds ? meta.seconds.toFixed(1) + " 秒" : "長さ不明"}`
               : "手入力"
           }
           actions={
             <>
               {transcriptEdited && <Badge tone="warn">編集済み</Badge>}
+              {locked && <Badge tone="good">確定済み・変更不可</Badge>}
               <Button
                 size="sm"
                 icon="download"
@@ -268,8 +388,8 @@ export default function VoicePage() {
                 size="sm"
                 variant="primary"
                 icon="notebook"
-                onClick={structure}
-                disabled={busy !== null || !editedTranscript.trim()}
+                onClick={() => structure()}
+                disabled={busy !== null || !editedTranscript.trim() || locked}
               >
                 {busy === "structure" ? "整形中…" : structured ? "再整形" : "ノートに整形"}
               </Button>
@@ -282,6 +402,7 @@ export default function VoicePage() {
               onChange={(e) => setEditedTranscript(e.target.value)}
               className="min-h-32 font-mono text-[13px] leading-relaxed"
               aria-label="書き起こしテキスト"
+              disabled={locked}
             />
           </div>
           {transcriptEdited && (
@@ -314,7 +435,7 @@ export default function VoicePage() {
           <div className="grid gap-5 lg:grid-cols-2">
             <Card
               title="抽出された項目"
-              subtitle={`${structured.model} · ${structured.usage.totalTokens} tokens · ${(structured.elapsedMs / 1000).toFixed(1)} 秒`}
+              subtitle={`${structured.usage.totalTokens} トークン · ${(structured.elapsedMs / 1000).toFixed(1)} 秒`}
             >
               <ExtractedFields note={structured.note} />
             </Card>
@@ -338,7 +459,6 @@ export default function VoicePage() {
                   </Button>
                   <Button
                     size="sm"
-                    variant="primary"
                     icon="notebook"
                     onClick={() =>
                       ws.addClip(
@@ -347,11 +467,32 @@ export default function VoicePage() {
                       )
                     }
                   >
-                    ノートへ
+                    ノートへ（下書き）
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    icon="check"
+                    onClick={confirm}
+                    disabled={!voiceNoteId || !ws.experimentId || confirming || locked}
+                    title={
+                      !ws.experimentId
+                        ? "上で実験を選択してください"
+                        : locked
+                          ? "すでに確定済みです"
+                          : undefined
+                    }
+                  >
+                    {locked ? "確定済み" : confirming ? "確定中…" : "確定して記録"}
                   </Button>
                 </>
               }
             >
+              {locked && (
+                <Callout tone="good">
+                  {new Date(confirmedAt!).toLocaleString()} に確定しました。この記録（元の書き起こし・編集・AI整形・確定版）は今後変更できません。
+                </Callout>
+              )}
               <div
                 className="prose-note max-h-[32rem] overflow-y-auto rounded-lg border border-line bg-surface-1 px-4 py-3"
                 dangerouslySetInnerHTML={{ __html: previewHtml }}
@@ -359,6 +500,37 @@ export default function VoicePage() {
             </Card>
           </div>
         </>
+      )}
+
+      {ws.experimentId && history.length > 0 && (
+        <Card
+          title={`この実験の音声メモ履歴（${history.length}）`}
+          subtitle="確定済みの記録は変更できません。"
+        >
+          <ul className="flex flex-col gap-2">
+            {history.map((h) => (
+              <li
+                key={h.id}
+                className="flex items-center justify-between gap-3 rounded-lg border border-line px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-xs text-ink-2">
+                    {(h.edited_transcript || h.raw_transcript || "（書き起こしなし）").slice(0, 80)}
+                  </p>
+                  <p className="text-[11px] text-ink-3">
+                    {new Date(h.created_at).toLocaleString()}
+                    {h.engine && <> · {h.engine}</>}
+                  </p>
+                </div>
+                {h.confirmed_at ? (
+                  <Badge tone="good">確定済み</Badge>
+                ) : (
+                  <Badge tone="warn">未確定</Badge>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
 
       {ws.clips.length > 0 && (

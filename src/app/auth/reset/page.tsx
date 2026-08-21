@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button, Callout, Card, Field, TextInput } from "@/components/ui";
+import { useToast } from "@/components/shell/Toast";
 import { createClient } from "@/lib/supabase/client";
 
 /**
@@ -19,16 +20,16 @@ export default function ResetPasswordPage() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const supabase = createClient();
-        const { data } = await supabase.auth.getSession();
-        if (!cancelled) setHasSession(Boolean(data.session));
+        const { data } = await supabase.auth.getUser();
+        if (!cancelled) setHasSession(Boolean(data.user));
       } catch {
         if (!cancelled) setHasSession(false);
       } finally {
@@ -43,17 +44,17 @@ export default function ResetPasswordPage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    setError(null);
     try {
       if (password.length < 8) throw new Error("パスワードは8文字以上にしてください。");
       if (password !== confirm) throw new Error("パスワードが一致しません。");
       const supabase = createClient();
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
+      toast("パスワードを変更しました。", { tone: "good" });
       setDone(true);
       setTimeout(() => router.push("/experiments"), 1500);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "パスワードを設定できませんでした。");
+      toast(e instanceof Error ? e.message : "パスワードを設定できませんでした。", { tone: "danger" });
     } finally {
       setBusy(false);
     }
@@ -78,9 +79,9 @@ export default function ResetPasswordPage() {
           から新しいリンクをリクエストしてください。
         </Callout>
       ) : done ? (
-        <Callout tone="good" title="変更しました">
-          実験一覧へ移動します…
-        </Callout>
+        <Card className="border-t-[3px] border-t-accent shadow-[var(--shadow-md)]">
+          <p className="text-[15px] text-ink-3">実験一覧へ移動します…</p>
+        </Card>
       ) : (
         <Card className="animate-fade-in-up animate-delay-1 border-t-[3px] border-t-accent shadow-[var(--shadow-md)]">
           <form onSubmit={submit} className="flex flex-col gap-5">
@@ -96,7 +97,6 @@ export default function ResetPasswordPage() {
                 value={confirm} onChange={(e) => setConfirm(e.target.value)}
               />
             </Field>
-            {error && <Callout tone="danger" title="続行できません">{error}</Callout>}
             <Button type="submit" variant="primary" disabled={busy} icon="lock" className="mt-1 w-full">
               {busy ? "…" : "設定する"}
             </Button>

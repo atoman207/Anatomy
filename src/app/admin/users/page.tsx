@@ -2,11 +2,12 @@ import { Badge, Callout, Card, Field, StatTile, TextInput } from "@/components/u
 import { PageHeader } from "@/components/shell/PageHeader";
 import { requirePlatformAdmin } from "@/lib/auth/guards";
 import { createAdminSupabase } from "@/lib/supabase/server";
-import { LAB_ROLE_LABELS } from "@/lib/auth/roles";
-import type { LabRole } from "@/lib/supabase/types";
+import { LAB_ROLE_LABELS, PLATFORM_ROLE_LABELS } from "@/lib/auth/roles";
+import type { LabRole, PlatformRole } from "@/lib/supabase/types";
 import { ActionForm, InlineActionForm } from "@/components/admin/ActionForm";
 import {
   createUserAction, confirmUserAction, deleteUserAction, sendPasswordResetAction,
+  setPlatformRoleAction,
 } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +20,7 @@ interface UserView {
   createdAt: string;
   lastSignIn: string | null;
   labs: { name: string; role: string }[];
-  isPlatformAdmin: boolean;
+  platformRole: PlatformRole;
 }
 
 /**
@@ -52,7 +53,7 @@ export default async function UsersPage() {
         createdAt: u.created_at,
         lastSignIn: u.last_sign_in_at ?? null,
         labs: [],
-        isPlatformAdmin: false,
+        platformRole: "user",
       });
     }
     if (data.users.length < 200) break;
@@ -70,19 +71,28 @@ export default async function UsersPage() {
     if (!lab) continue;
     byUser.set(m.user_id, [...(byUser.get(m.user_id) ?? []), { name: lab.name, role: m.role }]);
   }
+  // Platform roles come from `profiles`, which is the authority. Reading them
+  // here rather than inferring from the signed-in administrator's own address
+  // is what lets this table show who *else* is an administrator.
+  const { data: profiles } = await admin.from("profiles").select("id, platform_role");
+  const roleById = new Map(
+    (profiles ?? []).map((p) => [p.id, (p.platform_role ?? "user") as PlatformRole]),
+  );
   for (const u of users) {
     u.labs = byUser.get(u.id) ?? [];
-    u.isPlatformAdmin = u.email.toLowerCase() === ctx.email.toLowerCase();
+    u.platformRole = roleById.get(u.id) ?? "user";
   }
 
   const unconfirmed = users.filter((u) => !u.confirmed).length;
   const neverSignedIn = users.filter((u) => !u.lastSignIn).length;
+  const administrators = users.filter((u) => u.platformRole === "admin").length;
 
   return (
     <div className="flex flex-col gap-4">
       <PageHeader title="ユーザー" description="この環境のすべてのアカウントを管理します。システム管理者のみ。" />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <StatTile label="ユーザー" value={users.length} tone="accent" />
+        <StatTile label="管理者" value={administrators} tone="good" />
         <StatTile label="未確認" value={unconfirmed} tone={unconfirmed ? "warn" : "good"} />
         <StatTile label="未サインイン" value={neverSignedIn} />
         <StatTile label="研究室所属" value={users.filter((u) => u.labs.length > 0).length} />
@@ -93,7 +103,7 @@ export default async function UsersPage() {
           <table className="w-full border-collapse text-xs">
             <thead className="bg-surface-2">
               <tr>
-                {["メール", "名前", "状態", "研究室", "最終サインイン", "操作"].map((h) => (
+                {["メール", "名前", "権限", "状態", "研究室", "最終サインイン", "操作"].map((h) => (
                   <th key={h} className="whitespace-nowrap border-b border-line px-2.5 py-2 text-left font-semibold text-ink-2">
                     {h}
                   </th>
@@ -105,13 +115,13 @@ export default async function UsersPage() {
                 <tr key={u.id} className="even:bg-surface-2/40 align-top">
                   <td className="border-b border-line px-2.5 py-2 font-mono text-ink">
                     {u.email}
-                    {u.isPlatformAdmin && (
-                      <Badge tone="accent">
-                        <span className="ml-0">システム管理者</span>
-                      </Badge>
-                    )}
                   </td>
                   <td className="border-b border-line px-2.5 py-2 text-ink-2">{u.displayName}</td>
+                  <td className="border-b border-line px-2.5 py-2">
+                    <Badge tone={u.platformRole === "admin" ? "accent" : "neutral"}>
+                      {PLATFORM_ROLE_LABELS[u.platformRole].ja}
+                    </Badge>
+                  </td>
                   <td className="border-b border-line px-2.5 py-2">
                     {u.confirmed ? (
                       <span className="text-good">✓ 確認済み</span>
@@ -132,6 +142,25 @@ export default async function UsersPage() {
                   </td>
                   <td className="border-b border-line px-2.5 py-2">
                     <div className="flex flex-col gap-1.5">
+                      {/* Demoting yourself is refused by the action too; hiding
+                          it here keeps the last administrator from reaching for
+                          a button that cannot work. */}
+                      {u.id !== ctx.user.id && (
+                        <InlineActionForm
+                          action={setPlatformRoleAction}
+                          hidden={{
+                            user_id: u.id,
+                            platform_role: u.platformRole === "admin" ? "user" : "admin",
+                          }}
+                          submitLabel={u.platformRole === "admin" ? "ユーザーに降格" : "管理者に昇格"}
+                          icon={u.platformRole === "admin" ? "user" : "lock"}
+                          confirm={
+                            u.platformRole === "admin"
+                              ? `${u.email} の管理者権限を解除しますか？`
+                              : `${u.email} に全ユーザー・全研究室の管理権限を与えますか？`
+                          }
+                        />
+                      )}
                       {!u.confirmed && (
                         <InlineActionForm
                           action={confirmUserAction}
@@ -197,10 +226,28 @@ export default async function UsersPage() {
         </div>
       </Card>
 
-      <Card title="システム管理者">
-        <Callout tone="info">
-          システム管理者はサーバー設定で指定されます。追加・変更は運用担当者に依頼してください。
-        </Callout>
+      <Card title="権限について" subtitle="この環境の権限は「管理者」と「ユーザー」の2種類です。">
+        <ul className="flex flex-col divide-y divide-[var(--border)]">
+          {(["admin", "user"] as PlatformRole[]).map((role) => (
+            <li key={role} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-ink">
+                  {PLATFORM_ROLE_LABELS[role].ja}
+                </p>
+                <p className="text-xs text-ink-3">{PLATFORM_ROLE_LABELS[role].hint}</p>
+              </div>
+              <Badge tone={role === "admin" ? "accent" : "neutral"}>
+                {users.filter((u) => u.platformRole === role).length} 名
+              </Badge>
+            </li>
+          ))}
+        </ul>
+        <div className="mt-3">
+          <Callout tone="info">
+            権限はデータベース（profiles.platform_role）に保存され、上の表から変更できます。
+            ユーザー自身が自分の権限を書き換えることはできません。
+          </Callout>
+        </div>
       </Card>
     </div>
   );

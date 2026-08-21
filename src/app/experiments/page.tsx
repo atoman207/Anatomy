@@ -78,11 +78,7 @@ export default async function ExperimentsPage() {
 
       <ExperimentCreator labs={labs} />
 
-      {labs.length === 0 ? (
-        <EmptyState title="研究室がまだありません">
-          上で研究室を作成すると、実験の記録を始められます。
-        </EmptyState>
-      ) : (experiments ?? []).length === 0 ? (
+      {labs.length === 0 ? null : (experiments ?? []).length === 0 ? (
         <EmptyState title="実験はまだありません">
           上で最初の実験を作成してください。
         </EmptyState>

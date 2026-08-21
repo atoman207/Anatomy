@@ -116,6 +116,21 @@ export function renderMarkdown(md: string): string {
       continue;
     }
 
+    // --- image ---
+    // Restricted to data: URIs. A figure is embedded once, at save time, as
+    // its own base64 payload - never a remote URL - so opening an old note
+    // later can never trigger a network request or show a different image
+    // than what was actually saved.
+    const image = trimmed.match(/^!\[([^\]]*)\]\((data:image\/[a-z0-9+.-]+;base64,[a-zA-Z0-9+/=]+)\)$/);
+    if (image) {
+      closeList(listStack);
+      out.push(
+        `<img src="${escapeHtml(image[2])}" alt="${escapeHtml(image[1])}" style="max-width:100%;height:auto;border-radius:8px;border:1px solid var(--line);" />`,
+      );
+      i++;
+      continue;
+    }
+
     // --- lists ---
     const ul = trimmed.match(/^[-*+]\s+(.*)$/);
     const ol = trimmed.match(/^\d+[.)]\s+(.*)$/);

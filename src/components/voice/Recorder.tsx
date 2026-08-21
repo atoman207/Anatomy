@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Button, Callout } from "@/components/ui";
+import { Button } from "@/components/ui";
+import { useToast } from "@/components/shell/Toast";
 
 export interface Recording {
   blob: Blob;
@@ -39,7 +40,7 @@ export function Recorder({
   const [state, setState] = useState<"idle" | "recording" | "paused">("idle");
   const [seconds, setSeconds] = useState(0);
   const [level, setLevel] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
   // Read from the browser rather than written into state by an effect: the
   // server has no MediaRecorder, so it renders the optimistic case and the
   // real answer arrives with the first client read.
@@ -73,7 +74,6 @@ export function Recorder({
   useEffect(() => cleanup, [cleanup]);
 
   async function start() {
-    setError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -126,7 +126,7 @@ export function Recorder({
             bytes: blob.size,
           });
         } else {
-          setError("録音データが空でした。マイクを確認してください。");
+          toast("録音データが空でした。マイクを確認してください。", { tone: "danger" });
         }
       };
 
@@ -147,7 +147,7 @@ export function Recorder({
             : e instanceof Error
               ? e.message
               : "録音を開始できませんでした。";
-      setError(message);
+      toast(message, { tone: "danger" });
     }
   }
 
@@ -181,10 +181,10 @@ export function Recorder({
 
   if (!supported) {
     return (
-      <Callout tone="warn" title="このブラウザは録音に対応していません">
-        Chrome、Edge、Firefox、または Safari の最新版をお使いください。
+      <p className="text-sm text-ink-2">
+        このブラウザは録音に対応していません。Chrome、Edge、Firefox、または Safari の最新版をお使いください。
         書き起こしテキストを直接貼り付けることもできます。
-      </Callout>
+      </p>
     );
   }
 
@@ -192,8 +192,6 @@ export function Recorder({
 
   return (
     <div className="flex flex-col gap-3">
-      {error && <Callout tone="danger" title="録音できません">{error}</Callout>}
-
       <div className="flex flex-wrap items-center gap-3">
         {state === "idle" ? (
           <Button variant="primary" icon="mic" onClick={start} disabled={disabled}>

@@ -72,7 +72,7 @@ export async function GET() {
       id: "setup-ai",
       tone: "info",
       title: "AI機能が無効です",
-      detail: "OPENAI_API_KEY を設定すると音声メモの整形と論文検索が使えます。",
+      detail: "AI APIキーを設定すると音声メモの整形と論文検索が使えます。",
       at: null,
       href: "/",
     });
@@ -92,7 +92,7 @@ export async function GET() {
       title: "メールアドレスが未確認です",
       detail: "確認メールのリンクを開いてください。",
       at: null,
-      href: "/admin/account",
+      href: "/account",
     });
   }
 

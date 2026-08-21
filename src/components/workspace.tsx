@@ -30,6 +30,14 @@ export interface WorkspaceState {
   dataset: LoadedDataset | null;
   /** Markdown blocks queued for the notebook. */
   clips: WorkspaceClip[];
+  /**
+   * The experiment every save-to-database action targets. Chosen once with
+   * the ExperimentPicker and shared across every tool, so a researcher does
+   * not have to re-select it on every page.
+   */
+  experimentId: string | null;
+  labId: string | null;
+  experimentLabel: string | null;
 }
 
 const EMPTY: WorkspaceState = {
@@ -38,6 +46,9 @@ const EMPTY: WorkspaceState = {
   sheet: null,
   dataset: null,
   clips: [],
+  experimentId: null,
+  labId: null,
+  experimentLabel: null,
 };
 
 const STORAGE_KEY = "chondro.workspace.v1";
@@ -114,6 +125,7 @@ export interface WorkspaceApi extends WorkspaceState {
   addClip: (title: string, markdown: string) => void;
   removeClip: (id: string) => void;
   clearClips: () => void;
+  setExperiment: (v: { experimentId: string | null; labId: string | null; label: string | null }) => void;
   reset: () => void;
 }
 
@@ -142,6 +154,8 @@ export function useWorkspace(): WorkspaceApi {
         })),
       removeClip: (id) => update((s) => ({ ...s, clips: s.clips.filter((c) => c.id !== id) })),
       clearClips: () => update((s) => ({ ...s, clips: [] })),
+      setExperiment: ({ experimentId, labId, label }) =>
+        update({ experimentId, labId, experimentLabel: label }),
       reset: () => update(() => EMPTY),
     }),
     [snapshot],

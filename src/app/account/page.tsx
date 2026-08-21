@@ -3,7 +3,7 @@ import { PageHeader } from "@/components/shell/PageHeader";
 import { requireUser } from "@/lib/auth/guards";
 import { ActionForm } from "@/components/admin/ActionForm";
 import { updateDisplayNameAction, changePasswordAction } from "@/lib/auth/actions";
-import { LAB_ROLE_LABELS } from "@/lib/auth/roles";
+import { LAB_ROLE_LABELS, PLATFORM_ROLE_LABELS } from "@/lib/auth/roles";
 import type { LabRole } from "@/lib/supabase/types";
 import { SignOutButton } from "@/components/admin/SignOutButton";
 
@@ -17,7 +17,7 @@ const ROLE_HINTS_JA: Record<LabRole, string> = {
 };
 
 export default async function AccountPage() {
-  const ctx = await requireUser("/admin/account");
+  const ctx = await requireUser("/account");
 
   return (
     <div className="flex flex-col gap-4">
@@ -43,10 +43,15 @@ export default async function AccountPage() {
               new Date(ctx.user.created_at).toLocaleString("ja-JP"),
             ],
             [
-              "システム管理者",
-              ctx.isPlatformAdmin
-                ? <Badge key="p" tone="accent">はい</Badge>
-                : <span key="p" className="text-ink-3">いいえ</span>,
+              "権限",
+              <span key="p" className="flex flex-wrap items-center gap-2">
+                <Badge tone={ctx.isPlatformAdmin ? "accent" : "neutral"}>
+                  {PLATFORM_ROLE_LABELS[ctx.platformRole].ja}
+                </Badge>
+                <span className="text-xs text-ink-3">
+                  {PLATFORM_ROLE_LABELS[ctx.platformRole].hint}
+                </span>
+              </span>,
             ],
           ]}
         />

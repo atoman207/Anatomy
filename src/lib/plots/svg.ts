@@ -1,5 +1,19 @@
 import type { MarkerShape } from "./theme";
 
+/**
+ * Encodes an SVG string as a base64 data URI, for embedding a figure
+ * directly in the notebook rather than only linking to an exported file.
+ *
+ * `btoa` only accepts Latin-1, and every plot title or axis label here can
+ * contain Japanese text, so the string is UTF-8 encoded first.
+ */
+export function svgToDataUri(svg: string): string {
+  const utf8 = encodeURIComponent(svg).replace(/%([0-9A-F]{2})/g, (_, hex) =>
+    String.fromCharCode(parseInt(hex, 16)),
+  );
+  return `data:image/svg+xml;base64,${btoa(utf8)}`;
+}
+
 /** Escapes text destined for SVG markup. */
 export function esc(s: string): string {
   return String(s)

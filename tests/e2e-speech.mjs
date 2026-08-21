@@ -205,12 +205,12 @@ try {
   await page.waitForTimeout(6000);
   const fell = await page.locator("body").innerText();
   check(
-    fell.includes("応答しません") || fell.includes("OpenAI"),
+    fell.includes("応答しません") || fell.includes("有料") || fell.includes("AI"),
     "A non-functional engine did not report itself",
   );
   const openaiSelected = await page
-    .locator('button[aria-pressed="true"]:has-text("OpenAI")').count();
-  check(openaiSelected === 1, "Did not fall back to the OpenAI engine");
+    .locator('button[aria-pressed="true"]:has-text("有料")').count();
+  check(openaiSelected === 1, "Did not fall back to the paid AI engine");
   await shot(page, "dead-engine-fallback");
   await page.context().close();
 
@@ -232,7 +232,7 @@ try {
     .catch(() => problems.push("An unsupported browser was not told so"));
   const unsupported = await bare.locator("body").innerText();
   check(
-    unsupported.includes("OpenAI"),
+    unsupported.includes("有料") || unsupported.includes("AI"),
     "No alternative offered to an unsupported browser",
   );
   await shot(bare, "unsupported-browser");

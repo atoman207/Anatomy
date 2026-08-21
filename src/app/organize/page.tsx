@@ -6,6 +6,8 @@ import {
   Select, StatTile, TextInput, cx,
 } from "@/components/ui";
 import { useDownload, useWorkspace } from "@/components/workspace";
+import { useToast } from "@/components/shell/Toast";
+import { ExperimentPicker } from "@/components/ExperimentPicker";
 import {
   buildRawFileInventory, humanSize, inventoryToRows, RAW_FILE_COLUMNS,
   type RawFileInput,
@@ -21,6 +23,7 @@ import { toDelimited } from "@/lib/data/csv";
 import {
   inventoryToMarkdown, renameToMarkdown, sampleSheetToMarkdown,
 } from "@/lib/notebook/report";
+import { saveRawFileInventory, saveSampleSheet, saveRenameOperation } from "@/lib/data/actions";
 
 type Tab = "files" | "sheet" | "rename";
 
@@ -59,6 +62,8 @@ export default function OrganizePage() {
         ))}
       </div>
 
+      <ExperimentPicker helpText="ここで選んだ実験に、一覧・サンプルシート・リネーム計画を保存できます。" />
+
       {tab === "files" && <RawFilesPanel />}
       {tab === "sheet" && <SampleSheetPanel />}
       {tab === "rename" && <RenamePanel />}
@@ -83,6 +88,8 @@ function RawFilesPanel() {
   const dirInput = useRef<HTMLInputElement>(null);
   const [pasted, setPasted] = useState("");
   const [filter, setFilter] = useState("");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "done" | "error">("idle");
+  const { toast } = useToast();
 
   const inventory = useMemo(
     () => (ws.files.length ? buildRawFileInventory(ws.files) : null),
@@ -245,6 +252,27 @@ function RawFilesPanel() {
                 >
                   ノートへ
                 </Button>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon="save"
+                  disabled={!ws.experimentId || !ws.labId || saveState === "saving"}
+                  title={ws.experimentId ? undefined : "上で実験を選択してください"}
+                  onClick={async () => {
+                    if (!ws.experimentId || !ws.labId) return;
+                    setSaveState("saving");
+                    const res = await saveRawFileInventory(ws.labId, ws.experimentId, inventory);
+                    if (res.ok) {
+                      setSaveState("done");
+                      toast("ファイル一覧を保存しました。", { tone: "good" });
+                    } else {
+                      setSaveState("error");
+                      toast(res.error ?? "保存に失敗しました。", { tone: "danger" });
+                    }
+                  }}
+                >
+                  {saveState === "saving" ? "保存中…" : saveState === "done" ? "保存済み" : "実験に保存"}
+                </Button>
               </>
             }
           >
@@ -292,6 +320,8 @@ function SampleSheetPanel() {
   const ws = useWorkspace();
   const download = useDownload();
   const [rows, setRows] = useState<SampleRow[] | null>(null);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "done" | "error">("idle");
+  const { toast } = useToast();
 
   const inventory = useMemo(
     () => (ws.files.length ? buildRawFileInventory(ws.files) : null),
@@ -372,6 +402,27 @@ function SampleSheetPanel() {
             </Button>
             <Button size="sm" icon="notebook" onClick={() => ws.addClip("サンプルシート", sampleSheetToMarkdown(sheet))}>
               ノートへ
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              icon="save"
+              disabled={!ws.experimentId || !ws.labId || saveState === "saving"}
+              title={ws.experimentId ? undefined : "上で実験を選択してください"}
+              onClick={async () => {
+                if (!ws.experimentId || !ws.labId) return;
+                setSaveState("saving");
+                const res = await saveSampleSheet(ws.labId, ws.experimentId, sheet);
+                if (res.ok) {
+                  setSaveState("done");
+                  toast("サンプルシートを保存しました。", { tone: "good" });
+                } else {
+                  setSaveState("error");
+                  toast(res.error ?? "保存に失敗しました。", { tone: "danger" });
+                }
+              }}
+            >
+              {saveState === "saving" ? "保存中…" : saveState === "done" ? "保存済み" : "実験に保存"}
             </Button>
             <Button
               size="sm"
@@ -476,6 +527,8 @@ function RenamePanel() {
   const [presetId, setPresetId] = useState(RENAME_PRESETS[0].id);
   const [find, setFind] = useState("");
   const [replaceWith, setReplaceWith] = useState("");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "done" | "error">("idle");
+  const { toast } = useToast();
 
   const inputs = useMemo(() => {
     const sheetByFile = new Map(
@@ -608,6 +661,27 @@ function RenamePanel() {
                 </Button>
                 <Button size="sm" icon="notebook" onClick={() => ws.addClip("ファイル名変更", renameToMarkdown(preview))}>
                   ノートへ
+                </Button>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon="save"
+                  disabled={!ws.experimentId || !ws.labId || saveState === "saving" || preview.changedCount === 0}
+                  title={ws.experimentId ? undefined : "上で実験を選択してください"}
+                  onClick={async () => {
+                    if (!ws.experimentId || !ws.labId) return;
+                    setSaveState("saving");
+                    const res = await saveRenameOperation(ws.labId, ws.experimentId, activeRules, preview);
+                    if (res.ok) {
+                      setSaveState("done");
+                      toast("変更計画を保存しました。", { tone: "good" });
+                    } else {
+                      setSaveState("error");
+                      toast(res.error ?? "保存に失敗しました。", { tone: "danger" });
+                    }
+                  }}
+                >
+                  {saveState === "saving" ? "保存中…" : saveState === "done" ? "保存済み" : "計画を保存"}
                 </Button>
               </>
             }

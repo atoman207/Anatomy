@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 
 import {
   LAB_ROLES, LAB_ROLE_LABELS, roleAtLeast, canManageMembers, canWrite,
-  platformAdminEmails, isPlatformAdminEmail,
+  platformAdminEmails, isPlatformAdminEmail, resolvePlatformRole,
+  PLATFORM_ROLES, PLATFORM_ROLE_LABELS,
 } from "../src/lib/auth/roles";
 import type { LabRole } from "../src/lib/supabase/types";
 
@@ -230,4 +231,62 @@ test("an admin in one lab gains nothing in another", () => {
 
   const manageable = mine.filter((m) => canManageMembers(m.role)).map((m) => m.lab_id);
   assert.deepEqual(manageable, ["lab-1"], "lab-2 must not become manageable");
+});
+
+/* ------------------------------------------------------------------ */
+/* Platform role                                                       */
+/*                                                                     */
+/* The deployment-wide role is what separates the administrator area   */
+/* from the user area, so the resolution rule is pinned here: the      */
+/* database column decides, and the environment allowlist can only     */
+/* ever add an administrator - never remove one.                       */
+/* ------------------------------------------------------------------ */
+
+test("there are exactly two platform roles, both labelled", () => {
+  assert.deepEqual(PLATFORM_ROLES, ["admin", "user"]);
+  for (const role of PLATFORM_ROLES) {
+    assert.ok(PLATFORM_ROLE_LABELS[role].ja.length > 0);
+    assert.ok(PLATFORM_ROLE_LABELS[role].hint.length > 0);
+  }
+});
+
+test("the database column decides the platform role", () => {
+  withEnv(undefined, () => {
+    assert.equal(resolvePlatformRole("admin", "someone@example.com"), "admin");
+    assert.equal(resolvePlatformRole("user", "someone@example.com"), "user");
+  });
+});
+
+test("a missing profile row falls back to the least privilege", () => {
+  withEnv(undefined, () => {
+    assert.equal(resolvePlatformRole(null, "someone@example.com"), "user");
+    assert.equal(resolvePlatformRole(undefined, "someone@example.com"), "user");
+    assert.equal(resolvePlatformRole(undefined, null), "user");
+  });
+});
+
+test("the allowlist can add an administrator the column does not name", () => {
+  withEnv("rescue@example.com", () => {
+    assert.equal(resolvePlatformRole("user", "rescue@example.com"), "admin");
+    assert.equal(resolvePlatformRole(null, "rescue@example.com"), "admin");
+  });
+});
+
+test("the allowlist can never demote an administrator", () => {
+  // The recovery path is one-directional on purpose: an address dropped from
+  // PLATFORM_ADMIN_EMAILS must not silently strip a role granted in the
+  // database, or editing the env file would revoke access nobody intended.
+  withEnv("someone-else@example.com", () => {
+    assert.equal(resolvePlatformRole("admin", "admin@example.com"), "admin");
+  });
+  withEnv(undefined, () => {
+    assert.equal(resolvePlatformRole("admin", "admin@example.com"), "admin");
+  });
+});
+
+test("a non-listed address with no admin column stays a user", () => {
+  withEnv("admin@example.com", () => {
+    assert.equal(resolvePlatformRole("user", "attacker@example.com"), "user");
+    assert.equal(resolvePlatformRole(null, "attacker@example.com"), "user");
+  });
 });

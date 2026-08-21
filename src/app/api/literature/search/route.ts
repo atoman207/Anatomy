@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { AiError, isAiEnabled } from "@/lib/ai/openai";
 import { buildPubMedQuery } from "@/lib/ai/queryBuilder";
 import { searchPubMed } from "@/lib/literature/pubmed";
+import { hasAiAccess } from "@/lib/billing/subscription";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -14,12 +15,17 @@ export const maxDuration = 120;
  * out of the index — none is generated. When AI is unavailable the question is
  * passed through as a literal query, so the feature degrades to plain PubMed
  * search rather than failing.
+ *
+ * A laboratory on the free plan takes that same degraded path: PubMed itself
+ * costs nothing, so search keeps working and only the query builder - the part
+ * that calls a model - is withheld.
  */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const question = String(body?.question ?? "").trim();
-    const useAi = body?.useAi !== false && isAiEnabled();
+    const aiAllowed = isAiEnabled() && (await hasAiAccess(String(body?.labId ?? "")));
+    const useAi = body?.useAi !== false && aiAllowed;
     const retmax = Math.min(50, Math.max(1, Number(body?.retmax) || 20));
     const yearsBack = Number(body?.yearsBack) || undefined;
     const sort = body?.sort === "pub_date" ? "pub_date" : "relevance";
@@ -51,6 +57,10 @@ export async function POST(request: Request) {
         query = question;
         if (!isAiEnabled()) {
           notes.push("AIが無効のため、入力をそのまま PubMed の検索式として使用しました。");
+        } else if (!aiAllowed) {
+          notes.push(
+            "検索式の自動生成はプロプラン以上の機能です。入力をそのまま PubMed の検索式として使用しました。",
+          );
         }
       }
     }
@@ -71,7 +81,7 @@ export async function POST(request: Request) {
       total: search.total,
       articles: search.articles,
       notes: [...notes, ...search.notes],
-      aiEnabled: isAiEnabled(),
+      aiEnabled: aiAllowed,
     });
   } catch (e) {
     if (e instanceof AiError) {

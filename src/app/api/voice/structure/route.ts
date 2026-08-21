@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { AiError, isAiEnabled } from "@/lib/ai/openai";
+import { requireAiAccess } from "@/lib/billing/subscription";
 import {
   structureVoiceNote, voiceNoteToMarkdown, missingFields,
 } from "@/lib/ai/voiceNote";
@@ -26,6 +27,12 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
+
+    const gate = await requireAiAccess(String(body?.labId ?? ""));
+    if (!gate.ok) {
+      return NextResponse.json({ error: gate.error }, { status: gate.status });
+    }
+
     const transcript = String(body?.transcript ?? "").trim();
     const referenceDate =
       typeof body?.referenceDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.referenceDate)

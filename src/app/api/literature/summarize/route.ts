@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { AiError, isAiEnabled } from "@/lib/ai/openai";
+import { requireAiAccess } from "@/lib/billing/subscription";
 import { summarizeLiterature, pruneHallucinatedPmids } from "@/lib/ai/queryBuilder";
 import type { PubMedArticle } from "@/lib/literature/pubmed";
 
@@ -25,6 +26,12 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
+
+    const gate = await requireAiAccess(String(body?.labId ?? ""));
+    if (!gate.ok) {
+      return NextResponse.json({ error: gate.error }, { status: gate.status });
+    }
+
     const question = String(body?.question ?? "").trim();
     const articles = (body?.articles ?? []) as PubMedArticle[];
 

@@ -1,0 +1,263 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  Badge, Button, Callout, Card, DataTable, EmptyState, Field, Select, TextInput,
+} from "@/components/ui";
+import { useToast } from "@/components/shell/Toast";
+import type { Reagent } from "@/lib/supabase/types";
+import {
+  createReagent, deleteReagent, listReagents, updateReagent, type ReagentInput,
+} from "@/lib/reagents/actions";
+
+export interface LabOption {
+  id: string;
+  name: string;
+}
+
+const EMPTY_INPUT: ReagentInput = {
+  name: "", category: null, vendor: null, lot: null, received_at: null, expires_at: null, notes: null,
+};
+
+function isExpiringSoon(expiresAt: string | null): "expired" | "soon" | null {
+  if (!expiresAt) return null;
+  const days = (new Date(expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+  if (days < 0) return "expired";
+  if (days <= 30) return "soon";
+  return null;
+}
+
+export function ReagentManager({ labs }: { labs: LabOption[] }) {
+  const [labId, setLabId] = useState(labs[0]?.id ?? "");
+  const [reagents, setReagents] = useState<Reagent[]>([]);
+  const [loadedForLabId, setLoadedForLabId] = useState<string | null>(null);
+  const loading = labId !== loadedForLabId;
+  const { toast } = useToast();
+  /** Kept inline rather than as a toast: without this, a failed load leaves the whole panel empty with no explanation. */
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<ReagentInput>(EMPTY_INPUT);
+  const [saving, setSaving] = useState(false);
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    if (!labId) return;
+    let cancelled = false;
+    listReagents(labId).then((res) => {
+      if (cancelled) return;
+      if (res.ok && res.data) setReagents(res.data);
+      else setLoadError(res.error ?? "読み込みに失敗しました。");
+      setLoadedForLabId(labId);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [labId]);
+
+  function startCreate() {
+    setEditingId("new");
+    setForm(EMPTY_INPUT);
+  }
+
+  function startEdit(r: Reagent) {
+    setEditingId(r.id);
+    setForm({
+      name: r.name,
+      category: r.category,
+      vendor: r.vendor,
+      lot: r.lot,
+      received_at: r.received_at,
+      expires_at: r.expires_at,
+      notes: r.notes,
+    });
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setForm(EMPTY_INPUT);
+  }
+
+  async function save() {
+    if (!labId || !editingId) return;
+    setSaving(true);
+    try {
+      const res = editingId === "new"
+        ? await createReagent(labId, form)
+        : await updateReagent(labId, editingId, form);
+      if (!res.ok) throw new Error(res.error ?? "保存に失敗しました。");
+      const refreshed = await listReagents(labId);
+      if (refreshed.ok && refreshed.data) setReagents(refreshed.data);
+      cancelEdit();
+      toast(editingId === "new" ? "試薬を登録しました。" : "試薬を更新しました。", { tone: "good" });
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "保存に失敗しました。", { tone: "danger" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(id: string) {
+    if (!labId) return;
+    if (!window.confirm("この試薬・Lotの登録を削除します。よろしいですか？")) return;
+    const res = await deleteReagent(labId, id);
+    if (!res.ok) {
+      toast(res.error ?? "削除に失敗しました。", { tone: "danger" });
+      return;
+    }
+    setReagents((prev) => prev.filter((r) => r.id !== id));
+    toast("試薬を削除しました。", { tone: "good" });
+  }
+
+  const filtered = reagents.filter((r) => {
+    if (!query.trim()) return true;
+    const q = query.toLowerCase();
+    return (
+      r.name.toLowerCase().includes(q) ||
+      (r.lot ?? "").toLowerCase().includes(q) ||
+      (r.vendor ?? "").toLowerCase().includes(q) ||
+      (r.category ?? "").toLowerCase().includes(q)
+    );
+  });
+
+  const expiringCount = reagents.filter((r) => isExpiringSoon(r.expires_at) !== null).length;
+
+  if (labs.length === 0) {
+    return (
+      <EmptyState title="研究室がまだありません">
+        まず「実験一覧」で研究室を作成してください。
+      </EmptyState>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {loadError && <Callout tone="danger" title="読み込みに失敗しました">{loadError}</Callout>}
+
+      <Card title="試薬・Lot registry">
+        <div className="flex flex-wrap items-end gap-3">
+          {labs.length > 1 && (
+            <Field label="研究室" className="min-w-[200px]">
+              <Select value={labId} onChange={(e) => { setLabId(e.target.value); cancelEdit(); }}>
+                {labs.map((l) => (
+                  <option key={l.id} value={l.id}>{l.name}</option>
+                ))}
+              </Select>
+            </Field>
+          )}
+          <Field label="検索" className="min-w-[220px] flex-1">
+            <TextInput
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="名称・Lot・メーカー・分類で検索"
+            />
+          </Field>
+          <Button variant="primary" icon="plus" onClick={startCreate} disabled={editingId !== null}>
+            新規登録
+          </Button>
+        </div>
+
+        {expiringCount > 0 && (
+          <div className="mt-3">
+            <Callout tone="warn" title={`期限切れ・期限間近が ${expiringCount} 件あります`}>
+              使用前に有効期限を確認してください。
+            </Callout>
+          </div>
+        )}
+      </Card>
+
+      {editingId && (
+        <Card title={editingId === "new" ? "新規登録" : "編集"}>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label="名称" className="lg:col-span-2">
+              <TextInput
+                autoFocus
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="例: TMTsixplex Label Reagent"
+                required
+              />
+            </Field>
+            <Field label="分類">
+              <TextInput
+                value={form.category ?? ""}
+                onChange={(e) => setForm({ ...form, category: e.target.value })}
+                placeholder=""
+              />
+            </Field>
+            <Field label="メーカー">
+              <TextInput
+                value={form.vendor ?? ""}
+                onChange={(e) => setForm({ ...form, vendor: e.target.value })}
+              />
+            </Field>
+            <Field label="Lot番号">
+              <TextInput
+                value={form.lot ?? ""}
+                onChange={(e) => setForm({ ...form, lot: e.target.value })}
+              />
+            </Field>
+            <Field label="受領日">
+              <TextInput
+                type="date"
+                value={form.received_at ?? ""}
+                onChange={(e) => setForm({ ...form, received_at: e.target.value })}
+              />
+            </Field>
+            <Field label="有効期限">
+              <TextInput
+                type="date"
+                value={form.expires_at ?? ""}
+                onChange={(e) => setForm({ ...form, expires_at: e.target.value })}
+              />
+            </Field>
+            <Field label="メモ" className="sm:col-span-2 lg:col-span-3">
+              <TextInput
+                value={form.notes ?? ""}
+                onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                placeholder="保管条件、使用上の注意など"
+              />
+            </Field>
+          </div>
+          <div className="mt-4 flex gap-2">
+            <Button variant="primary" onClick={save} disabled={saving || !form.name.trim()}>
+              {saving ? "保存中…" : "保存"}
+            </Button>
+            <Button variant="ghost" onClick={cancelEdit} disabled={saving}>取消</Button>
+          </div>
+        </Card>
+      )}
+
+      <Card title={`登録済み (${filtered.length} 件)`} subtitle={loading ? "読み込み中…" : undefined}>
+        {filtered.length === 0 ? (
+          <EmptyState title="試薬・Lotが登録されていません">
+            「新規登録」から追加してください。
+          </EmptyState>
+        ) : (
+          <DataTable
+            headers={["名称", "分類", "メーカー", "Lot", "受領日", "有効期限", "操作"]}
+            rows={filtered.map((r) => {
+              const status = isExpiringSoon(r.expires_at);
+              return [
+                r.name,
+                r.category ?? "—",
+                r.vendor ?? "—",
+                r.lot ?? "—",
+                r.received_at ?? "—",
+                <span key="exp" className="inline-flex items-center gap-1.5">
+                  {r.expires_at ?? "—"}
+                  {status === "expired" && <Badge tone="danger">期限切れ</Badge>}
+                  {status === "soon" && <Badge tone="warn">期限間近</Badge>}
+                </span>,
+                <span key="actions" className="inline-flex gap-1.5">
+                  <Button size="sm" variant="ghost" icon="edit" onClick={() => startEdit(r)}>編集</Button>
+                  <Button size="sm" variant="danger" icon="trash" onClick={() => remove(r.id)}>削除</Button>
+                </span>,
+              ];
+            })}
+          />
+        )}
+      </Card>
+    </div>
+  );
+}

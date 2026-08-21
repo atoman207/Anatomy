@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { AUTH_COOKIE_ENCODE } from "./authCookies";
 import type { Database } from "./types";
 
 export interface SupabaseEnv {
@@ -41,6 +42,7 @@ export async function createServerSupabase() {
 
   return createServerClient<Database>(url, anonKey, {
     cookies: {
+      encode: AUTH_COOKIE_ENCODE,
       getAll() {
         return cookieStore.getAll();
       },

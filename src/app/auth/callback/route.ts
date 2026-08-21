@@ -23,9 +23,7 @@ export async function GET(request: NextRequest) {
   const errorDescription =
     searchParams.get("error_description") ?? searchParams.get("error");
   if (errorDescription) {
-    return NextResponse.redirect(
-      `${origin}/login?error=${encodeURIComponent(errorDescription)}`,
-    );
+    return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent("invalid_link")}`);
   }
 
   const supabase = await createServerSupabase();
@@ -33,9 +31,7 @@ export async function GET(request: NextRequest) {
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) {
-      return NextResponse.redirect(
-        `${origin}/login?error=${encodeURIComponent(error.message)}`,
-      );
+      return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent("invalid_link")}`);
     }
     // A recovery link must land on the page that sets a new password,
     // otherwise the one-time session is spent going somewhere useless.
@@ -49,17 +45,13 @@ export async function GET(request: NextRequest) {
       token_hash: tokenHash,
     });
     if (error) {
-      return NextResponse.redirect(
-        `${origin}/login?error=${encodeURIComponent(error.message)}`,
-      );
+      return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent("invalid_link")}`);
     }
     const target = type === "recovery" ? "/auth/reset" : next;
     return NextResponse.redirect(`${origin}${target}`);
   }
 
-  return NextResponse.redirect(
-    `${origin}/login?error=${encodeURIComponent("That link is missing its verification code.")}`,
-  );
+  return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent("invalid_link")}`);
 }
 
 /**

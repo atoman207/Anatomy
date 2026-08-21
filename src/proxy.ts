@@ -1,8 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { AUTH_COOKIE_ENCODE } from "@/lib/supabase/authCookies";
+
+/** Node and many hosts reject Cookie headers much past 8–16 KB. */
+const COOKIE_HEADER_BUDGET = 8_192;
 
 /** Paths that require a signed-in user before they render at all. */
-const PROTECTED_PREFIXES = ["/admin"];
+const PROTECTED_PREFIXES = ["/admin", "/account", "/billing"];
 
 function isProtected(pathname: string): boolean {
   return PROTECTED_PREFIXES.some(
@@ -20,6 +24,12 @@ function isProtected(pathname: string): boolean {
  * flash of a page they were never going to keep.
  */
 export default async function proxy(request: NextRequest) {
+  // HTTP 431 happens before any page can render when Cookie is too large
+  // (common after an avatar data URL landed in the Supabase session).
+  if ((request.headers.get("cookie") ?? "").length > COOKIE_HEADER_BUDGET) {
+    return expireOversizedCookies(request);
+  }
+
   let response = NextResponse.next({ request });
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -29,6 +39,7 @@ export default async function proxy(request: NextRequest) {
 
   const supabase = createServerClient(url, key, {
     cookies: {
+      encode: AUTH_COOKIE_ENCODE,
       getAll() {
         return request.cookies.getAll();
       },
@@ -58,6 +69,27 @@ export default async function proxy(request: NextRequest) {
     // guards still refuse to render protected content without a user.
   }
 
+  return response;
+}
+
+function expireOversizedCookies(request: NextRequest): NextResponse {
+  const names = request.cookies.getAll().map((cookie) => cookie.name);
+  const authNames = names.filter((name) => name.startsWith("sb-"));
+  const toExpire = authNames.length > 0 ? authNames : names;
+
+  for (const name of toExpire) {
+    request.cookies.delete(name);
+  }
+
+  const response = NextResponse.next({ request });
+  for (const name of toExpire) {
+    response.cookies.set(name, "", {
+      path: "/",
+      maxAge: 0,
+      expires: new Date(0),
+      sameSite: "lax",
+    });
+  }
   return response;
 }
 

@@ -233,7 +233,7 @@ test("rename preserves extensions and reports collisions", () => {
   assert.equal(preview.rows[0].proposed, "A_B.raw");
   assert.equal(preview.collisions.length, 1);
   assert.ok(!preview.safe);
-  assert.ok(preview.rows[0].errors.some((e) => e.includes("Collides")));
+  assert.ok(preview.rows[0].errors.some((e) => e.includes("同じ名前")));
 });
 
 test("sanitize preset makes pipeline-safe names", () => {
@@ -276,7 +276,7 @@ test("an invalid regex is reported rather than thrown", () => {
     [{ name: "a.raw" }],
     [{ type: "regex", pattern: "([unclosed", replaceWith: "x", flags: "g" }],
   );
-  assert.ok(preview.issues.some((i) => i.includes("Invalid regular expression")));
+  assert.ok(preview.issues.some((i) => i.includes("正規表現")));
   assert.equal(preview.rows[0].proposed, "a.raw");
 });
 
@@ -286,7 +286,7 @@ test("a rename that empties the name is an error", () => {
     [{ type: "regex", pattern: "abc", replaceWith: "", flags: "g" }],
   );
   assert.ok(!preview.safe);
-  assert.ok(preview.rows[0].errors.some((e) => e.includes("empty")));
+  assert.ok(preview.rows[0].errors.some((e) => e.includes("空")));
 });
 
 test("Windows reserved device names are rejected", () => {
@@ -294,7 +294,7 @@ test("Windows reserved device names are rejected", () => {
     [{ name: "data.raw" }],
     [{ type: "regex", pattern: "^data$", replaceWith: "CON", flags: "" }],
   );
-  assert.ok(preview.rows[0].errors.some((e) => e.includes("reserved device name")));
+  assert.ok(preview.rows[0].errors.some((e) => e.includes("予約されたデバイス名")));
 });
 
 test("mapping inverts for rollback", () => {

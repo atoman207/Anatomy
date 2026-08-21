@@ -1,14 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Badge, Button, Callout, Card, EmptyState, Field, Select, StatTile, TextArea, cx,
 } from "@/components/ui";
+import { useToast } from "@/components/shell/Toast";
 import { useDownload, useWorkspace } from "@/components/workspace";
+import { ExperimentPicker } from "@/components/ExperimentPicker";
 import type { PubMedArticle } from "@/lib/literature/pubmed";
 import type { BuiltQuery, LiteratureSummary } from "@/lib/ai/queryBuilder";
 import type { DoiVerification } from "@/lib/literature/crossref";
 import { toDelimited } from "@/lib/data/csv";
+import { listSavedPapers, saveLiteraturePapers, type SavedPaperSummary } from "@/lib/literature/actions";
+import { formatCitation, toBibTeXFile, toRisFile, type CitationSource } from "@/lib/literature/citation";
 
 interface SearchResponse {
   question: string;
@@ -25,6 +30,8 @@ interface SearchResponse {
 export default function LiteraturePage() {
   const ws = useWorkspace();
   const download = useDownload();
+  const router = useRouter();
+  const { toast } = useToast();
 
   const [question, setQuestion] = useState("");
   const [editedQuery, setEditedQuery] = useState<string | null>(null);
@@ -39,11 +46,46 @@ export default function LiteraturePage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const [busy, setBusy] = useState<null | "search" | "summary" | "verify">(null);
-  const [error, setError] = useState<string | null>(null);
+
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [history, setHistory] = useState<SavedPaperSummary[]>([]);
+  const [historyLoadedFor, setHistoryLoadedFor] = useState<string | null>(null);
+  const historyLoading = ws.experimentId !== null && ws.experimentId !== historyLoadedFor;
+
+  useEffect(() => {
+    const experimentId = ws.experimentId;
+    if (!experimentId) return;
+    let cancelled = false;
+    listSavedPapers(experimentId).then((res) => {
+      if (cancelled) return;
+      if (res.ok && res.data) setHistory(res.data);
+      setHistoryLoadedFor(experimentId);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [ws.experimentId]);
+
+  async function saveToExperiment() {
+    if (!ws.experimentId || !ws.labId || chosen.length === 0) return;
+    setSaveState("saving");
+    try {
+      const res = await saveLiteraturePapers(ws.labId, ws.experimentId, chosen);
+      if (!res.ok) throw new Error(res.error ?? "保存に失敗しました。");
+      setSaveState("saved");
+      toast(`${chosen.length}件の論文を保存しました。`, { tone: "good" });
+      const refreshed = await listSavedPapers(ws.experimentId);
+      if (refreshed.ok && refreshed.data) setHistory(refreshed.data);
+      setTimeout(() => setSaveState("idle"), 2500);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "保存に失敗しました。", { tone: "danger" });
+      setSaveState("idle");
+    }
+  }
 
   async function search(overrideQuery?: string) {
     setBusy("search");
-    setError(null);
     setSummary(null);
     setVerifications(null);
     setSummaryNotes([]);
@@ -52,6 +94,7 @@ export default function LiteraturePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          labId: ws.labId,
           question,
           query: overrideQuery ?? undefined,
           yearsBack: yearsBack || undefined,
@@ -65,7 +108,7 @@ export default function LiteraturePage() {
       setEditedQuery(json.executedQuery);
       setSelected(new Set(json.articles.map((a) => a.pmid)));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "検索に失敗しました。");
+      toast(e instanceof Error ? e.message : "検索に失敗しました。", { tone: "danger" });
     } finally {
       setBusy(null);
     }
@@ -74,20 +117,31 @@ export default function LiteraturePage() {
   async function summarize() {
     if (!result) return;
     setBusy("summary");
-    setError(null);
     try {
       const chosen = result.articles.filter((a) => selected.has(a.pmid));
       const res = await fetch("/api/literature/summarize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: question || result.executedQuery, articles: chosen }),
+        body: JSON.stringify({
+          labId: ws.labId,
+          question: question || result.executedQuery,
+          articles: chosen,
+        }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? `要約に失敗しました (${res.status})`);
+      if (!res.ok) {
+        const message = json.error ?? `要約に失敗しました (${res.status})`;
+        if (res.status === 402) {
+          toast(message, { tone: "danger", title: "エラー" });
+          router.push("/billing");
+          return;
+        }
+        throw new Error(message);
+      }
       setSummary(json.summary);
       setSummaryNotes(json.notes ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "要約に失敗しました。");
+      toast(e instanceof Error ? e.message : "要約に失敗しました。", { tone: "danger" });
     } finally {
       setBusy(null);
     }
@@ -96,13 +150,12 @@ export default function LiteraturePage() {
   async function verify() {
     if (!result) return;
     setBusy("verify");
-    setError(null);
     try {
       const items = result.articles
         .filter((a) => selected.has(a.pmid) && a.doi)
         .map((a) => ({ doi: a.doi!, title: a.title }));
       if (items.length === 0) {
-        setError("選択された論文に DOI がありません。");
+        toast("選択された論文に DOI がありません。", { tone: "danger" });
         return;
       }
       const res = await fetch("/api/literature/verify", {
@@ -114,7 +167,7 @@ export default function LiteraturePage() {
       if (!res.ok) throw new Error(json.error ?? `確認に失敗しました (${res.status})`);
       setVerifications(json.results);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "確認に失敗しました。");
+      toast(e instanceof Error ? e.message : "確認に失敗しました。", { tone: "danger" });
     } finally {
       setBusy(null);
     }
@@ -123,13 +176,23 @@ export default function LiteraturePage() {
   const chosen = result?.articles.filter((a) => selected.has(a.pmid)) ?? [];
   const verificationByDoi = new Map((verifications ?? []).map((v) => [v.doi, v]));
 
+  async function copyCitation(id: string, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId((cur) => (cur === id ? null : cur)), 1800);
+    } catch {
+      toast("引用のコピーに失敗しました。ブラウザの権限を確認してください。", { tone: "danger" });
+    }
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <header>
         <h1 className="text-xl font-semibold text-ink">論文検索</h1>
       </header>
 
-      {error && <Callout tone="danger" title="エラー">{error}</Callout>}
+      <ExperimentPicker helpText="ここで選んだ実験に、選択した論文を保存できます。" />
 
       <Card title="検索">
         <div className="flex flex-col gap-3">
@@ -226,6 +289,7 @@ export default function LiteraturePage() {
         </Card>
       )}
 
+
       {result && (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -289,12 +353,46 @@ export default function LiteraturePage() {
                   </Button>
                   <Button
                     size="sm"
+                    icon="download"
+                    onClick={() =>
+                      download("citations.bib", toBibTeXFile(chosen), "application/x-bibtex")
+                    }
+                    disabled={chosen.length === 0}
+                    title="EndNote・Zotero・Mendeley・LaTeX に取り込めます"
+                  >
+                    BibTeX
+                  </Button>
+                  <Button
+                    size="sm"
+                    icon="download"
+                    onClick={() =>
+                      download("citations.ris", toRisFile(chosen), "application/x-research-info-systems")
+                    }
+                    disabled={chosen.length === 0}
+                    title="EndNote・Zotero・Mendeley に取り込めます"
+                  >
+                    RIS
+                  </Button>
+                  <Button
+                    size="sm"
                     variant="primary"
                     icon="file"
                     onClick={summarize}
                     disabled={busy !== null || chosen.length === 0 || !result.aiEnabled}
                   >
                     {busy === "summary" ? "要約中…" : "選択分をAI要約"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    icon="notebook"
+                    onClick={saveToExperiment}
+                    disabled={!ws.experimentId || chosen.length === 0 || saveState === "saving"}
+                  >
+                    {saveState === "saving"
+                      ? "保存中…"
+                      : saveState === "saved"
+                        ? "保存しました ✓"
+                        : "選択分を実験に保存"}
                   </Button>
                 </>
               }
@@ -369,6 +467,22 @@ export default function LiteraturePage() {
                               </p>
                             </details>
                           )}
+
+                          <details className="mt-2">
+                            <summary className="cursor-pointer text-[11px] text-ink-2">引用（Vancouver形式）</summary>
+                            <div className="mt-1 flex items-start gap-2">
+                              <p className="min-w-0 flex-1 whitespace-pre-wrap text-[11px] leading-relaxed text-ink-2">
+                                {formatCitation(a)}
+                              </p>
+                              <Button
+                                size="sm"
+                                icon={copiedId === a.pmid ? "check" : "copy"}
+                                onClick={() => copyCitation(a.pmid, formatCitation(a))}
+                              >
+                                {copiedId === a.pmid ? "コピー済み" : "コピー"}
+                              </Button>
+                            </div>
+                          </details>
                         </div>
                       </div>
                     </li>
@@ -440,8 +554,86 @@ export default function LiteraturePage() {
           )}
         </Card>
       )}
+
+      {ws.experimentId && (
+        <Card
+          title="この実験に保存済みの論文"
+          subtitle={historyLoading ? "読み込み中…" : `${history.length} 件`}
+          actions={
+            history.length > 0 && (
+              <>
+                <Button
+                  size="sm"
+                  icon="download"
+                  onClick={() => download("citations.bib", toBibTeXFile(history.map(toCitationSource)), "application/x-bibtex")}
+                >
+                  BibTeX
+                </Button>
+                <Button
+                  size="sm"
+                  icon="download"
+                  onClick={() => download("citations.ris", toRisFile(history.map(toCitationSource)), "application/x-research-info-systems")}
+                >
+                  RIS
+                </Button>
+              </>
+            )
+          }
+        >
+          {history.length === 0 ? (
+            <p className="text-xs text-ink-3">まだ保存された論文はありません。</p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {history.map((p) => (
+                <li key={p.id} className="rounded-lg border border-line p-2.5">
+                  <p className="text-xs font-medium text-ink">{p.title}</p>
+                  <p className="mt-0.5 text-[11px] text-ink-3">
+                    {p.journal ?? "—"} · {p.pub_year ?? "—"}
+                    {p.pmid && <> · PMID {p.pmid}</>}
+                    {p.doi && <> · doi:{p.doi}</>}
+                    {" · "}
+                    {new Date(p.created_at).toLocaleString("ja-JP")}
+                  </p>
+                  {p.url && (
+                    <a href={p.url} target="_blank" rel="noreferrer" className="mt-0.5 text-[11px] text-accent underline">
+                      PubMed
+                    </a>
+                  )}
+                  <div className="mt-1.5 flex items-start gap-2">
+                    <p className="min-w-0 flex-1 whitespace-pre-wrap text-[11px] leading-relaxed text-ink-2">
+                      {formatCitation(toCitationSource(p))}
+                    </p>
+                    <Button
+                      size="sm"
+                      icon={copiedId === p.id ? "check" : "copy"}
+                      onClick={() => copyCitation(p.id, formatCitation(toCitationSource(p)))}
+                    >
+                      {copiedId === p.id ? "コピー済み" : "コピー"}
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
     </div>
   );
+}
+
+/** Maps a persisted row back to the shape the citation formatters expect. */
+function toCitationSource(p: SavedPaperSummary): CitationSource {
+  return {
+    title: p.title,
+    journal: p.journal,
+    year: p.pub_year,
+    authors: p.authors,
+    volume: p.volume,
+    issue: p.issue,
+    pages: p.pages,
+    doi: p.doi,
+    pmid: p.pmid,
+  };
 }
 
 /** Assembles the notebook block: real citations plus the AI reading of them. */
@@ -465,14 +657,11 @@ function literatureToMarkdown(
     lines.push("");
   }
 
-  lines.push("**文献一覧**", "");
-  lines.push("| # | 著者 | タイトル | 掲載誌 | 年 | PMID | DOI |");
-  lines.push("| --- | --- | --- | --- | --- | --- | --- |");
+  // A publication-ready reference list (Vancouver style), not just a table
+  // of identifiers — this is what gets pasted straight into a manuscript.
+  lines.push("**参考文献**", "");
   articles.forEach((a, i) => {
-    const author = a.authors.length ? `${a.authors[0]}${a.authors.length > 1 ? " et al." : ""}` : "—";
-    lines.push(
-      `| ${i + 1} | ${author} | ${a.title.replace(/\|/g, "/")} | ${a.journal} | ${a.year ?? "—"} | ${a.pmid} | ${a.doi ?? "—"} |`,
-    );
+    lines.push(`${i + 1}. ${formatCitation(a)}`);
   });
   lines.push("");
 

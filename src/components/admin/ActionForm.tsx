@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState, type ReactNode } from "react";
+import { useActionState, useEffect, useRef, type ReactNode } from "react";
 import { useFormStatus } from "react-dom";
-import { Button, Callout } from "@/components/ui";
+import { Button } from "@/components/ui";
+import { useToast } from "@/components/shell/Toast";
 import type { IconName } from "@/components/icons";
 
 export interface ActionResult {
@@ -16,8 +17,8 @@ type Action = (prev: ActionResult | null, formData: FormData) => Promise<ActionR
  * Wraps a server action with its pending state and result message.
  *
  * Every admin mutation reports back in the same shape, so success and failure
- * always land in the same place on screen instead of each form inventing its
- * own feedback.
+ * always surface the same way — as a toast — instead of each form inventing
+ * its own feedback.
  */
 export function ActionForm({
   action, children, submitLabel, variant = "primary", className, hidden,
@@ -35,6 +36,7 @@ export function ActionForm({
   icon?: IconName;
 }) {
   const [state, formAction] = useActionState<ActionResult | null, FormData>(action, null);
+  useResultToast(state);
 
   return (
     <form
@@ -49,9 +51,6 @@ export function ActionForm({
           <input key={k} type="hidden" name={k} value={v} />
         ))}
       {children}
-      {state && (
-        <Callout tone={state.ok ? "good" : "danger"}>{state.message}</Callout>
-      )}
       <SubmitButton variant={variant} icon={icon ?? (variant === "danger" ? "trash" : "check")}>{submitLabel}</SubmitButton>
     </form>
   );
@@ -70,6 +69,7 @@ export function InlineActionForm({
   icon?: IconName;
 }) {
   const [state, formAction] = useActionState<ActionResult | null, FormData>(action, null);
+  useResultToast(state);
 
   return (
     <form
@@ -85,16 +85,26 @@ export function InlineActionForm({
         ))}
       {children}
       <SubmitButton variant={variant} size="sm" icon={icon ?? (variant === "danger" ? "trash" : "check")}>{submitLabel}</SubmitButton>
-      {state && (
-        <span
-          role="status"
-          className={state.ok ? "text-[11px] text-good" : "text-[11px] text-danger"}
-        >
-          {state.message}
-        </span>
-      )}
     </form>
   );
+}
+
+/**
+ * Reports an action's result as a toast the moment it changes.
+ *
+ * `useActionState` hands back a new object identity each time the action
+ * completes (even a retried failure with the same text), so this fires
+ * exactly once per submission rather than once per distinct message.
+ */
+function useResultToast(state: ActionResult | null) {
+  const { toast } = useToast();
+  const last = useRef<ActionResult | null>(null);
+  useEffect(() => {
+    if (!state || state === last.current) return;
+    last.current = state;
+    toast(state.message, { tone: state.ok ? "good" : "danger" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
 }
 
 function SubmitButton({

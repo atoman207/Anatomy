@@ -25,6 +25,10 @@ export interface PubMedArticle {
   publicationTypes: string[];
   url: string;
   doiUrl: string | null;
+  /** Bibliographic detail needed for a proper reference-list citation. */
+  volume: string | null;
+  issue: string | null;
+  pages: string | null;
 }
 
 export interface PubMedSearchResult {
@@ -185,6 +189,9 @@ export async function searchPubMed(
       publicationTypes: a.pubtype ?? [],
       url: `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`,
       doiUrl: doi ? `https://doi.org/${doi}` : null,
+      volume: a.volume || null,
+      issue: a.issue || null,
+      pages: a.pages || a.elocationid || null,
     });
   }
 
@@ -269,15 +276,6 @@ function stripTags(s: string): string {
   );
 }
 
-/** Formats one article as a citation line. */
-export function formatCitation(a: PubMedArticle): string {
-  const authors =
-    a.authors.length === 0
-      ? ""
-      : a.authors.length <= 3
-        ? a.authors.join(", ")
-        : `${a.authors[0]} et al.`;
-  const bits = [authors, a.title, a.journal, a.pubDate].filter(Boolean);
-  const base = bits.join(". ");
-  return a.doi ? `${base}. doi:${a.doi}` : `${base}. PMID:${a.pmid}`;
-}
+// A properly formatted, exportable citation (Vancouver / BibTeX / RIS) lives
+// in ./citation.ts, which - unlike this module - has no "server-only" import
+// and so can be used from the client component that renders the results.

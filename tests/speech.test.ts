@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  applyResult, joinJapanese, fullTranscript, classifyError,
+  applyResult, foldResultList, joinJapanese, fullTranscript, classifyError,
   EMPTY_TRANSCRIPT, type TranscriptState,
 } from "../src/lib/voice/webSpeech";
 
@@ -158,6 +158,35 @@ test("an event with no alternatives is ignored rather than crashing", () => {
   assert.equal(state.interim, "");
 });
 
+test("results that only implement .item() still produce a transcript", () => {
+  // WebKit's SpeechRecognitionResultList often has no numeric indexer.
+  const result = {
+    isFinal: true,
+    length: 1,
+    item: (j: number) => (j === 0 ? { transcript: "本日実施", confidence: 0.9 } : undefined),
+  };
+  const results = {
+    length: 1,
+    item: (i: number) => (i === 0 ? result : undefined),
+  };
+  const folded = foldResultList(results as never);
+  assert.equal(folded.final, "本日実施");
+  assert.equal(folded.interim, "");
+
+  const applied = applyResult(EMPTY_TRANSCRIPT, { resultIndex: 0, results: results as never });
+  assert.equal(applied.final, "本日実施");
+});
+
+test("foldResultList rebuilds the whole list so a stale resultIndex cannot drop text", () => {
+  const results = event(5, [
+    { text: "第一文。", final: true },
+    { text: "第二文。", final: false },
+  ]).results;
+  const folded = foldResultList(results as never);
+  assert.equal(folded.final, "第一文。");
+  assert.equal(folded.interim, "第二文。");
+});
+
 /* ------------------------------------------------------------------ */
 /* Error classification                                                */
 /* ------------------------------------------------------------------ */
@@ -184,7 +213,7 @@ test("a network failure points at the paid fallback", () => {
   const net = classifyError("network");
   assert.equal(net.kind, "network");
   assert.equal(net.recoverable, false);
-  assert.ok(net.message.includes("OpenAI"), net.message);
+  assert.ok(net.message.includes("AI"), net.message);
 });
 
 test("service-not-allowed is treated as a permission problem", () => {

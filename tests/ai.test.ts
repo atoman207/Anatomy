@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { parseAbstractsXml, formatCitation, type PubMedArticle } from "../src/lib/literature/pubmed";
+import { parseAbstractsXml, type PubMedArticle } from "../src/lib/literature/pubmed";
+import { formatCitation } from "../src/lib/literature/citation";
 import { pruneHallucinatedPmids, type LiteratureSummary } from "../src/lib/ai/queryBuilder";
 import {
   voiceNoteToMarkdown, missingFields, VOICE_NOTE_SCHEMA,
@@ -108,20 +109,30 @@ function article(over: Partial<PubMedArticle> = {}): PubMedArticle {
     publicationTypes: [],
     url: "https://pubmed.ncbi.nlm.nih.gov/12345678/",
     doiUrl: "https://doi.org/10.1000/test",
+    volume: null,
+    issue: null,
+    pages: null,
     ...over,
   };
 }
 
-test("citations use et al. past three authors and fall back to PMID without a DOI", () => {
+test("citations use et al. past six authors (Vancouver style) and fall back to PMID without a DOI", () => {
   assert.ok(formatCitation(article()).includes("Yamada T, Suzuki K"));
   assert.ok(formatCitation(article()).includes("doi:10.1000/test"));
 
-  const many = formatCitation(article({ authors: ["A B", "C D", "E F", "G H"] }));
+  const many = formatCitation(
+    article({ authors: ["A B", "C D", "E F", "G H", "I J", "K L", "M N"] }),
+  );
   assert.ok(many.includes("et al."), many);
 
   const noDoi = formatCitation(article({ doi: null }));
-  assert.ok(noDoi.includes("PMID:12345678"));
+  assert.ok(noDoi.includes("PMID: 12345678"));
   assert.ok(!noDoi.includes("doi:"));
+});
+
+test("citations include volume, issue and pages when known", () => {
+  const full = formatCitation(article({ volume: "41", issue: "3", pages: "512-520" }));
+  assert.ok(full.includes("2024;41(3):512-520"), full);
 });
 
 /* ------------------------------------------------------------------ */

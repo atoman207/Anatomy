@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Badge, Button, Callout } from "@/components/ui";
+import { Badge, Button } from "@/components/ui";
+import { useToast } from "@/components/shell/Toast";
 import {
   SpeechSession, isWebSpeechSupported, fullTranscript,
-  EMPTY_TRANSCRIPT, type TranscriptState, type ClassifiedError,
+  EMPTY_TRANSCRIPT, type TranscriptState,
 } from "@/lib/voice/webSpeech";
 
 /**
@@ -29,8 +30,8 @@ export function LiveTranscriber({
   );
 
   const [listening, setListening] = useState(false);
+  const { toast } = useToast();
   const [state, setState] = useState<TranscriptState>(EMPTY_TRANSCRIPT);
-  const [error, setError] = useState<ClassifiedError | null>(null);
   const [dead, setDead] = useState(false);
   const [elapsed, setElapsed] = useState(0);
 
@@ -60,19 +61,22 @@ export function LiveTranscriber({
   }, [state]);
 
   const start = useCallback(() => {
-    setError(null);
     setDead(false);
+    // Flip the UI immediately. Chrome can take a beat to fire `onstart`
+    // (mic permission, connecting to the speech service), and leaving the
+    // start button in place makes it look like the click did nothing.
+    setListening(true);
 
     const session = new SpeechSession(
       {
         onTranscript: setState,
-        onError: (e) => setError(e),
+        onError: (e) => toast(e.message, { tone: "danger", title: "エラー" }),
         onStateChange: setListening,
         onDead: () => {
           setDead(true);
           setListening(false);
           onUnavailable?.(
-            "このブラウザの音声認識エンジンが応答しません。Chrome または Edge をお使いいただくか、OpenAI での文字起こしに切り替えてください。",
+            "このブラウザの音声認識エンジンが応答しません。Chrome または Edge をお使いいただくか、有料の文字起こしに切り替えてください。",
           );
         },
       },
@@ -86,7 +90,7 @@ export function LiveTranscriber({
     // Continue from whatever is already there rather than starting over.
     session.setTranscript(state.final);
     session.start();
-  }, [onUnavailable, state.final]);
+  }, [onUnavailable, state.final, toast]);
 
   const stop = useCallback(() => {
     const session = sessionRef.current;
@@ -99,7 +103,6 @@ export function LiveTranscriber({
     sessionRef.current?.dispose();
     sessionRef.current = null;
     setState(EMPTY_TRANSCRIPT);
-    setError(null);
     setDead(false);
     setElapsed(0);
     setListening(false);
@@ -107,10 +110,10 @@ export function LiveTranscriber({
 
   if (!supported) {
     return (
-      <Callout tone="warn" title="このブラウザは無料の音声認識に対応していません">
-        Chrome、Edge、または Safari をお使いください。Firefox は Web Speech API に
-        対応していません。下の「OpenAI で文字起こし」に切り替えれば、どのブラウザでも利用できます。
-      </Callout>
+      <p className="text-sm text-ink-2">
+        このブラウザは無料の音声認識に対応していません。Chrome、Edge、または Safari をお使いください。
+        Firefox は Web Speech API に対応していません。「有料」に切り替えれば、どのブラウザでも利用できます。
+      </p>
     );
   }
 
@@ -119,28 +122,17 @@ export function LiveTranscriber({
 
   return (
     <div className="flex flex-col gap-3">
-      {dead && (
-        <Callout tone="danger" title="音声認識エンジンが応答しません">
-          このブラウザには音声認識サービスへの接続がありません。Chrome または Edge を
-          お使いいただくか、「OpenAI で文字起こし」に切り替えてください。
-        </Callout>
-      )}
-
-      {error && !dead && (
-        <Callout tone="danger" title="音声認識エラー">{error.message}</Callout>
-      )}
-
       <div className="flex flex-wrap items-center gap-3">
         {!listening ? (
-          <Button variant="primary" icon="mic" onClick={start} disabled={disabled || dead}>
+          <Button type="button" variant="primary" icon="mic" onClick={start} disabled={disabled || dead}>
             話し始める
           </Button>
         ) : (
-          <Button variant="danger" icon="stop" onClick={stop}>停止して確定</Button>
+          <Button type="button" variant="danger" icon="stop" onClick={stop}>停止して確定</Button>
         )}
 
         {charCount > 0 && !listening && (
-          <Button icon="clear" onClick={clear}>クリア</Button>
+          <Button type="button" icon="clear" onClick={clear}>クリア</Button>
         )}
 
         {listening && (

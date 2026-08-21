@@ -6,6 +6,8 @@ import { LAB_ROLE_LABELS } from "@/lib/auth/roles";
 import type { LabRole } from "@/lib/supabase/types";
 import { ActionForm } from "@/components/admin/ActionForm";
 import { createLabAction, updateLabAction, deleteLabAction } from "../actions";
+import { effectivePlan, STATUS_LABELS } from "@/lib/billing/plans";
+import type { BillingPlan, BillingStatus } from "@/lib/supabase/types";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,9 @@ interface LabView {
   experimentCount: number;
   createdAt: string;
   myRole: string | null;
+  /** The plan in force, and the raw Stripe status behind it. */
+  planName: string;
+  status: BillingStatus | null;
 }
 
 export default async function LabsPage() {
@@ -47,6 +52,8 @@ export default async function LabsPage() {
       .from("experiments").select("id", { count: "exact", head: true }).eq("lab_id", l.id);
     const { data: owner } = await admin
       .from("profiles").select("email").eq("id", l.owner_id).maybeSingle();
+    const { data: sub } = await admin
+      .from("lab_subscriptions").select("plan, status").eq("lab_id", l.id).maybeSingle();
 
     views.push({
       id: l.id,
@@ -58,6 +65,8 @@ export default async function LabsPage() {
       experimentCount: experimentCount ?? 0,
       createdAt: l.created_at,
       myRole: ctx.memberships.find((m) => m.labId === l.id)?.role ?? null,
+      planName: effectivePlan(sub?.plan as BillingPlan | null, sub?.status as BillingStatus | null).name,
+      status: (sub?.status as BillingStatus | null) ?? null,
     });
   }
 
@@ -79,11 +88,17 @@ export default async function LabsPage() {
           <EmptyState title="まだ研究室がありません" />
         ) : (
           <DataTable
-            headers={["名称", "オーナー", "メンバー", "実験", "作成日", "あなたの役割"]}
-            align={["left", "left", "right", "right", "left", "left"]}
+            headers={["名称", "オーナー", "プラン", "メンバー", "実験", "作成日", "あなたの役割"]}
+            align={["left", "left", "left", "right", "right", "left", "left"]}
             rows={views.map((v) => [
               <span key="n" className="font-medium text-ink">{v.name}</span>,
               <span key="o" className="font-mono text-ink-2">{v.ownerEmail}</span>,
+              <span key="p" className="flex flex-wrap items-center gap-1.5">
+                <Badge tone={v.planName === "フリー" ? "neutral" : "accent"}>{v.planName}</Badge>
+                {v.status && v.status !== "active" && (
+                  <Badge tone={STATUS_LABELS[v.status].tone}>{STATUS_LABELS[v.status].ja}</Badge>
+                )}
+              </span>,
               v.memberCount,
               v.experimentCount,
               new Date(v.createdAt).toLocaleDateString("ja-JP"),

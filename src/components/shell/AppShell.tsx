@@ -1,11 +1,12 @@
 "use client";
 
 import {
-  useCallback, useEffect, useState, useSyncExternalStore, type ReactNode,
+  useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode,
 } from "react";
 import { usePathname } from "next/navigation";
 import { cx } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
+import { useToast } from "@/components/shell/Toast";
 import {
   subscribeSidebar, getSidebarCollapsed, getSidebarCollapsedServer, setSidebarCollapsed,
 } from "./sidebarPreference";
@@ -24,8 +25,10 @@ import type { NotificationsResponse } from "@/app/api/notifications/route";
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const { toast } = useToast();
   const [me, setMe] = useState<MeResponse | null>(null);
   const [notifications, setNotifications] = useState<NotificationsResponse | null>(null);
+  const toastedNoticeIds = useRef(new Set<string>());
   const collapsed = useSyncExternalStore(
     subscribeSidebar,
     getSidebarCollapsed,
@@ -56,11 +59,25 @@ export function AppShell({ children }: { children: ReactNode }) {
         if (cancelled) return;
         setMe(nextMe);
         setNotifications(nextNotices);
+
+        // Surface urgent notices as toasts once each, so they are not missed
+        // waiting inside the header bell. Info items stay in the dropdown.
+        for (const notice of nextNotices.notices) {
+          if (notice.tone !== "warn" && notice.tone !== "danger") continue;
+          if (toastedNoticeIds.current.has(notice.id)) continue;
+          toastedNoticeIds.current.add(notice.id);
+          toast(notice.detail, {
+            tone: notice.tone,
+            title: notice.title,
+            // Already listed via /api/notifications; do not duplicate in the store.
+            persist: false,
+          });
+        }
       } catch {
         if (!cancelled) {
           setMe({
             signedIn: false, email: null, displayName: null, avatarUrl: null,
-            isPlatformAdmin: false, canAccessAdmin: false, labs: [],
+            platformRole: "user", isPlatformAdmin: false, canAccessAdmin: false, labs: [],
           });
         }
       }
@@ -81,7 +98,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       cancelled = true;
       unsubscribe?.();
     };
-  }, [pathname]);
+  }, [pathname, toast]);
 
   useEffect(() => {
     if (!drawerOpen) return;
