@@ -92,6 +92,13 @@ export interface PeerReviewReport {
   overallScore: number;
 }
 
+/** score >= 70 solid, 50-69 needs major revision, below that reject-level — matches the reviewer prompts' own rubric. */
+export function scoreTone(score: number): "good" | "warn" | "danger" {
+  if (score >= 70) return "good";
+  if (score >= 50) return "warn";
+  return "danger";
+}
+
 /**
  * Combines the three reviewers' results into one report.
  *

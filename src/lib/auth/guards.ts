@@ -103,15 +103,40 @@ export async function getSessionContext(): Promise<SessionContext | null> {
   );
   const isPlatformAdmin = platformRole === "admin";
 
+  const displayName =
+    profile?.display_name || metaName || (user.email ?? "").split("@")[0] || "user";
+
+  // Solo accounts used to land with no lab and then hit "create a laboratory"
+  // walls on every save path. A personal workspace is provisioned once here
+  // so ordinary users never have to manage labs themselves.
+  let resolvedMemberships = memberships;
+  let resolvedAdminLabs = adminLabs;
+  if (memberships.length === 0 && !isPlatformAdmin) {
+    const { ensurePersonalLab } = await import("@/lib/labs/personalLab");
+    const created = await ensurePersonalLab(user.id, displayName);
+    if (created) {
+      const membership: LabMembership = {
+        labId: created.labId,
+        labName: created.labName,
+        labDescription: "個人用に自動作成されたワークスペースです。",
+        ownerId: user.id,
+        role: "owner",
+        joinedAt: new Date().toISOString(),
+      };
+      resolvedMemberships = [membership];
+      resolvedAdminLabs = [membership];
+    }
+  }
+
   return {
     user,
     email: user.email ?? "",
-    displayName: profile?.display_name || metaName || (user.email ?? "").split("@")[0] || "user",
+    displayName,
     avatarUrl: profile?.avatar_url || (metaAvatar?.startsWith("data:") ? null : metaAvatar),
     platformRole,
     isPlatformAdmin,
-    memberships,
-    adminLabs,
+    memberships: resolvedMemberships,
+    adminLabs: resolvedAdminLabs,
     canAccessAdmin: isPlatformAdmin,
   };
 }

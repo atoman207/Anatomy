@@ -27,9 +27,9 @@ export default async function BillingPage(props: PageProps<"/billing">) {
   if (ctx.memberships.length === 0) {
     return (
       <div className="flex flex-col gap-4">
-        <PageHeader title="料金・支払い" description="研究室ごとのプランと支払いを管理します。" />
-        <EmptyState title="所属している研究室がありません">
-          プランは研究室ごとに契約します。管理者に研究室へ追加してもらってください。
+        <PageHeader title="料金・支払い" description="ワークスペースごとのプランと支払いを管理します。" />
+        <EmptyState title="ワークスペースを準備しています">
+          ページを再読み込みしてください。個人用ワークスペースはログイン時に自動で作成されます。
         </EmptyState>
       </div>
     );

@@ -611,7 +611,7 @@ be audited or reversed months later.
 npm run dev            # development server
 npm run build          # production build
 npm run check          # typecheck + lint + unit tests
-npm test               # unit tests (215)
+npm test               # unit tests (236)
 npm run test:e2e       # browser smoke test; needs a server on :3210
 npm run test:e2e:auth  # login, administration and permission denials
 npm run test:e2e:ai    # voice structuring and literature search (uses real API calls)

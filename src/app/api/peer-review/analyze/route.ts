@@ -4,7 +4,7 @@ import { runFullReview, type PeerReviewReport } from "@/lib/ai/peerReview";
 import type { ReviewerRole } from "@/lib/ai/peerReviewReport";
 import { extractPdfText, PdfExtractionError } from "@/lib/peerReview/pdf";
 import { getReviewerProfiles } from "@/lib/peerReview/reviewerProfileActions";
-import { requireAiAccess } from "@/lib/billing/subscription";
+import { consumePeerReviewCredit } from "@/lib/peerReview/credits";
 
 export const runtime = "nodejs";
 // Three sequential model calls against a long manuscript; give it the same
@@ -41,10 +41,6 @@ export async function POST(request: Request) {
   try {
     const form = await request.formData();
     const file = form.get("file");
-    const gate = await requireAiAccess(String(form.get("labId") ?? ""));
-    if (!gate.ok) {
-      return NextResponse.json({ error: gate.error }, { status: gate.status });
-    }
 
     if (!(file instanceof File)) {
       return NextResponse.json({ error: "PDFファイルがありません。" }, { status: 400 });
@@ -74,6 +70,16 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: e.message }, { status: 422 });
       }
       throw e;
+    }
+
+    // Spent only now, immediately before the three model calls: a bad or
+    // unreadable PDF is rejected above without costing the caller a credit,
+    // but from here on the credit is gone even if the AI call itself later
+    // fails - the same "authoritative, not cosmetic" gate `requireAiAccess`
+    // used to be for the AI routes still gated by a lab's plan.
+    const gate = await consumePeerReviewCredit();
+    if (!gate.ok) {
+      return NextResponse.json({ error: gate.error }, { status: gate.status });
     }
 
     const profiles = await getReviewerProfiles();

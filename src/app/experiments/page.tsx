@@ -27,6 +27,14 @@ export default async function ExperimentsPage() {
     );
   }
 
+  // Pages that skip getSessionContext still need a workspace for inserts.
+  const { ensurePersonalLab } = await import("@/lib/labs/personalLab");
+  const displayName =
+    (user.user_metadata?.display_name as string | undefined) ||
+    user.email?.split("@")[0] ||
+    "個人";
+  await ensurePersonalLab(user.id, displayName);
+
   const supabase = await createServerSupabase();
 
   const { data: memberships, error: memberError } = await supabase

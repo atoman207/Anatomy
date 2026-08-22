@@ -20,6 +20,16 @@ export interface NavItem {
   platformOnly?: boolean;
   /** Only shown when signed in. */
   authOnly?: boolean;
+  /**
+   * Hidden from platform administrators.
+   *
+   * For the self-service pages an administrator has an administrative
+   * equivalent of: they manage every laboratory's plan at
+   * `/admin/subscriptions`, so the personal 料金・支払い page would only be a
+   * second, narrower way to do the same thing - and the one that acts on
+   * whichever laboratory happened to be selected.
+   */
+  hideForPlatformAdmin?: boolean;
 }
 
 export interface NavGroup {
@@ -157,6 +167,18 @@ const icons = {
       <path d="M2.5 10h19M6 15h4" />
     </Icon>
   ),
+  contracts: (
+    <Icon>
+      <path d="M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
+      <path d="M14 3v5h5M9 13h6M9 17h4" />
+    </Icon>
+  ),
+  prices: (
+    <Icon>
+      <path d="M20.6 13.4 12 22l-9-9V3h10z" />
+      <circle cx="7.5" cy="7.5" r="1.4" />
+    </Icon>
+  ),
   account: (
     <Icon>
       <circle cx="12" cy="12" r="3" />
@@ -211,7 +233,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "管理",
     adminOnly: true,
     items: [
-      { href: "/admin", label: "概要", icon: icons.adminHome, exact: true, adminOnly: true },
+      { href: "/admin", label: "管理者ダッシュボード", icon: icons.adminHome, exact: true, adminOnly: true },
       { href: "/admin/members", label: "メンバー", icon: icons.members, adminOnly: true },
       { href: "/admin/labs", label: "研究室", icon: icons.labs, adminOnly: true },
       { href: "/admin/experiments", label: "実験", icon: icons.experiments, adminOnly: true },
@@ -219,7 +241,9 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/users", label: "ユーザー", icon: icons.users, platformOnly: true },
       { href: "/admin/peer-review", label: "AI査読者", icon: icons.peerReview, platformOnly: true },
       { href: "/admin/content", label: "コンテンツ管理", icon: icons.content, platformOnly: true },
-      { href: "/admin/billing", label: "料金設定", icon: icons.billing, platformOnly: true },
+      { href: "/admin/billing", label: "決済", icon: icons.billing, exact: true, platformOnly: true },
+      { href: "/admin/subscriptions", label: "契約管理", icon: icons.contracts, platformOnly: true },
+      { href: "/admin/billing/prices", label: "料金設定", icon: icons.prices, platformOnly: true },
       { href: "/admin/audit", label: "監査ログ", icon: icons.audit, adminOnly: true },
     ],
   },
@@ -227,7 +251,10 @@ export const NAV_GROUPS: NavGroup[] = [
     id: "personal",
     label: null,
     items: [
-      { href: "/billing", label: "料金・支払い", icon: icons.billing, authOnly: true },
+      {
+        href: "/billing", label: "料金・支払い", icon: icons.billing,
+        authOnly: true, hideForPlatformAdmin: true,
+      },
       { href: "/account", label: "アカウント設定", icon: icons.account, authOnly: true },
     ],
   },
@@ -247,6 +274,7 @@ export function visibleGroups(v: NavVisibility): NavGroup[] {
       if (item.platformOnly && !v.isPlatformAdmin) return false;
       if (item.adminOnly && !v.canAccessAdmin) return false;
       if (item.authOnly && !v.signedIn) return false;
+      if (item.hideForPlatformAdmin && v.isPlatformAdmin) return false;
       return true;
     });
     return items.length ? { ...group, items } : null;

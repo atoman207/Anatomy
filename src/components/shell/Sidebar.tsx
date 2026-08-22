@@ -5,7 +5,6 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { cx } from "@/components/ui";
-import { Icon } from "@/components/icons";
 import { visibleGroups, type NavVisibility } from "./navigation";
 import type { MeResponse } from "@/app/api/me/route";
 
@@ -34,8 +33,13 @@ export function Sidebar({
     isPlatformAdmin: me?.isPlatformAdmin ?? false,
   };
   const groups = visibleGroups(visibility).filter((group) => {
-    if (!pathname.startsWith("/admin")) return true;
-    return group.id !== "record" && group.id !== "tools";
+    // Platform admins never do lab work themselves, so only the 管理 section
+    // (and account links) belong in their rail — on every page, not just
+    // while inside /admin. Lab-level admins still do research day to day, so
+    // they only lose the research tools while actually in the admin console.
+    const restrictToAdmin = visibility.isPlatformAdmin || pathname.startsWith("/admin");
+    if (!restrictToAdmin) return true;
+    return group.id === "admin" || group.id === "personal";
   });
 
   return (
@@ -130,128 +134,6 @@ export function Sidebar({
           );
         })}
       </nav>
-
-      <AccountBlock me={me} collapsed={collapsed} onNavigate={onNavigate} />
     </div>
-  );
-}
-
-/**
- * Who you are, at the foot of the sidebar.
- *
- * Placed here rather than only in the header because role is context you need
- * while working — "am I an admin of this lab?" is the question behind half the
- * navigation choices above it.
- */
-function AccountBlock({
-  me, collapsed, onNavigate,
-}: {
-  me: MeResponse | null;
-  collapsed: boolean;
-  onNavigate?: () => void;
-}) {
-  if (!me || !me.signedIn) {
-    return (
-      <div className={cx("shrink-0 border-t border-[var(--shell-border)] p-3", collapsed && "px-2")}>
-        <Link
-          href="/login"
-          onClick={onNavigate}
-          className={cx(
-            "flex items-center justify-center gap-2 rounded-lg bg-[var(--shell-accent)] py-2 text-[13px] font-medium text-[#08210f] transition-opacity hover:opacity-90",
-            collapsed ? "px-1" : "px-3",
-          )}
-        >
-          {collapsed ? <Icon name="login" className="h-4 w-4" /> : (
-            <>
-              <Icon name="login" className="h-4 w-4" />
-              ログイン
-            </>
-          )}
-        </Link>
-      </div>
-    );
-  }
-
-  const initial = (me.displayName ?? me.email ?? "?").trim().charAt(0).toUpperCase();
-  const primaryLab = me.labs[0];
-
-  if (collapsed) {
-    return (
-      <div className="shrink-0 border-t border-[var(--shell-border)] p-2">
-        <Link
-          href="/account"
-          onClick={onNavigate}
-          title={`${me.displayName} (${me.email})`}
-          className="mx-auto grid h-9 w-9 place-items-center overflow-hidden rounded-lg bg-[var(--shell-hover)] text-xs font-semibold text-[var(--shell-active-text)]"
-        >
-          {me.avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element -- avatar sources are arbitrary user uploads, not app assets next/image can optimise
-            <img src={me.avatarUrl} alt="" className="h-full w-full object-cover" />
-          ) : (
-            initial
-          )}
-        </Link>
-      </div>
-    );
-  }
-
-  return (
-    <div className="shrink-0 border-t border-[var(--shell-border)] p-3">
-      <Link
-        href="/account"
-        onClick={onNavigate}
-        className="flex items-center gap-2.5 rounded-lg p-2 transition-colors hover:bg-[var(--shell-hover)]"
-      >
-        {me.avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- avatar sources are arbitrary user uploads, not app assets next/image can optimise
-          <img
-            src={me.avatarUrl}
-            alt=""
-            className="h-9 w-9 shrink-0 rounded-lg object-cover"
-          />
-        ) : (
-          <span
-            aria-hidden
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[var(--shell-active-bg)] text-sm font-semibold text-[var(--shell-active-text)]"
-          >
-            {initial}
-          </span>
-        )}
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13px] font-medium text-[var(--shell-text)]">
-            {me.displayName}
-          </span>
-          <span className="block truncate text-[10px] text-[var(--shell-text-faint)]">
-            {me.email}
-          </span>
-        </span>
-      </Link>
-
-      <div className="mt-2 flex flex-col gap-1 px-2">
-        <span
-          className={cx(
-            "inline-flex w-fit items-center rounded px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset",
-            me.isPlatformAdmin
-              ? "text-[var(--shell-active-text)] ring-[var(--shell-active-text)]/30"
-              : "text-[var(--shell-text-faint)] ring-[var(--shell-border)]",
-          )}
-        >
-          {me.platformRole === "admin" ? "管理者" : "ユーザー"}
-        </span>
-        {primaryLab && (
-          <span className="truncate text-[10px] text-[var(--shell-text-faint)]">
-            {primaryLab.name}
-            <span className="ml-1 text-[var(--shell-text-faint)]">({roleJa(primaryLab.role)})</span>
-            {me.labs.length > 1 && ` +${me.labs.length - 1}`}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function roleJa(role: string): string {
-  return (
-    { owner: "オーナー", admin: "管理者", member: "メンバー", viewer: "閲覧者" }[role] ?? role
   );
 }

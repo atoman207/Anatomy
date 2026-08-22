@@ -74,6 +74,11 @@ export async function POST(request: Request) {
         major,
         avatar_url: avatarUrl,
       }).eq("id", userId);
+
+      // Ordinary users should not have to create a laboratory before they can
+      // save experiments or notes - give them a personal workspace immediately.
+      const { ensurePersonalLab } = await import("@/lib/labs/personalLab");
+      await ensurePersonalLab(userId, displayName);
     }
 
     return NextResponse.json({ ok: true });

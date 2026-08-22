@@ -1,19 +1,40 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { Badge, Callout, Card, EmptyState, StatTile } from "@/components/ui";
+import { RevenueChart } from "@/components/admin/RevenueChart";
 import { requireAdmin } from "@/lib/auth/guards";
 import { createAdminSupabase } from "@/lib/supabase/server";
-import { LAB_ROLE_LABELS, PLATFORM_ROLE_LABELS } from "@/lib/auth/roles";
-import type { LabRole } from "@/lib/supabase/types";
+import { LAB_ROLE_LABELS } from "@/lib/auth/roles";
+import { loadBillingDashboard } from "@/lib/billing/dashboardActions";
+import { formatMoney, GRANULARITY_LABELS } from "@/lib/billing/revenue";
+import type { BillingDashboardData } from "@/lib/billing/dashboardTypes";
+import { NAV_GROUPS } from "@/components/shell/navigation";
 
 export const dynamic = "force-dynamic";
 
-const ROLE_HINTS_JA: Record<LabRole, string> = {
-  owner: "研究室の完全な管理権限。削除も可能。削除不可の役割。",
-  admin: "メンバーとデータの管理。研究室の削除は不可。",
-  member: "実験・データセット・ノートブックの作成・編集。",
-  viewer: "研究室内のすべてを閲覧のみ。",
+/**
+ * Short blurbs for every /admin/* section, keyed by href. Kept next to the
+ * page rather than in navigation.tsx because they're prose for this one
+ * overview grid, not part of the nav's own data — the icon and label still
+ * come from NAV_GROUPS so the two never drift apart.
+ */
+const ADMIN_SECTION_DESCRIPTIONS: Record<string, string> = {
+  "/admin/members": "研究室ごとの所属と役割。",
+  "/admin/labs": "研究室の作成・設定・削除。",
+  "/admin/experiments": "全研究室の実験を作成・編集・削除。",
+  "/admin/templates": "全テンプレートの確認・編集・削除。",
+  "/admin/users": "アカウントの作成・権限変更・削除。",
+  "/admin/peer-review": "AI査読者の名前と採点ルーブリックを編集。",
+  "/admin/content": "研究室データを横断的に検索・削除。",
+  "/admin/billing": "Stripe の売上・顧客状況を確認。",
+  "/admin/subscriptions": "研究室ごとのプラン・支払い状態を管理。",
+  "/admin/billing/prices": "プランの月額と Stripe 価格を設定。",
+  "/admin/audit": "追記のみの操作履歴。",
 };
+
+/** Past week at daily grain — the overview chart should scan in one glance. */
+const OVERVIEW_RANGE_DAYS = 7;
+const OVERVIEW_GRANULARITY = "day" as const;
 
 interface Counts {
   experiments: number;
@@ -74,10 +95,19 @@ export default async function AdminOverviewPage(props: PageProps<"/admin">) {
     ctx.isPlatformAdmin ? null : visibleLabs.map((l) => l.labId),
   );
 
+  // Stripe revenue is platform-wide; laboratory admins do not see it here.
+  const revenue: BillingDashboardData | null = ctx.isPlatformAdmin
+    ? (await loadBillingDashboard(OVERVIEW_RANGE_DAYS, OVERVIEW_GRANULARITY)).data ?? null
+    : null;
+
+  const adminSections = (NAV_GROUPS.find((g) => g.id === "admin")?.items ?? []).filter(
+    (item) => item.href !== "/admin" && (!item.platformOnly || ctx.isPlatformAdmin),
+  );
+
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title="管理"
+        title="管理者ダッシュボード"
         description={`${ctx.displayName}（${ctx.email}）`}
         meta={
           <>
@@ -96,6 +126,47 @@ export default async function AdminOverviewPage(props: PageProps<"/admin">) {
         </Callout>
       )}
 
+      {revenue && (
+        <Card>
+          <RevenueChart
+            buckets={revenue.buckets}
+            currency={revenue.currency}
+            granularity={revenue.granularity}
+            title={`${GRANULARITY_LABELS[revenue.granularity]}の売上推移`}
+            subtitle={
+              revenue.summary.best && revenue.summary.best.net > 0
+                ? `最高は ${revenue.summary.best.longLabel} の ${formatMoney(revenue.summary.best.net, revenue.currency)}`
+                : "過去7日間の純売上（返金差引後）"
+            }
+          />
+        </Card>
+      )}
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold text-ink-2">管理機能</h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {adminSections.map((item) => (
+            <Link key={item.href} href={item.href} className="group">
+              <Card className="card-hover h-full">
+                <div className="flex items-start gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-accent-soft text-accent">
+                    {item.icon}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-[16px] font-medium text-ink group-hover:text-accent">
+                      {item.label}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-ink-3">
+                      {ADMIN_SECTION_DESCRIPTIONS[item.href] ?? ""}
+                    </span>
+                  </span>
+                </div>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      </section>
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
         <StatTile label="管理者" value={roleCounts.admins} tone="accent" />
         <StatTile label="ユーザー" value={roleCounts.users} />
@@ -106,49 +177,6 @@ export default async function AdminOverviewPage(props: PageProps<"/admin">) {
         <StatTile label="データセット" value={counts.datasets} />
         <StatTile label="解析" value={counts.analyses} />
       </div>
-
-      <Card
-        title="あなたの権限"
-        subtitle={`${PLATFORM_ROLE_LABELS[ctx.platformRole].ja} — ${PLATFORM_ROLE_LABELS[ctx.platformRole].hint}`}
-        actions={
-          <Link href="/admin/users" className="text-xs text-accent underline">
-            ユーザーの権限を変更
-          </Link>
-        }
-      >
-        {ctx.memberships.length === 0 ? (
-          <EmptyState title="所属している研究室がありません">
-            <Link href="/admin/labs" className="text-accent underline">
-              研究室を作成
-            </Link>
-            してメンバーを招待してください。研究室の役割は、管理者権限とは別に
-            研究室内のデータ操作を決めます。
-          </EmptyState>
-        ) : (
-          <ul className="flex flex-col divide-y divide-[var(--border)]">
-            {ctx.memberships.map((m) => (
-              <li key={m.labId} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-ink">{m.labName}</p>
-                  <p className="text-xs text-ink-3">
-                    {LAB_ROLE_LABELS[m.role].ja} — {ROLE_HINTS_JA[m.role]}
-                  </p>
-                </div>
-                <Badge tone={m.role === "owner" ? "accent" : m.role === "admin" ? "good" : "neutral"}>
-                  {LAB_ROLE_LABELS[m.role].ja}
-                </Badge>
-              </li>
-            ))}
-          </ul>
-        )}
-        {ctx.isPlatformAdmin && (
-          <div className="mt-3">
-            <Callout tone="info" title="管理者">
-              すべてのユーザー・研究室・実験・テンプレートを閲覧し、作成・編集・削除できます。
-            </Callout>
-          </div>
-        )}
-      </Card>
 
       <Card
         title="最近の操作"
@@ -162,9 +190,12 @@ export default async function AdminOverviewPage(props: PageProps<"/admin">) {
         {recent.length === 0 ? (
           <EmptyState title="まだ操作は記録されていません" />
         ) : (
-          <ul className="flex flex-col divide-y divide-[var(--border)] text-xs">
+          <ul className="columns-1 gap-x-6 text-xs sm:columns-2">
             {recent.map((r) => (
-              <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+              <li
+                key={r.id}
+                className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] py-2 [break-inside:avoid]"
+              >
                 <span className="font-mono text-ink">{r.action}</span>
                 <span className="text-ink-3">
                   {new Date(r.created_at).toLocaleString("ja-JP")}
@@ -200,7 +231,7 @@ async function recentAudit(labIds: string[] | null) {
     .from("audit_logs")
     .select("id, action, created_at, lab_id")
     .order("created_at", { ascending: false })
-    .limit(8);
+    .limit(12);
   if (labIds) {
     if (labIds.length === 0) return [];
     query = query.in("lab_id", labIds);

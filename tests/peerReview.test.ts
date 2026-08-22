@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   aggregateReview, allMajorConcerns, allRecommendations, CATEGORY_LABELS,
@@ -11,6 +12,7 @@ import { withRubricNotes } from "../src/lib/ai/peerReview";
 import {
   avatarFor, DEFAULT_REVIEWER_NAMES, defaultReviewerProfiles,
 } from "../src/lib/ai/reviewerProfiles";
+import { PEER_REVIEW_CREDIT_PACKS } from "../src/lib/peerReview/creditPacks";
 
 function methods(overrides: Partial<MethodsReviewResult> = {}): MethodsReviewResult {
   return {
@@ -337,4 +339,36 @@ test("the three default reviewers do not all land on the same avatar", () => {
   const specs = Object.values(DEFAULT_REVIEWER_NAMES).map((n) => avatarFor(n));
   const distinctBg = new Set(specs.map((s) => s.bg));
   assert.ok(distinctBg.size > 1, "all three reviewers generated the same background color");
+});
+
+/* ------------------------------------------------------------------ */
+/* Credit packs                                                        */
+/* ------------------------------------------------------------------ */
+
+// Two sessions once disagreed on these numbers - one changed the catalogue,
+// the other never noticed - and the drift was only caught by re-reading the
+// file by hand. These checks make that drift a test failure instead.
+
+test("the credits setup script charges exactly what the catalogue advertises", () => {
+  const js = readFileSync(new URL("../scripts/stripe-credits-setup.mjs", import.meta.url), "utf8");
+  for (const pack of PEER_REVIEW_CREDIT_PACKS) {
+    const pattern = new RegExp(`id: "${pack.id}"[^}]*amountJpy: (\\d+)`);
+    const found = js.match(pattern);
+    assert.ok(found, `stripe-credits-setup.mjs has no amount for ${pack.id}`);
+    assert.equal(
+      Number(found[1]), pack.amountJpy,
+      `${pack.id}: the script would create a price Stripe charges but the app does not show`,
+    );
+  }
+});
+
+test("the migration's seeded credit prices match the catalogue", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/all.sql", import.meta.url), "utf8");
+  for (const pack of PEER_REVIEW_CREDIT_PACKS) {
+    const pattern = new RegExp(`\\('${pack.id}',\\s*${pack.credits},\\s*${pack.amountJpy}\\)`);
+    assert.ok(
+      pattern.test(sql),
+      `all.sql's peer_review_credit_prices seed does not match ${pack.id} (${pack.credits} credits, ¥${pack.amountJpy})`,
+    );
+  }
 });

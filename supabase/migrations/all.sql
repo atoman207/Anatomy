@@ -1284,3 +1284,280 @@ create policy plan_prices_select on public.plan_prices
 drop policy if exists plan_prices_update on public.plan_prices;
 create policy plan_prices_update on public.plan_prices
   for update using (public.is_platform_admin()) with check (public.is_platform_admin());
+
+-- ============================================================================
+-- AI Peer Review credits
+--
+-- Pay-per-use, on top of a small free allowance, replaces the lab-Pro-plan
+-- gate for AI査読: entitlement is now a personal balance on the account that
+-- ran the review, not something a laboratory's subscription decides. A review
+-- is therefore no longer tied to a laboratory or an experiment - the two
+-- columns that used to require one are relaxed to nullable below rather than
+-- dropped, so existing rows (and their lab-scoped RLS history) stay intact.
+--
+-- Safe to re-run: every statement is guarded.
+-- ============================================================================
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'peer_reviews'
+      and column_name = 'lab_id' and is_nullable = 'NO'
+  ) then
+    alter table public.peer_reviews alter column lab_id drop not null;
+  end if;
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'peer_reviews'
+      and column_name = 'experiment_id' and is_nullable = 'NO'
+  ) then
+    alter table public.peer_reviews alter column experiment_id drop not null;
+  end if;
+end $$;
+
+-- Superseded by the policies below, which cover both the old lab-scoped rows
+-- and new personal ones in one clause.
+drop policy if exists peer_reviews_select on public.peer_reviews;
+create policy peer_reviews_select on public.peer_reviews
+  for select using (
+    created_by = auth.uid()
+    or (lab_id is not null and public.is_lab_member(lab_id))
+  );
+
+drop policy if exists peer_reviews_insert on public.peer_reviews;
+create policy peer_reviews_insert on public.peer_reviews
+  for insert with check (
+    created_by = auth.uid()
+    or (lab_id is not null and public.can_write_lab(lab_id))
+  );
+
+drop policy if exists peer_reviews_update on public.peer_reviews;
+create policy peer_reviews_update on public.peer_reviews
+  for update using (
+    created_by = auth.uid()
+    or (lab_id is not null and public.can_write_lab(lab_id))
+  ) with check (
+    created_by = auth.uid()
+    or (lab_id is not null and public.can_write_lab(lab_id))
+  );
+
+drop policy if exists peer_reviews_delete on public.peer_reviews;
+create policy peer_reviews_delete on public.peer_reviews
+  for delete using (
+    created_by = auth.uid()
+    or (lab_id is not null and public.can_write_lab(lab_id))
+  );
+
+-- One row per account. `free_remaining` starts every account at the free
+-- allowance; `purchased_balance` is topped up by the webhook when a credit
+-- pack is bought. `used_count`/`total_purchased` are lifetime counters kept
+-- alongside the spendable balances so "how many have I ever run/bought" can
+-- be shown without summing history.
+create table if not exists public.peer_review_credits (
+  user_id           uuid primary key references auth.users (id) on delete cascade,
+  free_remaining    integer not null default 3,
+  purchased_balance integer not null default 0,
+  used_count        integer not null default 0,
+  total_purchased   integer not null default 0,
+  updated_at        timestamptz not null default now(),
+  constraint peer_review_credits_nonnegative check (
+    free_remaining >= 0 and purchased_balance >= 0 and used_count >= 0 and total_purchased >= 0
+  )
+);
+
+-- Every account that already exists gets a row, same reasoning as the
+-- lab_subscriptions backfill above: `getMyPeerReviewCredits` never has to
+-- distinguish "no row yet" from "row with the default allowance".
+insert into public.peer_review_credits (user_id)
+select u.id from auth.users u
+on conflict (user_id) do nothing;
+
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['peer_review_credits']
+  loop
+    execute format(
+      'drop trigger if exists touch_%1$s on public.%1$s;
+       create trigger touch_%1$s before update on public.%1$s
+       for each row execute function public.touch_updated_at();', t);
+  end loop;
+end $$;
+
+-- Readable only by the account it belongs to. No insert/update/delete policy
+-- is granted at all: every write goes through `consume_peer_review_credit`
+-- (spending, called with the caller's own auth.uid()) or through
+-- `grant_peer_review_credits` (crediting a purchase, called only by the
+-- webhook's service-role client, which bypasses RLS entirely) - never through
+-- a direct table write a browser could forge.
+alter table public.peer_review_credits enable row level security;
+
+drop policy if exists peer_review_credits_select on public.peer_review_credits;
+create policy peer_review_credits_select on public.peer_review_credits
+  for select using (user_id = auth.uid());
+
+-- Atomically spends one credit for the calling user: free allowance first,
+-- then the purchased balance. A single UPDATE ... WHERE is what makes this
+-- safe under concurrency - two simultaneous reviews cannot both succeed off
+-- the same last credit, since the second UPDATE's WHERE clause simply matches
+-- zero rows once the first has committed.
+create or replace function public.consume_peer_review_credit()
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.peer_review_credits (user_id)
+  values (auth.uid())
+  on conflict (user_id) do nothing;
+
+  update public.peer_review_credits
+     set free_remaining = free_remaining - 1,
+         used_count = used_count + 1
+   where user_id = auth.uid()
+     and free_remaining > 0;
+  if found then
+    return true;
+  end if;
+
+  update public.peer_review_credits
+     set purchased_balance = purchased_balance - 1,
+         used_count = used_count + 1
+   where user_id = auth.uid()
+     and purchased_balance > 0;
+  return found;
+end;
+$$;
+
+-- Credits a completed purchase. `security definer` so it can also be called
+-- safely if a future admin tool ever needs to grant credits directly; the
+-- webhook itself already writes through the service-role client, which does
+-- not need it, but a table write there would still have to reimplement this
+-- same upsert-or-add.
+create or replace function public.grant_peer_review_credits(target_user uuid, amount integer)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if amount <= 0 then
+    return;
+  end if;
+
+  insert into public.peer_review_credits (user_id, purchased_balance, total_purchased)
+  values (target_user, amount, amount)
+  on conflict (user_id) do update
+    set purchased_balance = public.peer_review_credits.purchased_balance + excluded.purchased_balance,
+        total_purchased   = public.peer_review_credits.total_purchased + excluded.total_purchased;
+end;
+$$;
+
+-- Which Stripe one-time Price each credit pack sells, same shape and reasons
+-- as plan_prices: held in the database so a price change is an operational
+-- step (re-run the setup script), not a code change or a redeploy.
+create table if not exists public.peer_review_credit_prices (
+  pack_id         text primary key check (pack_id in ('single', 'ten', 'hundred')),
+  credits         integer not null,
+  amount_jpy      integer not null check (amount_jpy >= 0),
+  stripe_price_id text,
+  updated_by      uuid references auth.users (id) on delete set null,
+  updated_at      timestamptz not null default now()
+);
+
+insert into public.peer_review_credit_prices (pack_id, credits, amount_jpy) values
+  ('single',  1,   50),
+  ('ten',     10,  100),
+  ('hundred', 100, 150)
+on conflict (pack_id) do update
+  set credits = excluded.credits,
+      amount_jpy = excluded.amount_jpy;
+
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['peer_review_credit_prices']
+  loop
+    execute format(
+      'drop trigger if exists touch_%1$s on public.%1$s;
+       create trigger touch_%1$s before update on public.%1$s
+       for each row execute function public.touch_updated_at();', t);
+  end loop;
+end $$;
+
+-- Readable by anyone: the AI査読 page shows these prices to every visitor.
+-- Writable only by a platform administrator (via the setup script's
+-- service-role key, which bypasses RLS, or from a future admin editor).
+alter table public.peer_review_credit_prices enable row level security;
+
+drop policy if exists peer_review_credit_prices_select on public.peer_review_credit_prices;
+create policy peer_review_credit_prices_select on public.peer_review_credit_prices
+  for select using (true);
+
+drop policy if exists peer_review_credit_prices_update on public.peer_review_credit_prices;
+create policy peer_review_credit_prices_update on public.peer_review_credit_prices
+  for update using (public.is_platform_admin()) with check (public.is_platform_admin());
+
+-- Lets a one-time credit purchase's webhook event carry who bought it, the
+-- same way billing_events.lab_id already carries which laboratory a
+-- subscription event was about. Nullable, like lab_id: most events still have
+-- no user (e.g. invoice.payment_failed is about a laboratory, not a person).
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'billing_events' and column_name = 'user_id'
+  ) then
+    alter table public.billing_events
+      add column user_id uuid references auth.users (id) on delete set null;
+  end if;
+end $$;
+
+create index if not exists billing_events_user_idx
+  on public.billing_events (user_id, received_at desc);
+
+-- New accounts get a peer_review_credits row the same moment they get a
+-- profiles row, so a brand-new user's first AI査読 never has to distinguish
+-- "no row yet" from "row at the default allowance" either.
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, email, display_name)
+  values (
+    new.id,
+    new.email,
+    coalesce(new.raw_user_meta_data ->> 'display_name', split_part(new.email, '@', 1))
+  )
+  on conflict (id) do nothing;
+
+  begin
+    update public.profiles
+       set date_of_birth = case
+             when coalesce(new.raw_user_meta_data ->> 'date_of_birth', '') ~ '^\d{4}-\d{2}-\d{2}$'
+             then (new.raw_user_meta_data ->> 'date_of_birth')::date
+             else date_of_birth
+           end,
+           phone_number = nullif(new.raw_user_meta_data ->> 'phone_number', ''),
+           major        = nullif(new.raw_user_meta_data ->> 'major', '')
+     where id = new.id;
+  exception when undefined_column then
+    null;
+  when others then
+    null;
+  end;
+
+  insert into public.peer_review_credits (user_id)
+  values (new.id)
+  on conflict (user_id) do nothing;
+
+  return new;
+end;
+$$;

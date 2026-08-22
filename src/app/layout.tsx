@@ -8,13 +8,32 @@ import { WorkspaceProvider } from "@/components/workspace";
 const notoSans = Noto_Sans_JP({
   variable: "--font-noto-sans-jp",
   subsets: ["latin"],
+  weight: ["400", "500", "700"],
+  preload: false,
   display: "swap",
+  adjustFontFallback: false,
+  fallback: [
+    "Hiragino Sans",
+    "Hiragino Kaku Gothic ProN",
+    "Yu Gothic",
+    "Meiryo",
+    "sans-serif",
+  ],
 });
 
 const notoSerif = Noto_Serif_JP({
   variable: "--font-noto-serif-jp",
   subsets: ["latin"],
+  weight: ["400", "600", "700"],
+  preload: false,
   display: "swap",
+  adjustFontFallback: false,
+  fallback: [
+    "Hiragino Mincho ProN",
+    "Yu Mincho",
+    "MS PMincho",
+    "serif",
+  ],
 });
 
 const roboto = Roboto({

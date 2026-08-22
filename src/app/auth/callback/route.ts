@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
  * cannot bounce a freshly authenticated user to another host.
  */
 function safeNext(value: string | null): string {
-  if (!value) return "/experiments";
-  if (!value.startsWith("/") || value.startsWith("//")) return "/experiments";
+  if (!value) return "/";
+  if (!value.startsWith("/") || value.startsWith("//")) return "/";
   return value;
 }

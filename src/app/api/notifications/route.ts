@@ -96,14 +96,16 @@ export async function GET() {
     });
   }
 
-  if (ctx.memberships.length === 0) {
+  // Personal workspaces are auto-provisioned on sign-in. This notice only
+  // remains as a rare fallback if that step failed (e.g. database offline).
+  if (ctx.memberships.length === 0 && !ctx.isPlatformAdmin) {
     notices.push({
       id: "no-lab",
-      tone: "info",
-      title: "研究室に所属していません",
-      detail: "研究室を作成するか、管理者に追加してもらってください。",
+      tone: "warn",
+      title: "ワークスペースを準備できませんでした",
+      detail: "ページを再読み込みするか、しばらくしてから再度お試しください。",
       at: null,
-      href: ctx.canAccessAdmin ? "/admin/labs" : "/experiments",
+      href: "/",
     });
   }
 

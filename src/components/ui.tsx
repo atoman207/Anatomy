@@ -17,7 +17,7 @@ export function Card({
   return (
     <section
       className={cx(
-        "rounded-lg border border-line bg-surface-1 shadow-[var(--shadow-sm)]",
+        "border border-line bg-surface-1 shadow-[var(--shadow-sm)]",
         className,
       )}
     >
@@ -140,7 +140,7 @@ export function Callout({
     danger: { cls: "border-danger/40 bg-danger-soft text-ink", icon: "✕", label: "エラー" },
   }[tone];
   return (
-    <div className={cx("flex gap-2.5 rounded-md border px-4 py-3 text-[14px] leading-relaxed", config.cls)}>
+    <div className={cx("flex gap-2.5 border px-4 py-3 text-[14px] leading-relaxed", config.cls)}>
       <span aria-hidden className="mt-px font-bold">{config.icon}</span>
       <div className="min-w-0 flex-1">
         <span className="sr-only">{config.label}: </span>
@@ -153,7 +153,7 @@ export function Callout({
 
 export function EmptyState({ title, children }: { title: string; children?: ReactNode }) {
   return (
-    <div className="rounded-lg border border-dashed border-line px-4 py-12 text-center">
+    <div className="border border-dashed border-line px-4 py-12 text-center">
       <p className="text-[15px] font-medium text-ink-2">{title}</p>
       {children && <div className="mt-2 text-[13px] text-ink-3">{children}</div>}
     </div>
@@ -170,7 +170,7 @@ export function DataTable({
   align?: ("left" | "right")[];
 }) {
   return (
-    <div className="scroll-x rounded-lg border border-line" style={maxHeight ? { maxHeight, overflowY: "auto" } : undefined}>
+    <div className="scroll-x border border-line" style={maxHeight ? { maxHeight, overflowY: "auto" } : undefined}>
       <table className="w-full border-collapse text-[14px]">
         <thead className="sticky top-0 z-10 bg-surface-2">
           <tr>
@@ -232,7 +232,7 @@ export function PendingOverlay({
       aria-live="polite"
       className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 px-4"
     >
-      <div className="flex max-w-sm flex-col items-center gap-4 rounded-lg border border-line bg-surface-1 px-8 py-8 text-center shadow-[var(--shadow-md)]">
+      <div className="flex max-w-sm flex-col items-center gap-4 border border-line bg-surface-1 px-8 py-8 text-center shadow-[var(--shadow-md)]">
         <span
           aria-hidden
           className="h-10 w-10 rounded-full border-[3px] border-line border-t-accent motion-safe:animate-spin"
@@ -258,7 +258,7 @@ export function StatTile({
     ? { good: "text-good", warn: "text-warn", danger: "text-danger", accent: "text-accent" }[tone]
     : "text-ink";
   return (
-    <div className="rounded-lg border border-line bg-surface-1 px-4 py-3 shadow-[var(--shadow-sm)]">
+    <div className="border border-line bg-surface-1 px-4 py-3 shadow-[var(--shadow-sm)]">
       <p className="text-[12px] font-medium uppercase tracking-wider text-ink-3">{label}</p>
       <p className={cx("mt-1 text-2xl font-semibold tabular-nums", valueTone)}>{value}</p>
       {hint && <p className="mt-1 text-[13px] text-ink-3">{hint}</p>}

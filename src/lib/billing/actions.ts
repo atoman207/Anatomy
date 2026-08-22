@@ -24,6 +24,7 @@ import {
   getStripe, isMockCheckoutAllowed, isStripeConfigured, siteOrigin,
 } from "./stripe";
 import { resolvePriceId } from "./priceStore";
+import { describeStripeError } from "./stripeAdmin";
 import { ensureCustomer, isMockId, MOCK_ID_PREFIX, persistSubscription } from "./store";
 
 export interface ActionResult<T = undefined> {
@@ -49,7 +50,12 @@ async function ownerContext(labId: string) {
 }
 
 function message(e: unknown, fallback: string): string {
-  return e instanceof Error ? e.message : fallback;
+  if (e === null || e === undefined) return fallback;
+  // Stripe's own failures get translated into something the reader can act
+  // on - a bare "resource_missing" or an unexplained 401 tells a researcher
+  // nothing about which knob is wrong.
+  const described = describeStripeError(e);
+  return described || fallback;
 }
 
 /**
@@ -241,6 +247,22 @@ export async function syncSubscription(labId: string): Promise<ActionResult<Plan
 
     if (!row?.stripe_customer_id) {
       return { ok: false, error: "この研究室にはまだ支払い情報がありません。" };
+    }
+
+    /*
+     * A customer id written by the mock checkout is not a Stripe object.
+     * Handing it to `subscriptions.list` returns "No such customer", which
+     * reads like the subscription was lost rather than like the laboratory
+     * was never really charged. Say what actually happened instead.
+     */
+    if (isMockId(row.stripe_customer_id)) {
+      return {
+        ok: false,
+        error:
+          "この研究室のプランは、Stripe 接続前の擬似決済で付与されたものです。" +
+          "Stripe 上に契約が存在しないため取得できません。" +
+          "改めて有料プランをお申し込みいただくと、正式な契約に切り替わります。",
+      };
     }
 
     const stripe = getStripe();

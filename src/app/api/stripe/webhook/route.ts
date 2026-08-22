@@ -7,6 +7,7 @@ import {
   labIdForCustomer, markSubscriptionCanceled, persistSubscription, storedLastEventAt,
 } from "@/lib/billing/store";
 import { eventTimestamp, isFresherThan } from "@/lib/billing/sync";
+import { grantPeerReviewCredits } from "@/lib/peerReview/creditsStore";
 import type { Json } from "@/lib/supabase/types";
 
 export const runtime = "nodejs";
@@ -94,11 +95,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const labId = await handleEvent(event, at);
-    if (labId) {
-      await admin.from("billing_events").update({ lab_id: labId }).eq("id", event.id);
+    const { labId, userId } = await handleEvent(event, at);
+    if (labId || userId) {
+      await admin.from("billing_events").update({ lab_id: labId, user_id: userId }).eq("id", event.id);
     }
-    return NextResponse.json({ received: true, labId: labId ?? null });
+    return NextResponse.json({ received: true, labId: labId ?? null, userId: userId ?? null });
   } catch (e) {
     const detail = e instanceof Error ? e.message : "unknown error";
     // Delete the claim so Stripe's retry is allowed to try again.
@@ -107,19 +108,52 @@ export async function POST(request: Request) {
   }
 }
 
-/** Applies one verified event. Returns the laboratory it affected, if any. */
-async function handleEvent(event: Stripe.Event, at: Date): Promise<string | null> {
+interface EventEffect {
+  labId: string | null;
+  userId: string | null;
+}
+
+const NO_EFFECT: EventEffect = { labId: null, userId: null };
+
+/** Applies one verified event. Returns who/what it affected, if anything. */
+async function handleEvent(event: Stripe.Event, at: Date): Promise<EventEffect> {
   const stripe = getStripe();
 
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
+
+      // A credit-pack purchase: one-time payment, identified by the buyer's
+      // user id rather than by a laboratory. Handled separately from the
+      // subscription branch below because it has no `session.subscription`
+      // to retrieve.
+      if (session.mode === "payment") {
+        const userId = session.metadata?.user_id || session.client_reference_id || null;
+        const credits = Number(session.metadata?.credits ?? 0);
+        if (!userId || !Number.isFinite(credits) || credits <= 0) {
+          return { labId: null, userId };
+        }
+
+        await grantPeerReviewCredits(userId, credits);
+
+        await logAudit({
+          labId: null, userId, action: "peer_review_credits.purchased",
+          entity: "peer_review_credits", entityId: userId,
+          detail: {
+            pack_id: session.metadata?.pack_id ?? null,
+            credits,
+            session_id: session.id,
+          },
+        });
+        return { labId: null, userId };
+      }
+
       const labId =
         session.metadata?.lab_id ||
         session.client_reference_id ||
         (await labIdForCustomer(customerIdOf(session.customer)));
       const subscriptionId = idOf(session.subscription);
-      if (!labId || !subscriptionId) return labId ?? null;
+      if (!labId || !subscriptionId) return { labId: labId ?? null, userId: null };
 
       const subscription = await stripe.subscriptions.retrieve(subscriptionId);
       await applySubscription(labId, subscription, at);
@@ -129,7 +163,7 @@ async function handleEvent(event: Stripe.Event, at: Date): Promise<string | null
         entity: "lab_subscription", entityId: labId,
         detail: { subscription_id: subscriptionId },
       });
-      return labId;
+      return { labId, userId: null };
     }
 
     case "customer.subscription.created":
@@ -138,9 +172,9 @@ async function handleEvent(event: Stripe.Event, at: Date): Promise<string | null
       const labId =
         subscription.metadata?.lab_id ||
         (await labIdForCustomer(customerIdOf(subscription.customer)));
-      if (!labId) return null;
+      if (!labId) return NO_EFFECT;
       await applySubscription(labId, subscription, at);
-      return labId;
+      return { labId, userId: null };
     }
 
     case "customer.subscription.deleted": {
@@ -148,8 +182,8 @@ async function handleEvent(event: Stripe.Event, at: Date): Promise<string | null
       const labId =
         subscription.metadata?.lab_id ||
         (await labIdForCustomer(customerIdOf(subscription.customer)));
-      if (!labId) return null;
-      if (!isFresherThan(at, await storedLastEventAt(labId))) return labId;
+      if (!labId) return NO_EFFECT;
+      if (!isFresherThan(at, await storedLastEventAt(labId))) return { labId, userId: null };
 
       await markSubscriptionCanceled(labId, at);
       await logAudit({
@@ -157,13 +191,13 @@ async function handleEvent(event: Stripe.Event, at: Date): Promise<string | null
         entity: "lab_subscription", entityId: labId,
         detail: { subscription_id: subscription.id },
       });
-      return labId;
+      return { labId, userId: null };
     }
 
     case "invoice.payment_failed": {
       const invoice = event.data.object as Stripe.Invoice;
       const labId = await labIdForCustomer(customerIdOf(invoice.customer));
-      if (!labId) return null;
+      if (!labId) return NO_EFFECT;
       // The status change itself arrives as customer.subscription.updated;
       // this only records that a payment failed, so it is visible in the audit
       // trail rather than only in Stripe.
@@ -172,11 +206,11 @@ async function handleEvent(event: Stripe.Event, at: Date): Promise<string | null
         entity: "lab_subscription", entityId: labId,
         detail: { invoice_id: invoice.id, amount_due: invoice.amount_due },
       });
-      return labId;
+      return { labId, userId: null };
     }
 
     default:
-      return null;
+      return NO_EFFECT;
   }
 }
 

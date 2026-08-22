@@ -1,4 +1,5 @@
-import { Badge, Card, DataTable, Field, TextInput } from "@/components/ui";
+import Link from "next/link";
+import { Badge, Card, DataTable, Field, StatTile, TextInput } from "@/components/ui";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { requireUser } from "@/lib/auth/guards";
 import { ActionForm } from "@/components/admin/ActionForm";
@@ -6,6 +7,7 @@ import { updateDisplayNameAction, changePasswordAction } from "@/lib/auth/action
 import { LAB_ROLE_LABELS, PLATFORM_ROLE_LABELS } from "@/lib/auth/roles";
 import type { LabRole } from "@/lib/supabase/types";
 import { SignOutButton } from "@/components/admin/SignOutButton";
+import { getMyPeerReviewCredits } from "@/lib/peerReview/credits";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +20,7 @@ const ROLE_HINTS_JA: Record<LabRole, string> = {
 
 export default async function AccountPage() {
   const ctx = await requireUser("/account");
+  const credits = await getMyPeerReviewCredits();
 
   return (
     <div className="flex flex-col gap-4">
@@ -56,6 +59,29 @@ export default async function AccountPage() {
           ]}
         />
       </Card>
+
+      {credits.totalPurchased > 0 && (
+        <Card
+          title="AI査読の利用回数"
+          subtitle="購入した回数の残り・これまでの利用をまとめて表示します。"
+          actions={
+            <Link href="/peer-review" className="text-xs text-accent underline">
+              回数を追加
+            </Link>
+          }
+        >
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <StatTile
+              label="残り回数"
+              value={`${credits.remaining} 回`}
+              tone={credits.remaining > 0 ? "accent" : "danger"}
+              hint={`無料 ${credits.freeRemaining} ＋ 購入分 ${credits.purchasedBalance}`}
+            />
+            <StatTile label="購入した回数" value={`${credits.totalPurchased} 回`} />
+            <StatTile label="これまでの利用" value={`${credits.usedCount} 回`} />
+          </div>
+        </Card>
+      )}
 
       <Card title="表示名">
         <ActionForm action={updateDisplayNameAction} submitLabel="保存" icon="save">

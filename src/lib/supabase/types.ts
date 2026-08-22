@@ -287,6 +287,7 @@ export type BillingEvent = {
   id: string;
   type: string;
   lab_id: string | null;
+  user_id: string | null;
   payload: Json;
   received_at: string;
 }
@@ -297,8 +298,9 @@ export type DocumentKind = "paper";
 
 export type PeerReviewRow = {
   id: string;
-  lab_id: string;
-  experiment_id: string;
+  /** Nullable since the AI査読credit gate replaced the lab-Pro-plan gate: a review no longer has to belong to a laboratory or an experiment. */
+  lab_id: string | null;
+  experiment_id: string | null;
   document_kind: DocumentKind;
   title: string;
   source_filename: string | null;
@@ -331,6 +333,28 @@ export type PlanPriceRow = {
   stripe_price_id: string | null;
   /** Cached from Stripe for display; Stripe remains the authority on charges. */
   amount_jpy: number | null;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+/* AI Peer Review credits - see supabase/migrations/all.sql (peer review credits section). */
+
+export type PeerReviewCreditsRow = {
+  user_id: string;
+  free_remaining: number;
+  purchased_balance: number;
+  used_count: number;
+  total_purchased: number;
+  updated_at: string;
+}
+
+export type PeerReviewCreditPackId = "single" | "ten" | "hundred";
+
+export type PeerReviewCreditPriceRow = {
+  pack_id: PeerReviewCreditPackId;
+  credits: number;
+  amount_jpy: number;
+  stripe_price_id: string | null;
   updated_by: string | null;
   updated_at: string;
 }
@@ -385,12 +409,14 @@ export type Database = {
       >;
       billing_events: TableDef<
         BillingEvent,
-        Omit<BillingEvent, "received_at" | "lab_id" | "payload"> &
-          Partial<Pick<BillingEvent, "received_at" | "lab_id" | "payload">>
+        Omit<BillingEvent, "received_at" | "lab_id" | "user_id" | "payload"> &
+          Partial<Pick<BillingEvent, "received_at" | "lab_id" | "user_id" | "payload">>
       >;
       peer_reviews: TableDef<PeerReviewRow, Insert<PeerReviewRow, "document_kind">>;
       reviewer_profiles: TableDef<ReviewerProfileRow, Insert<ReviewerProfileRow, "rubric_notes">>;
       plan_prices: TableDef<PlanPriceRow, Insert<PlanPriceRow>>;
+      peer_review_credits: TableDef<PeerReviewCreditsRow, Insert<PeerReviewCreditsRow>>;
+      peer_review_credit_prices: TableDef<PeerReviewCreditPriceRow, Insert<PeerReviewCreditPriceRow>>;
     };
     Views: Record<string, never>;
     Functions: {
@@ -403,6 +429,8 @@ export type Database = {
       is_lab_admin: { Args: { target_lab: string }; Returns: boolean };
       lab_plan: { Args: { target_lab: string }; Returns: BillingPlan };
       lab_ai_enabled: { Args: { target_lab: string }; Returns: boolean };
+      consume_peer_review_credit: { Args: Record<string, never>; Returns: boolean };
+      grant_peer_review_credits: { Args: { target_user: string; amount: number }; Returns: undefined };
     };
     Enums: {
       lab_role: LabRole;

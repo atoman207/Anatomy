@@ -18,6 +18,7 @@
     "test:e2e:ai": "node tests/e2e-ai.mjs",
     "test:e2e:speech": "node tests/e2e-speech.mjs",
     "stripe:setup": "node scripts/stripe-setup.mjs",
+    "stripe:credits:setup": "node scripts/stripe-credits-setup.mjs",
     "stripe:reset-mock": "node scripts/stripe-reset-mock.mjs"
   },
   "dependencies": {

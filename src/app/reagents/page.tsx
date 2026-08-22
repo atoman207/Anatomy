@@ -21,11 +21,18 @@ export default async function ReagentsPage() {
         <h1 className="text-xl font-semibold text-ink">試薬・Lot</h1>
         <Callout tone="info" title="ログインしてください">
           <Link href="/login" className="text-accent underline">ログイン</Link>
-          すると、試薬・Lotを研究室ごとに記録できます。
+          すると、試薬・Lotを記録できます。
         </Callout>
       </div>
     );
   }
+
+  const { ensurePersonalLab } = await import("@/lib/labs/personalLab");
+  const displayName =
+    (user.user_metadata?.display_name as string | undefined) ||
+    user.email?.split("@")[0] ||
+    "個人";
+  await ensurePersonalLab(user.id, displayName);
 
   const supabase = await createServerSupabase();
   const { data: memberships, error: memberError } = await supabase
@@ -35,7 +42,7 @@ export default async function ReagentsPage() {
 
   if (memberError) {
     return (
-      <Callout tone="danger" title="研究室を読み込めませんでした">
+      <Callout tone="danger" title="ワークスペースを読み込めませんでした">
         {memberError.message}
       </Callout>
     );
@@ -56,14 +63,13 @@ export default async function ReagentsPage() {
       <header>
         <h1 className="text-xl font-semibold text-ink">試薬・Lot</h1>
         <p className="mt-1 text-sm text-ink-2">
-          研究室単位で試薬・Lotの受領日・有効期限・保管条件を記録します。
+          ワークスペース単位で試薬・Lotの受領日・有効期限・保管条件を記録します。
         </p>
       </header>
 
       {labs.length === 0 ? (
-        <Callout tone="info" title="研究室がまだありません">
-          <Link href="/experiments" className="text-accent underline">実験一覧</Link>
-          で研究室を作成してください。
+        <Callout tone="warn" title="ワークスペースを準備できませんでした">
+          ページを再読み込みしてください。
         </Callout>
       ) : (
         <ReagentManager labs={labs} />

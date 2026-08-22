@@ -122,11 +122,21 @@ export async function ensureCustomer(labId: string, ownerEmail: string): Promise
     .eq("id", labId)
     .maybeSingle();
 
-  const customer = await getStripe().customers.create({
-    name: lab?.name ?? undefined,
-    email: ownerEmail || undefined,
-    metadata: { lab_id: labId },
-  });
+  /*
+   * Keyed on the laboratory so a double-submit creates one customer, not two.
+   * Without it, two clicks on 申し込む half a second apart each reach this
+   * line before either has written its id back, and the account ends up with
+   * a duplicate customer whose payment history is invisible to the lab that
+   * kept the other one.
+   */
+  const customer = await getStripe().customers.create(
+    {
+      name: lab?.name ?? undefined,
+      email: ownerEmail || undefined,
+      metadata: { lab_id: labId },
+    },
+    { idempotencyKey: "lab-customer:" + labId },
+  );
 
   const { error } = await admin
     .from("lab_subscriptions")
