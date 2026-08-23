@@ -11,6 +11,10 @@ import { ExperimentPicker } from "@/components/ExperimentPicker";
 import { Recorder, type Recording } from "@/components/voice/Recorder";
 import { LiveTranscriber } from "@/components/voice/LiveTranscriber";
 import { renderMarkdown } from "@/lib/notebook/markdown";
+import {
+  mapVoiceNoteToValues,
+  NOTEBOOK_PENDING_PREFILL_KEY,
+} from "@/lib/notebook/prefill";
 import type { StructuredVoiceNote } from "@/lib/ai/voiceNote";
 import {
   startVoiceNote, updateVoiceNoteEdit, updateVoiceNoteStructured, confirmVoiceNote,
@@ -460,14 +464,46 @@ export default function VoicePage() {
                   <Button
                     size="sm"
                     icon="notebook"
-                    onClick={() =>
+                    onClick={() => {
+                      const prefill = mapVoiceNoteToValues(structured.note);
                       ws.addClip(
                         `音声メモ: ${structured.note.experiment_name ?? "無題"}`,
                         structured.markdown,
-                      )
-                    }
+                        prefill,
+                      );
+                      toast("実験ノートの下書きキューに追加しました。", { tone: "good" });
+                    }}
                   >
                     ノートへ（下書き）
+                  </Button>
+                  <Button
+                    size="sm"
+                    icon="notebook"
+                    onClick={() => {
+                      if (!ws.experimentId) {
+                        toast("先に実験を選択してください。", { tone: "warn" });
+                        return;
+                      }
+                      try {
+                        sessionStorage.setItem(
+                          NOTEBOOK_PENDING_PREFILL_KEY,
+                          JSON.stringify(mapVoiceNoteToValues(structured.note)),
+                        );
+                      } catch {
+                        toast("ブラウザの保存領域に書き込めませんでした。", { tone: "danger" });
+                        return;
+                      }
+                      ws.addClip(
+                        `音声メモ: ${structured.note.experiment_name ?? "無題"}`,
+                        structured.markdown,
+                        mapVoiceNoteToValues(structured.note),
+                      );
+                      router.push("/notebook");
+                    }}
+                    disabled={!ws.experimentId}
+                    title={ws.experimentId ? undefined : "上で実験を選択してください"}
+                  >
+                    ノートで仕上げる
                   </Button>
                   <Button
                     size="sm"

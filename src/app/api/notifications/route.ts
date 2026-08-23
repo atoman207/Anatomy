@@ -64,7 +64,7 @@ export async function GET() {
       title: "データベースが未設定です",
       detail: "解析機能は使えますが、実験やノートの保存はできません。",
       at: null,
-      href: "/",
+      href: "/dashboard",
     });
   }
   if (!isAiEnabled()) {
@@ -74,7 +74,7 @@ export async function GET() {
       title: "AI機能が無効です",
       detail: "AI APIキーを設定すると音声メモの整形と論文検索が使えます。",
       at: null,
-      href: "/",
+      href: "/dashboard",
     });
   }
 
@@ -105,7 +105,7 @@ export async function GET() {
       title: "ワークスペースを準備できませんでした",
       detail: "ページを再読み込みするか、しばらくしてから再度お試しください。",
       at: null,
-      href: "/",
+      href: "/dashboard",
     });
   }
 

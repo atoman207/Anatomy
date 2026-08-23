@@ -49,7 +49,7 @@ export default async function PeerReviewDetailPage(
         meta={<Badge tone={scoreTone(report.overallScore)}>{report.overallScore} / 100</Badge>}
         actions={
           <>
-            <Link href="/" className="text-[13px] text-accent underline underline-offset-2">
+            <Link href="/dashboard" className="text-[13px] text-accent underline underline-offset-2">
               ダッシュボード
             </Link>
             <Link href="/peer-review">

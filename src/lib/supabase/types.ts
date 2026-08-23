@@ -50,6 +50,17 @@ export type LabMember = {
   joined_at: string;
 }
 
+/** A promise that `email` will hold `role` in `lab_id` once they sign up; see acceptPendingLabInvites. */
+export type LabInvite = {
+  id: string;
+  lab_id: string;
+  email: string;
+  role: LabRole;
+  invited_by: string | null;
+  created_at: string;
+  accepted_at: string | null;
+}
+
 export type Project = {
   id: string;
   lab_id: string;
@@ -388,6 +399,7 @@ export type Database = {
       profiles: TableDef<Profile>;
       laboratories: TableDef<Laboratory>;
       lab_members: TableDef<LabMember, Omit<LabMember, "joined_at"> & { joined_at?: string }>;
+      lab_invites: TableDef<LabInvite, Insert<LabInvite, "role">>;
       projects: TableDef<Project>;
       experiments: TableDef<Experiment, Insert<Experiment, "status" | "tags" | "experiment_date">>;
       notebook_templates: TableDef<NotebookTemplateRow>;

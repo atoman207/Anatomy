@@ -56,6 +56,14 @@ function Icon({ children }: { children: ReactNode }) {
 }
 
 const icons = {
+  team: (
+    <Icon>
+      <circle cx="8" cy="8" r="3.2" />
+      <path d="M2 20a6 6 0 0 1 12 0" />
+      <path d="M15 5.2a3.2 3.2 0 0 1 0 5.6" />
+      <path d="M17 20a6 6 0 0 0-2-4.5" />
+    </Icon>
+  ),
   dashboard: (
     <Icon>
       <rect x="3" y="3" width="7" height="7" rx="1.5" />
@@ -192,14 +200,19 @@ export const NAV_GROUPS: NavGroup[] = [
     id: "work",
     label: null,
     items: [
-      { href: "/", label: "ダッシュボード", icon: icons.dashboard, exact: true },
+      { href: "/dashboard", label: "ダッシュボード", icon: icons.dashboard, exact: true },
+      { href: "/labs", label: "研究室", icon: icons.team, authOnly: true },
     ],
   },
   {
-    id: "peer-review",
-    label: "AI査読",
+    id: "record",
+    label: "記録",
     items: [
-      { href: "/peer-review", label: "AI査読", icon: icons.peerReview },
+      { href: "/notebook", label: "実験ノート", icon: icons.notebook },
+      { href: "/voice", label: "音声メモ", icon: icons.voice },
+      { href: "/reagents", label: "試薬・Lot", icon: icons.reagents },
+      { href: "/experiments", label: "実験一覧", icon: icons.experiments },
+      { href: "/literature", label: "論文検索", icon: icons.literature },
     ],
   },
   {
@@ -211,13 +224,10 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    id: "record",
-    label: "記録",
+    id: "peer-review",
+    label: "AI査読",
     items: [
-      { href: "/voice", label: "音声メモ", icon: icons.voice },
-      { href: "/notebook", label: "実験ノート", icon: icons.notebook },
-      { href: "/literature", label: "論文検索", icon: icons.literature },
-      { href: "/experiments", label: "実験一覧", icon: icons.experiments },
+      { href: "/peer-review", label: "AI査読", icon: icons.peerReview },
     ],
   },
   {
@@ -225,7 +235,6 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "ツール",
     items: [
       { href: "/calculator", label: "計算ツール", icon: icons.calculator },
-      { href: "/reagents", label: "試薬・Lot", icon: icons.reagents },
     ],
   },
   {
@@ -249,7 +258,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     id: "personal",
-    label: null,
+    label: "設定",
     items: [
       {
         href: "/billing", label: "料金・支払い", icon: icons.billing,

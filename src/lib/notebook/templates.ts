@@ -36,9 +36,24 @@ export type TemplateValues = Record<string, string | string[] | number | null | 
 
 const COMMON_FIELDS: TemplateField[] = [
   { key: "experiment_date", label: "実験日", type: "date", required: true },
+  {
+    key: "experiment_time",
+    label: "記録時刻",
+    type: "text",
+    placeholder: "例: 09:30",
+    help: "実験開始または記録した時刻",
+  },
   { key: "operator", label: "担当者", type: "text", required: true },
   { key: "experiment_name", label: "実験名", type: "text", required: true },
   { key: "purpose", label: "目的", type: "textarea" },
+  { key: "results", label: "結果", type: "textarea", help: "その日の観察・測定結果" },
+  { key: "discussion", label: "考察", type: "textarea" },
+  {
+    key: "tomorrow_plan",
+    label: "明日の予定",
+    type: "textarea",
+    placeholder: "次に行う実験・確認事項",
+  },
 ];
 
 export const BUILT_IN_TEMPLATES: NotebookTemplate[] = [
@@ -56,6 +71,7 @@ export const BUILT_IN_TEMPLATES: NotebookTemplate[] = [
     ],
     body: `# {{experiment_date}} {{experiment_name}}
 
+**記録時刻:** {{experiment_time}}
 **担当:** {{operator}}
 **目的:** {{purpose}}
 **サンプル数:** {{sample_count}}
@@ -71,8 +87,13 @@ export const BUILT_IN_TEMPLATES: NotebookTemplate[] = [
 {{/each}}
 
 ## 結果
+{{results}}
 
 ## 考察
+{{discussion}}
+
+## 明日の予定
+{{tomorrow_plan}}
 
 ## 備考
 {{notes}}
@@ -93,10 +114,12 @@ export const BUILT_IN_TEMPLATES: NotebookTemplate[] = [
       { key: "tmt_plex", label: "TMT plex", type: "select", options: ["6plex", "10plex", "11plex", "16plex", "18plex"], defaultValue: "10plex" },
       { key: "digestion_time", label: "消化時間（h）", type: "number", defaultValue: "16" },
       { key: "channels", label: "チャネル割当", type: "list" },
+      { key: "procedure", label: "手順", type: "list" },
       { key: "notes", label: "備考", type: "textarea" },
     ],
     body: `# {{experiment_date}} {{experiment_name}}
 
+**記録時刻:** {{experiment_time}}
 **担当:** {{operator}}
 **目的:** {{purpose}}
 **サンプル数:** {{sample_count}}
@@ -112,11 +135,18 @@ export const BUILT_IN_TEMPLATES: NotebookTemplate[] = [
 {{/each}}
 
 ## 実施内容
-
+{{#each procedure}}
+1. {{.}}
+{{/each}}
 
 ## 結果
+{{results}}
 
 ## 考察
+{{discussion}}
+
+## 明日の予定
+{{tomorrow_plan}}
 
 ## 備考
 {{notes}}
@@ -140,6 +170,7 @@ export const BUILT_IN_TEMPLATES: NotebookTemplate[] = [
     ],
     body: `# {{experiment_date}} {{experiment_name}}
 
+**記録時刻:** {{experiment_time}}
 **担当:** {{operator}}
 **目的:** {{purpose}}
 
@@ -192,6 +223,7 @@ export const BUILT_IN_TEMPLATES: NotebookTemplate[] = [
     ],
     body: `# {{experiment_date}} {{experiment_name}}
 
+**記録時刻:** {{experiment_time}}
 **担当:** {{operator}}
 **目的:** {{purpose}}
 **実験種別:** {{assay_type}}
@@ -240,6 +272,7 @@ export const BUILT_IN_TEMPLATES: NotebookTemplate[] = [
     ],
     body: `# {{experiment_date}} {{experiment_name}}
 
+**記録時刻:** {{experiment_time}}
 **担当:** {{operator}}
 **目的:** {{purpose}}
 
@@ -285,6 +318,7 @@ export const BUILT_IN_TEMPLATES: NotebookTemplate[] = [
     ],
     body: `# {{experiment_date}} {{experiment_name}}
 
+**記録時刻:** {{experiment_time}}
 **担当:** {{operator}}
 **目的:** {{purpose}}
 **試料:** {{sample_name}}
@@ -344,6 +378,7 @@ export const BUILT_IN_TEMPLATES: NotebookTemplate[] = [
     ],
     body: `# {{experiment_date}} {{experiment_name}}
 
+**記録時刻:** {{experiment_time}}
 **担当:** {{operator}}
 **目的:** {{purpose}}
 **標的:** {{target_protein}}
@@ -404,6 +439,7 @@ export const BUILT_IN_TEMPLATES: NotebookTemplate[] = [
     ],
     body: `# {{experiment_date}} {{experiment_name}}
 
+**記録時刻:** {{experiment_time}}
 **担当:** {{operator}}
 **目的:** {{purpose}}
 
@@ -466,6 +502,7 @@ export const BUILT_IN_TEMPLATES: NotebookTemplate[] = [
     ],
     body: `# {{experiment_date}} {{experiment_name}}
 
+**記録時刻:** {{experiment_time}}
 **担当:** {{operator}}
 **目的:** {{purpose}}
 **サンプル数:** {{sample_count}}
@@ -525,6 +562,7 @@ export const BUILT_IN_TEMPLATES: NotebookTemplate[] = [
     ],
     body: `# {{experiment_date}} {{experiment_name}}
 
+**記録時刻:** {{experiment_time}}
 **担当:** {{operator}}
 **目的:** {{purpose}}
 **標的抗原:** {{target}}
@@ -585,6 +623,7 @@ export const BUILT_IN_TEMPLATES: NotebookTemplate[] = [
     ],
     body: `# {{experiment_date}} {{experiment_name}}
 
+**記録時刻:** {{experiment_time}}
 **担当:** {{operator}}
 **目的:** {{purpose}}
 **試料:** {{source}}
@@ -643,6 +682,7 @@ export const BUILT_IN_TEMPLATES: NotebookTemplate[] = [
     ],
     body: `# {{experiment_date}} {{experiment_name}}
 
+**記録時刻:** {{experiment_time}}
 **担当:** {{operator}}
 **目的:** {{purpose}}
 
@@ -706,6 +746,7 @@ export const BUILT_IN_TEMPLATES: NotebookTemplate[] = [
     ],
     body: `# {{experiment_date}} {{experiment_name}}
 
+**記録時刻:** {{experiment_time}}
 **担当:** {{operator}}
 **目的:** {{purpose}}
 
@@ -768,6 +809,7 @@ export const BUILT_IN_TEMPLATES: NotebookTemplate[] = [
     ],
     body: `# {{experiment_date}} {{experiment_name}}
 
+**記録時刻:** {{experiment_time}}
 **担当:** {{operator}}
 **目的:** {{purpose}}
 
@@ -823,6 +865,7 @@ export const BUILT_IN_TEMPLATES: NotebookTemplate[] = [
     ],
     body: `# {{experiment_date}} {{experiment_name}}
 
+**記録時刻:** {{experiment_time}}
 **担当:** {{operator}}
 **目的:** {{purpose}}
 
@@ -883,6 +926,7 @@ export const BUILT_IN_TEMPLATES: NotebookTemplate[] = [
     ],
     body: `# {{experiment_date}} {{experiment_name}}
 
+**記録時刻:** {{experiment_time}}
 **担当:** {{operator}}
 **目的:** {{purpose}}
 **標本:** {{specimen}}
@@ -945,6 +989,7 @@ export const BUILT_IN_TEMPLATES: NotebookTemplate[] = [
     ],
     body: `# {{experiment_date}} {{experiment_name}}
 
+**記録時刻:** {{experiment_time}}
 **担当:** {{operator}}
 **目的:** {{purpose}}
 **試料:** {{cell_type}}
@@ -1033,7 +1078,31 @@ export function renderTemplate(
     return String(v);
   });
 
+  out = injectFilledSection(out, "## 結果", resolved.results);
+  out = injectFilledSection(out, "## 考察", resolved.discussion);
+  out = injectFilledSection(out, "## 明日の予定", resolved.tomorrow_plan);
+
+  const time = resolved.experiment_time;
+  if (time && String(time).trim() && !out.includes("記録時刻")) {
+    out = out.replace(/^(# .+\n\n)/m, `$1**記録時刻:** ${String(time).trim()}\n\n`);
+  }
+
   return out.trimEnd() + "\n";
+}
+
+/** Writes section body when the template left a heading empty. */
+function injectFilledSection(body: string, heading: string, raw: unknown): string {
+  const content = raw === undefined || raw === null ? "" : String(raw).trim();
+  if (!content) return body;
+  const esc = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const emptySection = new RegExp(`(${esc}\\s*\\n)(?:\\s*\\n)*(?=## |$)`, "m");
+  if (emptySection.test(body)) {
+    return body.replace(emptySection, `$1\n${content}\n\n`);
+  }
+  if (!body.includes(heading)) {
+    return `${body.trimEnd()}\n\n${heading}\n\n${content}\n`;
+  }
+  return body;
 }
 
 /** Checks required fields before a notebook entry is saved. */

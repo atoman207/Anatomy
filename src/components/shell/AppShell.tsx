@@ -25,6 +25,13 @@ import type { NotificationsResponse } from "@/app/api/notifications/route";
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  /*
+   * The landing page at `/` is the public front door. It carries its own
+   * header and footer, is full-bleed rather than capped at the content
+   * width, and is mostly seen by visitors with no session at all - so the
+   * signed-in chrome is skipped entirely rather than rendered empty.
+   */
+  const isLanding = pathname === "/";
   const { toast } = useToast();
   const [me, setMe] = useState<MeResponse | null>(null);
   const [notifications, setNotifications] = useState<NotificationsResponse | null>(null);
@@ -46,6 +53,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   // Identity and notifications, refreshed on navigation and on auth changes.
   useEffect(() => {
+    // Nothing on the landing page consumes either, and most of its traffic is
+    // signed out, so it should not cost two authenticated round trips.
+    if (isLanding) return;
     let cancelled = false;
 
     const read = async () => {
@@ -98,7 +108,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       cancelled = true;
       unsubscribe?.();
     };
-  }, [pathname, toast]);
+  }, [pathname, toast, isLanding]);
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -115,6 +125,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
     setSidebarCollapsed(!collapsed);
   }, [collapsed]);
+
+  // Declared after every hook above, so the hook order never changes.
+  if (isLanding) return <>{children}</>;
 
   return (
     <div className="flex min-h-dvh bg-surface-0">

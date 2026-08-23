@@ -158,7 +158,7 @@ export async function requireUser(nextPath = "/admin"): Promise<SessionContext> 
  */
 export async function requireAdmin(nextPath = "/admin"): Promise<SessionContext> {
   const ctx = await requireUser(nextPath);
-  if (!ctx.canAccessAdmin) redirect("/?denied=admin");
+  if (!ctx.canAccessAdmin) redirect("/dashboard?denied=admin");
   return ctx;
 }
 

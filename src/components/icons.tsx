@@ -34,7 +34,8 @@ export type IconName =
   | "calculator"
   | "reagents"
   | "beaker"
-  | "edit";
+  | "edit"
+  | "team";
 
 const PATHS: Record<IconName, ReactNode> = {
   upload: <><path d="M12 16V4" /><path d="M7 9l5-5 5 5" /><path d="M4 20h16" /></>,
@@ -104,6 +105,14 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
       <path d="M14.5 5.5l3 3" />
+    </>
+  ),
+  team: (
+    <>
+      <circle cx="8" cy="8" r="3.2" />
+      <path d="M2 20a6 6 0 0 1 12 0" />
+      <path d="M15 5.2a3.2 3.2 0 0 1 0 5.6" />
+      <path d="M17 20a6 6 0 0 0-2-4.5" />
     </>
   ),
 };

@@ -5,8 +5,20 @@ import { AUTH_COOKIE_ENCODE } from "@/lib/supabase/authCookies";
 /** Node and many hosts reject Cookie headers much past 8–16 KB. */
 const COOKIE_HEADER_BUDGET = 8_192;
 
-/** Paths that require a signed-in user before they render at all. */
-const PROTECTED_PREFIXES = ["/admin", "/account", "/billing"];
+/**
+ * Paths that require a signed-in user before they render at all.
+ *
+ * Everything except the landing page at `/`, the login form and the auth
+ * callback. Each of these routes also has its own server-side guard (see
+ * `protectedSection` and `src/app/admin/layout.tsx`), which is what actually
+ * enforces access; this list only saves the visitor a flash of a page they
+ * were never going to keep.
+ */
+const PROTECTED_PREFIXES = [
+  "/admin", "/account", "/billing", "/dashboard", "/labs",
+  "/analyze", "/calculator", "/experiments", "/literature",
+  "/notebook", "/organize", "/peer-review", "/reagents", "/voice",
+];
 
 function isProtected(pathname: string): boolean {
   return PROTECTED_PREFIXES.some(

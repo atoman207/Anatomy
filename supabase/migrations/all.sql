@@ -1561,3 +1561,43 @@ begin
   return new;
 end;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- Self-service laboratories: pending invites
+--
+-- Any signed-in user may already create a laboratory and invite members whose
+-- accounts already exist (see createLabAction / addMemberAction). This table
+-- covers the other half: inviting someone with no account yet. A row here is
+-- a promise - "email X will hold role Y in lab Z once they sign up" - that
+-- the auth callback consumes the moment that person confirms their account,
+-- so a lab owner never has to remember to add them a second time.
+-- ---------------------------------------------------------------------------
+
+create table if not exists public.lab_invites (
+  id          uuid primary key default gen_random_uuid(),
+  lab_id      uuid not null references public.laboratories (id) on delete cascade,
+  email       text not null,
+  role        public.lab_role not null default 'member',
+  invited_by  uuid references auth.users (id) on delete set null,
+  created_at  timestamptz not null default now(),
+  accepted_at timestamptz
+);
+
+-- Only one live invite per (lab, email) at a time; a new invite after one is
+-- accepted is a fresh row, which keeps the accepted one as history.
+create unique index if not exists lab_invites_pending_unique
+  on public.lab_invites (lab_id, email)
+  where accepted_at is null;
+
+create index if not exists lab_invites_email_idx on public.lab_invites (email);
+
+alter table public.lab_invites enable row level security;
+
+-- Read-only for the lab's own admins/owners, so they can see who has not yet
+-- accepted. Every write (insert on invite, update on accept) goes through the
+-- service-role client in a server action that has already re-checked the
+-- caller's authority or is running as a system callback, matching how
+-- lab_members itself is written.
+drop policy if exists lab_invites_select on public.lab_invites;
+create policy lab_invites_select on public.lab_invites
+  for select using (public.is_lab_admin(lab_id));

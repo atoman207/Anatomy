@@ -74,7 +74,8 @@ function LoginForm() {
   // Only same-site paths are honoured, so a crafted ?next= cannot bounce a
   // freshly signed-in user to another host.
   const rawNext = params.get("next");
-  const next = rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
+  const next =
+    rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/dashboard";
 
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState(params.get("email") ?? "");

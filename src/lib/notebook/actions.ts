@@ -2,7 +2,7 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { getSessionContext, logAudit } from "@/lib/auth/guards";
-import type { Json } from "@/lib/supabase/types";
+import type { Json, Reagent } from "@/lib/supabase/types";
 
 export interface ActionResult<T = undefined> {
   ok: boolean;
@@ -92,4 +92,72 @@ export async function listNotebookEntries(
 
   if (error) return { ok: false, error: error.message };
   return { ok: true, data: data ?? [] };
+}
+
+export interface NotebookPrefillContext {
+  operator: string;
+  previousValues: Record<string, unknown> | null;
+  previousSavedAt: string | null;
+  reagents: Reagent[];
+}
+
+/**
+ * Data for "today's notebook" prefill: signed-in operator, the last entry
+ * for this experiment + template (stable fields only), and reagent lots.
+ */
+export async function getNotebookPrefillContext(
+  labId: string,
+  experimentId: string,
+  templateSlug: string,
+): Promise<ActionResult<NotebookPrefillContext>> {
+  const ctx = await getSessionContext();
+  if (!ctx) return { ok: false, error: "ログインしていません。" };
+  if (!labId || !experimentId) {
+    return {
+      ok: true,
+      data: {
+        operator: ctx.displayName,
+        previousValues: null,
+        previousSavedAt: null,
+        reagents: [],
+      },
+    };
+  }
+
+  const supabase = await createServerSupabase();
+
+  const [entryRes, reagentRes] = await Promise.all([
+    supabase
+      .from("notebook_entries")
+      .select("values, created_at, template_slug")
+      .eq("experiment_id", experimentId)
+      .eq("template_slug", templateSlug)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("reagents")
+      .select("*")
+      .eq("lab_id", labId)
+      .order("created_at", { ascending: false }),
+  ]);
+
+  if (entryRes.error) return { ok: false, error: entryRes.error.message };
+  if (reagentRes.error) return { ok: false, error: reagentRes.error.message };
+
+  const prev = entryRes.data;
+  const previousValues =
+    prev?.values && typeof prev.values === "object" && !Array.isArray(prev.values)
+      ? (prev.values as Record<string, unknown>)
+      : null;
+
+  return {
+    ok: true,
+    data: {
+      operator: ctx.displayName,
+      previousValues,
+      previousSavedAt: prev?.created_at ?? null,
+      reagents: reagentRes.data ?? [],
+    },
+  };
 }

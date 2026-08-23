@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { acceptPendingLabInvites } from "@/lib/labs/actions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,6 +34,7 @@ export async function GET(request: NextRequest) {
     if (error) {
       return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent("invalid_link")}`);
     }
+    await consumePendingLabInvites(supabase);
     // A recovery link must land on the page that sets a new password,
     // otherwise the one-time session is spent going somewhere useless.
     const target = type === "recovery" ? "/auth/reset" : next;
@@ -47,6 +49,7 @@ export async function GET(request: NextRequest) {
     if (error) {
       return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent("invalid_link")}`);
     }
+    await consumePendingLabInvites(supabase);
     const target = type === "recovery" ? "/auth/reset" : next;
     return NextResponse.redirect(`${origin}${target}`);
   }
@@ -55,11 +58,30 @@ export async function GET(request: NextRequest) {
 }
 
 /**
+ * Adds this freshly authenticated account to every laboratory it was
+ * invited to. Best-effort: a failure here must never break sign-in, so any
+ * error is swallowed the same way `logAudit` swallows its own.
+ */
+async function consumePendingLabInvites(
+  supabase: Awaited<ReturnType<typeof createServerSupabase>>,
+): Promise<void> {
+  try {
+    const { data } = await supabase.auth.getUser();
+    const user = data.user;
+    if (user?.email) {
+      await acceptPendingLabInvites(user.id, user.email);
+    }
+  } catch {
+    // Intentionally silent - see the note above.
+  }
+}
+
+/**
  * Only same-site paths are accepted as a redirect target, so a crafted link
  * cannot bounce a freshly authenticated user to another host.
  */
 function safeNext(value: string | null): string {
-  if (!value) return "/";
-  if (!value.startsWith("/") || value.startsWith("//")) return "/";
+  if (!value) return "/dashboard";
+  if (!value.startsWith("/") || value.startsWith("//")) return "/dashboard";
   return value;
 }

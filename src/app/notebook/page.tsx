@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   Badge, Button, Callout, Card, EmptyState, Field, Select, TextArea, TextInput,
 } from "@/components/ui";
@@ -15,7 +16,17 @@ import {
 import { renderMarkdown } from "@/lib/notebook/markdown";
 import { buildReport } from "@/lib/notebook/report";
 import {
-  saveNotebookEntry, listNotebookEntries, type NotebookEntrySummary,
+  buildTodayDefaults,
+  mergePrefillLayers,
+  NOTEBOOK_PENDING_PREFILL_KEY,
+  prefillFromPrevious,
+  prefillLotsFromReagents,
+} from "@/lib/notebook/prefill";
+import {
+  getNotebookPrefillContext,
+  listNotebookEntries,
+  saveNotebookEntry,
+  type NotebookEntrySummary,
 } from "@/lib/notebook/actions";
 import { listLabTemplates } from "@/lib/notebook/templateActions";
 import type { NotebookTemplateRow } from "@/lib/supabase/types";
@@ -55,6 +66,9 @@ export default function NotebookPage() {
   const [templateKey, setTemplateKey] = useState<string>(BUILT_IN_TEMPLATES[0].id);
   const [values, setValues] = useState<TemplateValues>({});
   const [copied, setCopied] = useState(false);
+  const [prefillHint, setPrefillHint] = useState<string | null>(null);
+  const [prefillBusy, setPrefillBusy] = useState(false);
+  const lastAutoPrefillKey = useRef<string | null>(null);
 
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
@@ -90,6 +104,94 @@ export default function NotebookPage() {
   }, [templateKey, customTemplates]);
 
   const today = useClientToday();
+
+  const applyTodayNotebook = useCallback(
+    async (opts: { silent?: boolean } = {}) => {
+      if (!ws.labId || !ws.experimentId) {
+        if (!opts.silent) {
+          toast("先に上で実験を選択してください。", { tone: "warn" });
+        }
+        return;
+      }
+
+      setPrefillBusy(true);
+      try {
+        const res = await getNotebookPrefillContext(ws.labId, ws.experimentId, template.id);
+        if (!res.ok || !res.data) {
+          throw new Error(res.error ?? "雛形の準備に失敗しました。");
+        }
+
+        let external: TemplateValues = {};
+        try {
+          const raw = sessionStorage.getItem(NOTEBOOK_PENDING_PREFILL_KEY);
+          if (raw) {
+            external = JSON.parse(raw) as TemplateValues;
+            sessionStorage.removeItem(NOTEBOOK_PENDING_PREFILL_KEY);
+          }
+        } catch {
+          // Ignore corrupt session payload.
+        }
+
+        for (const clip of ws.clips) {
+          if (clip.prefill) {
+            external = mergePrefillLayers(external, clip.prefill);
+          }
+        }
+
+        const merged = mergePrefillLayers(
+          buildTodayDefaults(res.data.operator),
+          prefillFromPrevious(template, res.data.previousValues),
+          prefillLotsFromReagents(template, res.data.reagents),
+          external,
+        );
+
+        setValues(merged);
+
+        if (res.data.previousSavedAt) {
+          setPrefillHint(
+            `${new Date(res.data.previousSavedAt).toLocaleString("ja-JP")} の記録からプロトコル・試薬などを引き継ぎ、今日の日付・時刻を入れました。結果・考察・明日の予定は空欄です。`,
+          );
+        } else if (res.data.reagents.length > 0) {
+          setPrefillHint("試薬・LotレジストリからLotを入力しました。結果・考察・明日の予定を記入して保存してください。");
+        } else {
+          setPrefillHint("今日の日付・時刻・担当者を入力しました。あとは結果と考察を書いて保存するだけです。");
+        }
+
+        if (!opts.silent) {
+          toast("今日のノートの雛形を用意しました。", { tone: "good" });
+        }
+      } catch (e) {
+        if (!opts.silent) {
+          toast(e instanceof Error ? e.message : "雛形の準備に失敗しました。", { tone: "danger" });
+        }
+      } finally {
+        setPrefillBusy(false);
+      }
+    },
+    [template, toast, ws.clips, ws.experimentId, ws.labId],
+  );
+
+  useEffect(() => {
+    if (!ws.experimentId || !ws.labId) return;
+    const key = `${ws.experimentId}:${template.id}`;
+    if (lastAutoPrefillKey.current === key) return;
+    const hasUserInput = Object.values(values).some((v) => {
+      if (v === undefined || v === null) return false;
+      if (typeof v === "string") return v.trim() !== "";
+      if (Array.isArray(v)) return v.length > 0;
+      return true;
+    });
+    if (hasUserInput) return;
+
+    lastAutoPrefillKey.current = key;
+    void applyTodayNotebook({ silent: true });
+  }, [ws.experimentId, ws.labId, template.id, applyTodayNotebook, values]);
+
+  useEffect(() => {
+    lastAutoPrefillKey.current = null;
+    setPrefillHint(null);
+    setValues({});
+  }, [templateKey]);
 
   /*
    * Defaults are layered under the user's input rather than written into
@@ -166,11 +268,55 @@ export default function NotebookPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <header>
-        <h1 className="text-xl font-semibold text-ink">実験ノート</h1>
+      <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-ink">実験ノート</h1>
+          <p className="mt-1 max-w-2xl text-sm text-ink-2">
+            手書きノートと同じ項目（日付・時刻・内容・結果・考察・明日の予定）を記録します。
+            毎回同じ実験なら前回のプロトコルと試薬Lotを引き継ぎ、結果だけ書けば保存できます。
+          </p>
+        </div>
+        <Link
+          href="/voice"
+          className="inline-flex shrink-0 items-center gap-1.5 text-sm text-accent underline"
+        >
+          音声メモから入力 →
+        </Link>
       </header>
 
-      <ExperimentPicker helpText="ここで選んだ実験の記録として、右のプレビューを保存できます。" />
+      <ExperimentPicker helpText="記録を紐づける実験を選びます。選ぶと今日の雛形を自動で用意します。" />
+
+      <Card
+        title="今日のノート"
+        subtitle="前回のプロトコル・試薬Lot・担当者を引き継ぎ、日付と時刻だけ今日に更新します。"
+        actions={
+          <Button
+            size="sm"
+            variant="primary"
+            icon="notebook"
+            disabled={prefillBusy || !ws.experimentId}
+            onClick={() => void applyTodayNotebook()}
+            title={ws.experimentId ? undefined : "先に実験を選択してください"}
+          >
+            {prefillBusy ? "準備中…" : "雛形を用意する"}
+          </Button>
+        }
+      >
+        {!ws.experimentId ? (
+          <EmptyState title="実験を選択してください">
+            上の一覧から実験を選ぶと、テンプレートに沿った今日のノートが自動で開きます。
+          </EmptyState>
+        ) : prefillHint ? (
+          <Callout tone="good">{prefillHint}</Callout>
+        ) : (
+          <p className="text-sm text-ink-2">
+            「雛形を用意する」で試薬Lot（<Link href="/reagents" className="text-accent underline">試薬・Lot</Link>
+            ）と前回の記録を反映します。音声メモは
+            <Link href="/voice" className="text-accent underline">音声メモ</Link>
+            からノートへ送れます。統計・図は解析画面の「ノートへ」で添付できます。
+          </p>
+        )}
+      </Card>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         <div className="flex flex-col gap-4">
@@ -209,7 +355,7 @@ export default function NotebookPage() {
 
           <Card
             title="入力"
-            subtitle="星印の項目は必須です。"
+            subtitle="星印は必須。結果・考察・明日の予定はその日の記録として毎回新しく書きます。"
           >
             <div className="flex flex-col gap-3">
               {template.fields.map((f) => {

@@ -21,6 +21,8 @@ export interface WorkspaceClip {
   title: string;
   markdown: string;
   createdAt: string;
+  /** Optional template field values (e.g. from a structured voice memo). */
+  prefill?: Record<string, string | string[] | number | null | undefined>;
 }
 
 export interface WorkspaceState {
@@ -122,7 +124,7 @@ export interface WorkspaceApi extends WorkspaceState {
   setInventory: (i: RawFileInventory | null) => void;
   setSheet: (s: SampleSheet | null) => void;
   setDataset: (d: LoadedDataset | null) => void;
-  addClip: (title: string, markdown: string) => void;
+  addClip: (title: string, markdown: string, prefill?: WorkspaceClip["prefill"]) => void;
   removeClip: (id: string) => void;
   clearClips: () => void;
   setExperiment: (v: { experimentId: string | null; labId: string | null; label: string | null }) => void;
@@ -139,7 +141,7 @@ export function useWorkspace(): WorkspaceApi {
       setInventory: (inventory) => update({ inventory }),
       setSheet: (sheet) => update({ sheet }),
       setDataset: (dataset) => update({ dataset }),
-      addClip: (title, markdown) =>
+      addClip: (title, markdown, prefill) =>
         update((s) => ({
           ...s,
           clips: [
@@ -149,6 +151,7 @@ export function useWorkspace(): WorkspaceApi {
               title,
               markdown,
               createdAt: new Date().toISOString(),
+              ...(prefill ? { prefill } : {}),
             },
           ],
         })),
