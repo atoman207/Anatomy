@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { cx } from "@/components/ui";
 import { Icon } from "@/components/icons";
 import { signOutAction } from "@/lib/auth/actions";
+import { useWorkspace } from "@/components/workspace";
 import { titleForPath } from "./navigation";
 import { subscribeTheme, getTheme, getThemeServer, toggleTheme } from "./themePreference";
 import {
@@ -20,6 +21,7 @@ import {
 } from "./notificationStore";
 import type { MeResponse } from "@/app/api/me/route";
 import type { NotificationsResponse, Notice } from "@/app/api/notifications/route";
+import type { TodayEntry, TodayResponse } from "@/app/api/notebook/today/route";
 
 /**
  * Top bar: where you are, what needs attention, and who you are.
@@ -28,15 +30,17 @@ import type { NotificationsResponse, Notice } from "@/app/api/notifications/rout
  * would give every destination two homes and neither would feel authoritative.
  */
 export function Header({
-  me, notifications, onToggleSidebar, sidebarCollapsed,
+  me, notifications, today, onToggleSidebar, sidebarCollapsed,
 }: {
   me: MeResponse | null;
   notifications: NotificationsResponse | null;
+  today: TodayResponse | null;
   onToggleSidebar: () => void;
   sidebarCollapsed: boolean;
 }) {
   const pathname = usePathname();
-  const title = titleForPath(pathname);
+  const searchParams = useSearchParams();
+  const title = titleForPath(pathname, searchParams.toString());
 
   return (
     <header className="sticky top-0 z-30 flex h-[var(--header-height)] shrink-0 items-center gap-3 border-b border-[var(--shell-border)] bg-[var(--shell-bg-raised)] px-3 sm:px-4">
@@ -56,10 +60,107 @@ export function Header({
         {title}
       </p>
 
+      {me?.signedIn && <TodayLogButton entries={today?.entries ?? null} />}
       <ThemeToggle />
       <NotificationBell notifications={notifications} />
       <UserButton me={me} />
     </header>
+  );
+}
+
+/**
+ * "今日の実験記録" when nothing has been logged today, or "今日の実験記録を見る"
+ * (with a dropdown if there is more than one) once something has. `entries`
+ * being `null` means the fetch has not resolved yet - the create button is
+ * shown in that case too, since it is always a safe action (it never hides a
+ * record; at worst a researcher who already logged today sees the button for
+ * a moment before the "見る" version replaces it).
+ */
+function TodayLogButton({ entries }: { entries: TodayEntry[] | null }) {
+  const router = useRouter();
+  const ws = useWorkspace();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  function openEntry(entry: TodayEntry) {
+    ws.setExperiment({
+      experimentId: entry.experimentId,
+      labId: entry.labId,
+      label: `${entry.experimentName}（${entry.labName}）`,
+    });
+    ws.setWizardStep(4);
+    router.push("/record?step=4");
+    setOpen(false);
+  }
+
+  if (!entries || entries.length === 0) {
+    return (
+      <Link
+        href="/record?step=1"
+        className="hidden shrink-0 items-center gap-1.5 rounded-lg bg-[var(--shell-accent)] px-3 py-1.5 text-[13px] font-medium text-[#08210f] transition-opacity hover:opacity-90 sm:inline-flex"
+      >
+        <Icon name="notebook" className="h-3.5 w-3.5" />
+        今日の実験記録
+      </Link>
+    );
+  }
+
+  if (entries.length === 1) {
+    return (
+      <button
+        onClick={() => openEntry(entries[0])}
+        className="hidden shrink-0 items-center gap-1.5 rounded-lg border border-[var(--shell-border)] px-3 py-1.5 text-[13px] font-medium text-[var(--shell-text-dim)] transition-colors hover:bg-[var(--shell-hover)] hover:text-[var(--shell-text)] sm:inline-flex"
+      >
+        <Icon name="check" className="h-3.5 w-3.5" />
+        今日の実験記録を見る
+      </button>
+    );
+  }
+
+  return (
+    <div ref={ref} className="relative hidden shrink-0 sm:block">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--shell-border)] px-3 py-1.5 text-[13px] font-medium text-[var(--shell-text-dim)] transition-colors hover:bg-[var(--shell-hover)] hover:text-[var(--shell-text)]"
+      >
+        <Icon name="check" className="h-3.5 w-3.5" />
+        今日の実験記録を見る（{entries.length}）
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 z-40 mt-2 w-72 overflow-hidden rounded-xl border border-[var(--shell-border)] bg-[var(--shell-bg-raised)] shadow-xl"
+        >
+          <ul className="max-h-80 overflow-y-auto">
+            {entries.map((e) => (
+              <li key={e.id} className="border-b border-[var(--shell-border)] last:border-0">
+                <button
+                  role="menuitem"
+                  onClick={() => openEntry(e)}
+                  className="flex w-full flex-col items-start gap-0.5 px-3 py-2.5 text-left transition-colors hover:bg-[var(--shell-hover)]"
+                >
+                  <span className="truncate text-[12px] font-medium text-[var(--shell-text)]">{e.title}</span>
+                  <span className="truncate text-[10px] text-[var(--shell-text-faint)]">
+                    {e.experimentName} ・ {e.labName}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 

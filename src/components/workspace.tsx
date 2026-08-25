@@ -40,6 +40,20 @@ export interface WorkspaceState {
   experimentId: string | null;
   labId: string | null;
   experimentLabel: string | null;
+  /** Which of the 5 steps the /record wizard is on, so a reload doesn't bounce back to step 1. */
+  wizardStep: number;
+  /**
+   * Reagents chosen for today's report in step 2 - distinct from the full
+   * registry ReagentManager manages, which is every reagent the lab has ever
+   * logged. Read by the step-3+ selection summary and (once selected) folded
+   * into the notebook's Lot prefill.
+   */
+  selectedReagentIds: string[];
+  /** The notebook template chosen/created in step 3, shared so step 4 does not need its own picker. */
+  templateKey: string | null;
+  templateLabel: string | null;
+  /** Free text captured in step 4 before AI structuring - what the literature step's auto-search reads to suggest a query. */
+  reportContext: string;
 }
 
 const EMPTY: WorkspaceState = {
@@ -51,6 +65,11 @@ const EMPTY: WorkspaceState = {
   experimentId: null,
   labId: null,
   experimentLabel: null,
+  wizardStep: 1,
+  selectedReagentIds: [],
+  templateKey: null,
+  templateLabel: null,
+  reportContext: "",
 };
 
 const STORAGE_KEY = "chondro.workspace.v1";
@@ -128,6 +147,10 @@ export interface WorkspaceApi extends WorkspaceState {
   removeClip: (id: string) => void;
   clearClips: () => void;
   setExperiment: (v: { experimentId: string | null; labId: string | null; label: string | null }) => void;
+  setWizardStep: (step: number) => void;
+  setSelectedReagents: (ids: string[]) => void;
+  setTemplate: (v: { key: string | null; label: string | null }) => void;
+  setReportContext: (text: string) => void;
   reset: () => void;
 }
 
@@ -159,6 +182,10 @@ export function useWorkspace(): WorkspaceApi {
       clearClips: () => update((s) => ({ ...s, clips: [] })),
       setExperiment: ({ experimentId, labId, label }) =>
         update({ experimentId, labId, experimentLabel: label }),
+      setWizardStep: (step) => update({ wizardStep: step }),
+      setSelectedReagents: (ids) => update({ selectedReagentIds: ids }),
+      setTemplate: ({ key, label }) => update({ templateKey: key, templateLabel: label }),
+      setReportContext: (text) => update({ reportContext: text }),
       reset: () => update(() => EMPTY),
     }),
     [snapshot],

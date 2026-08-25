@@ -457,7 +457,7 @@ function ExperimentTable({ experiments }: { experiments: ExperimentRow[] }) {
           <div className="flex shrink-0 items-center gap-2">
             <Badge tone={STATUS_TONE[e.status]}>{STATUS_LABELS[e.status]}</Badge>
             <Link
-              href="/notebook"
+              href="/record?step=4"
               className="text-[11px] text-accent underline underline-offset-2"
             >
               ノートを書く

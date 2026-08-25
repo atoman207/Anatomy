@@ -55,10 +55,15 @@ export function ExperimentPicker({
         if (cancelled) return;
         setSignedIn(true);
 
+        // Filter to this user explicitly. RLS on lab_members lets any member
+        // read the lab's whole roster, so an unfiltered query returns one row
+        // per teammate and the same lab appears repeatedly in the dropdown.
         const { data: memberRows } = await supabase
           .from("lab_members")
           .select("lab_id, laboratories(id, name)")
+          .eq("user_id", userData.user.id)
           .order("joined_at", { ascending: true });
+        const seen = new Set<string>();
         const labList = (memberRows ?? [])
           .map((r) => {
             const embedded = r.laboratories as unknown;
@@ -68,7 +73,11 @@ export function ExperimentPicker({
               | undefined;
             return lab ? { id: lab.id, name: lab.name } : null;
           })
-          .filter((l): l is { id: string; name: string } => l !== null);
+          .filter((l): l is { id: string; name: string } => {
+            if (!l || seen.has(l.id)) return false;
+            seen.add(l.id);
+            return true;
+          });
         if (cancelled) return;
         setLabs(labList);
         setNewLabId((prev) => prev || labList[0]?.id || "");
@@ -178,7 +187,8 @@ export function ExperimentPicker({
       <div className="flex flex-col gap-3">
         {options.length === 0 && !creating ? (
           <Callout tone="info" title="実験がまだありません">
-            <Link href="/experiments" className="text-accent underline">実験一覧</Link>
+            新しい実験を作成する必要があります。
+            <Link href="/labs" className="text-accent underline">研究室</Link>
             で研究室と実験を作成するか、下から作成してください。
           </Callout>
         ) : !creating ? (

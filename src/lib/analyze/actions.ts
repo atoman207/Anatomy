@@ -147,3 +147,35 @@ export async function saveFigure(
 
   return { ok: true, data: { id: data.id } };
 }
+
+export interface FigureSummary {
+  id: string;
+  kind: FigureKind;
+  title: string;
+  svg: string | null;
+  created_at: string;
+}
+
+/**
+ * Every figure already saved for one experiment, for the notebook step's
+ * "保存済みの図から選ぶ" picker - reusing a real statistical chart from
+ * /analyze rather than asking the researcher to regenerate it.
+ */
+export async function listFigures(
+  experimentId: string,
+): Promise<ActionResult<FigureSummary[]>> {
+  const ctx = await getSessionContext();
+  if (!ctx) return { ok: false, error: "ログインしていません。" };
+  if (!experimentId) return { ok: true, data: [] };
+
+  const supabase = await createServerSupabase();
+  const { data, error } = await supabase
+    .from("figures")
+    .select("id, kind, title, svg, created_at")
+    .eq("experiment_id", experimentId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: data ?? [] };
+}

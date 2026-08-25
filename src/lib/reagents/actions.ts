@@ -20,17 +20,18 @@ export interface ReagentInput {
   notes: string | null;
 }
 
-/** All reagents registered to a laboratory, most recently added first. */
-export async function listReagents(labId: string): Promise<ActionResult<Reagent[]>> {
+/** All reagents registered to one experiment, most recently added first. */
+export async function listReagents(labId: string, experimentId: string): Promise<ActionResult<Reagent[]>> {
   const ctx = await getSessionContext();
   if (!ctx) return { ok: false, error: "ログインしていません。" };
-  if (!labId) return { ok: true, data: [] };
+  if (!labId || !experimentId) return { ok: true, data: [] };
 
   const supabase = await createServerSupabase();
   const { data, error } = await supabase
     .from("reagents")
     .select("*")
     .eq("lab_id", labId)
+    .eq("experiment_id", experimentId)
     .order("created_at", { ascending: false });
 
   if (error) return { ok: false, error: error.message };
@@ -39,10 +40,12 @@ export async function listReagents(labId: string): Promise<ActionResult<Reagent[
 
 export async function createReagent(
   labId: string,
+  experimentId: string,
   input: ReagentInput,
 ): Promise<ActionResult<Reagent>> {
   const ctx = await getSessionContext();
   if (!ctx) return { ok: false, error: "ログインしていません。" };
+  if (!experimentId) return { ok: false, error: "実験を選択してください。" };
   if (!input.name.trim()) return { ok: false, error: "名称を入力してください。" };
 
   const supabase = await createServerSupabase();
@@ -50,6 +53,7 @@ export async function createReagent(
     .from("reagents")
     .insert({
       lab_id: labId,
+      experiment_id: experimentId,
       name: input.name.trim(),
       category: input.category?.trim() || null,
       vendor: input.vendor?.trim() || null,
@@ -75,11 +79,13 @@ export async function createReagent(
 
 export async function updateReagent(
   labId: string,
+  experimentId: string,
   id: string,
   input: ReagentInput,
 ): Promise<ActionResult<Reagent>> {
   const ctx = await getSessionContext();
   if (!ctx) return { ok: false, error: "ログインしていません。" };
+  if (!experimentId) return { ok: false, error: "実験を選択してください。" };
   if (!input.name.trim()) return { ok: false, error: "名称を入力してください。" };
 
   const supabase = await createServerSupabase();
@@ -96,6 +102,7 @@ export async function updateReagent(
     })
     .eq("id", id)
     .eq("lab_id", labId)
+    .eq("experiment_id", experimentId)
     .select("*")
     .single();
 
@@ -110,16 +117,18 @@ export async function updateReagent(
   return { ok: true, data };
 }
 
-export async function deleteReagent(labId: string, id: string): Promise<ActionResult> {
+export async function deleteReagent(labId: string, experimentId: string, id: string): Promise<ActionResult> {
   const ctx = await getSessionContext();
   if (!ctx) return { ok: false, error: "ログインしていません。" };
+  if (!experimentId) return { ok: false, error: "実験を選択してください。" };
 
   const supabase = await createServerSupabase();
   const { error } = await supabase
     .from("reagents")
     .delete()
     .eq("id", id)
-    .eq("lab_id", labId);
+    .eq("lab_id", labId)
+    .eq("experiment_id", experimentId);
 
   if (error) return { ok: false, error: error.message };
 

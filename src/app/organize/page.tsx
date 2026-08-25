@@ -70,7 +70,7 @@ export default function OrganizePage() {
 
       {ws.clips.length > 0 && (
         <Callout tone="good" title={`ノートへ ${ws.clips.length} 件をキューに追加済み`}>
-          <a className="underline" href="/notebook">実験ノート</a> を開いて組み立ててください。
+          <a className="underline" href="/record?step=4">実験ノート</a> を開いて組み立ててください。
         </Callout>
       )}
     </div>

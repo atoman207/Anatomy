@@ -13,6 +13,24 @@ import type { NotebookTemplate, TemplateField, TemplateValues } from "./template
 
 export const NOTEBOOK_PENDING_PREFILL_KEY = "chondro.notebook.pendingPrefill";
 
+/**
+ * Whether an entry created at `createdAtIso` can still be edited.
+ *
+ * Mirrors `prevent_stale_notebook_entry_edit()` in the migration exactly (JST
+ * calendar date, not the browser's or server's own timezone) so the UI never
+ * offers an 編集 button the database would then refuse. The database trigger
+ * is still the actual authority - this only decides what to show. Lives here
+ * rather than in `actions.ts` because that file is `"use server"`, which
+ * only allows async function exports - this is a plain synchronous helper
+ * the client component calls directly, on every row, on every render.
+ */
+export function isNotebookEntryEditable(createdAtIso: string): boolean {
+  const jst = (iso: string) =>
+    new Date(new Date(iso).toLocaleString("en-US", { timeZone: "Asia/Tokyo" }))
+      .toDateString();
+  return jst(createdAtIso) === jst(new Date().toISOString());
+}
+
 /** Never copied from a previous entry — each day gets fresh values. */
 export const EPHEMERAL_KEYS = new Set([
   "experiment_date",

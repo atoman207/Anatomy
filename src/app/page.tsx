@@ -2,14 +2,15 @@ import Link from "next/link";
 import Image from "next/image";
 import type { Metadata } from "next";
 import { getSessionContext } from "@/lib/auth/guards";
-import { FREE_PEER_REVIEW_CREDITS } from "@/lib/peerReview/creditPacks";
+import { FREE_PEER_REVIEW_CREDITS, PEER_REVIEW_CREDIT_PACKS } from "@/lib/peerReview/creditPacks";
+import { VoiceTranscribeChat } from "@/components/landing/VoiceTranscribeChat";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "研究データ管理 — 実験ノートから統計・AI査読まで",
+  title: "研究データ管理 — 記録ウィザードから統計・AI査読まで",
   description:
-    "実験ノート、データ整理、統計解析、論文検索、AI査読。研究室の記録と解析をひとつにまとめるプラットフォームです。",
+    "実験選択・試薬管理・テンプレート・音声入力・論文検索を一つの記録ウィザードにまとめ、PDFレポートまで自動作成。統計解析・AI査読・研究室管理も一つのプラットフォームで。",
 };
 
 /*
@@ -25,7 +26,30 @@ export const metadata: Metadata = {
  * rather than hot-linked so the page does not depend on a third-party CDN
  * staying up. Credits are kept in the footer as a courtesy, and in
  * public/landing/CREDITS.md alongside the files.
+ *
+ * This copy mirrors the current schema/product exactly (see
+ * supabase/migrations/all.sql and the /record wizard) rather than an earlier,
+ * looser feature list: /notebook, /voice, /reagents, /experiments and
+ * /literature are no longer separate destinations - each now redirects into
+ * one 5-step /record wizard (実験選択 → 試薬・Lot → テンプレート → 実験ノート →
+ * 論文検索) that ends by generating and storing a PDF. The feature cards and
+ * flow section below describe that wizard, not the old standalone pages.
+ *
+ * IMAGE PLACEHOLDERS: three spots below are intentionally left as
+ * `<ImagePlaceholder>` boxes rather than photographs, each with a Japanese
+ * caption explaining exactly what asset belongs there (a real product
+ * screenshot or a generated sample, not more Japan scenery - the four
+ * existing Unsplash photos already cover the "moodboard" role well and
+ * should stay where they are). Replace each placeholder by swapping it for
+ * an <Image> once the asset exists; see each caption for sizing/content.
  */
+
+/** Fed into the hero's voice-transcription demo below, verbatim. */
+const ABOUT_TEXT =
+  "このサービスは、研究室の日々の実験記録から、統計解析・論文検索・投稿前のAI査読までを一つのアカウントで完結させる、" +
+  "研究室単位のオールインワン研究基盤です。中心にあるのは「記録ウィザード」で、実験と試薬の選択、実験ノートテンプレートの作成、" +
+  "音声によるノート起こし、AIによる図版生成、参考文献の検索・挿入までを一続きの流れとして進め、完了した瞬間にPDFレポートが自動で" +
+  "作成・保存されます。作成したレポートはダッシュボードの先頭に「今日のラボレポート」として並び、実験ごとにまとめてもいつでも見返せます。";
 
 interface Feature {
   href: string;
@@ -34,21 +58,39 @@ interface Feature {
   body: string;
 }
 
-/** One card per pillar of the product, in the order a study actually moves. */
+/**
+ * One card per pillar of the current product. Ordered the way a report
+ * actually moves through /record (steps 1-5), then the surrounding tools
+ * (organize/analyze), then AI査読, then research-room management.
+ */
 const FEATURES: Feature[] = [
   {
-    href: "/notebook",
-    title: "実験ノート",
-    lead: "記録する",
+    href: "/record?step=1",
+    title: "記録ウィザード",
+    lead: "ひとつの流れで",
     body:
-      "テンプレートから実験記録を作成し、前回の条件をそのまま引き継げます。保存した記録は追記のみで、後から書き換わることはありません。",
+      "実験選択 → 試薬・Lot → テンプレート → 実験ノート → 論文検索の5ステップを順に進むだけ。各ステップの先頭に、これまで選んだ研究室・実験・試薬・テンプレートが常に表示され、いつでも前のステップに戻って修正できます。",
   },
   {
-    href: "/voice",
-    title: "音声メモ",
+    href: "/record?step=2",
+    title: "試薬・Lot管理",
+    lead: "選ぶ、または登録する",
+    body:
+      "過去に登録した試薬とLot番号から選ぶか、その場で新規登録できます。登録した試薬は自動で選択され、実験ノートのLot欄に引き継がれます。",
+  },
+  {
+    href: "/record?step=4",
+    title: "音声入力",
     lead: "話すだけ",
     body:
-      "手が塞がっていても、実験台で話した内容をそのまま文字起こしし、AIが実験ノートの形に整えます。",
+      "実験台で話した内容をそのまま文字起こし。無料のブラウザ音声認識（日本語既定・英語も切替可）と、より高精度な有料エンジンを選べます。マイクは何度でも押し直せて、その都度これまでの文章に追記されます。",
+  },
+  {
+    href: "/record?step=4",
+    title: "AI画像生成",
+    lead: "図をつくる",
+    body:
+      "ここまでの記録内容とプロンプトをもとに、BioRenderのような生物・生化学分野の模式図をAIが生成します。画像のアップロードや、過去に保存した図の再利用にも対応します。",
   },
   {
     href: "/organize",
@@ -65,11 +107,11 @@ const FEATURES: Feature[] = [
       "t検定・分散分析から主成分分析・クラスタリングまで。結果はそのまま論文用の図として書き出せます。",
   },
   {
-    href: "/literature",
+    href: "/record?step=5",
     title: "論文検索",
     lead: "調べる",
     body:
-      "PubMed と Crossref を横断して検索し、書誌情報を実験に紐づけて保存します。引用形式はそのまま使えます。",
+      "PubMedとCrossrefを横断して検索し、書誌情報を保存。記録した内容から自動でキーワードを組み立て、最も近い日本語・英語の論文を検索してレポートに参考文献として挿入できます。",
   },
   {
     href: "/peer-review",
@@ -77,6 +119,13 @@ const FEATURES: Feature[] = [
     lead: "投稿前に備える",
     body:
       "3名のAI査読者が、方法・統計／新規性／論理構成をそれぞれ独立に評価します。投稿前に弱点と改善案がわかります。",
+  },
+  {
+    href: "/labs",
+    title: "研究室・監査ログ",
+    lead: "共有し、証明する",
+    body:
+      "研究室単位でメンバーと役割を管理し、招待もそのまま送れます。誰が・いつ・何をしたかは追記のみの監査ログに残り、消すことも書き換えることもできません。",
   },
 ];
 
@@ -90,7 +139,7 @@ const PRINCIPLES: { title: string; body: string }[] = [
   {
     title: "記録は書き換わらない",
     body:
-      "確定した音声ノートはデータベース側で変更を拒否し、実験ノートは追記のみ。「あの日の記録」を後から証明できます。",
+      "確定した音声ノートはデータベース側で変更を拒否し、実験ノートは当日中のみ修正可能で、日をまたぐと変更を拒否します。「あの日の記録」を後から証明できます。",
   },
   {
     title: "操作はすべて残る",
@@ -110,33 +159,42 @@ export default async function LandingPage() {
     // anywhere, so a word like 研究室 is not split across two lines. Browsers
     // that do not support it fall back to the normal behaviour.
     <div className="flex min-h-dvh flex-col bg-surface-0 [word-break:auto-phrase]">
-      <SiteHeader signedIn={signedIn} />
+      {/* Full-viewport hero: artwork is edge-to-edge; header floats on top so
+          the first screen reads as one composition, not a boxed column. */}
+      <section className="relative flex min-h-dvh w-full flex-col overflow-hidden bg-white">
+        <div className="pointer-events-none absolute inset-0" aria-hidden>
+          <Image
+            src="/bg-m.png"
+            alt=""
+            fill
+            priority
+            sizes="100vw"
+            className="object-cover object-top md:hidden"
+          />
+          <Image
+            src="/background.png"
+            alt=""
+            fill
+            priority
+            sizes="100vw"
+            className="hidden object-cover object-right md:block"
+          />
+        </div>
 
-      {/* Hero */}
-      <section className="relative isolate overflow-hidden">
-        <Image
-          src="/landing/fuji.jpg"
-          alt="夕暮れの富士山と、麓に広がる街並み（静岡県富士宮市）"
-          fill
-          priority
-          sizes="100vw"
-          className="-z-10 object-cover"
-        />
-        {/* Keeps the headline legible over the photograph in both themes. */}
-        <div aria-hidden className="absolute inset-0 -z-10 bg-gradient-to-b from-black/75 via-black/60 to-black/80" />
+        <SiteHeader signedIn={signedIn} overHero />
 
-        <div className="mx-auto w-full max-w-[1100px] px-5 py-24 sm:px-8 sm:py-32">
-          <p className="text-[13px] font-medium tracking-[0.18em] text-white/80">
-            研究データ管理プラットフォーム
+        <div className="relative z-10 mx-auto flex w-full max-w-[1100px] flex-1 flex-col justify-center px-5 pb-16 pt-24 sm:px-8 sm:pb-20 sm:pt-28">
+          <p className="text-[13px] font-medium tracking-[0.18em] text-ink-2">
+            研究室のための記録・解析プラットフォーム
           </p>
-          <h1 className="mt-4 max-w-[20ch] font-serif text-4xl font-semibold leading-tight text-white sm:text-5xl">
-            実験の記録から、
+          <h1 className="mt-4 max-w-[22ch] font-serif text-4xl font-semibold leading-tight text-ink sm:text-5xl">
+            今日の実験を話すだけで、
             <br />
             投稿前の査読まで。
           </h1>
-          <p className="mt-6 max-w-[52ch] text-[15px] leading-relaxed text-white/85 sm:text-base">
-            実験ノート、データ整理、統計解析、論文検索、AI査読。
-            研究室で散らばりがちな作業をひとつにまとめ、記録が後から書き換わらない形で残します。
+          <p className="mt-6 max-w-[56ch] text-[15px] leading-relaxed text-ink-2 sm:text-base">
+            実験・試薬の選択から、音声入力によるノート作成、AI画像生成、類似論文の自動検索、統計解析、AI査読まで。
+            研究室で散らばりがちな作業を一つの記録ウィザードにまとめ、完了と同時にPDFレポートとして保存します。
           </p>
 
           <div className="mt-9 flex flex-wrap items-center gap-3">
@@ -148,15 +206,26 @@ export default async function LandingPage() {
             </Link>
             <Link
               href="#features"
-              className="rounded-md border border-white/40 px-6 py-3 text-[15px] font-medium text-white transition-colors hover:bg-white/10"
+              className="rounded-md border border-line bg-white/70 px-6 py-3 text-[15px] font-medium text-ink backdrop-blur-sm transition-colors hover:bg-white"
             >
               できることを見る
             </Link>
           </div>
 
-          <p className="mt-5 text-[13px] text-white/70">
+          <p className="mt-5 text-[13px] text-ink-3">
             AI査読は最初の{FREE_PEER_REVIEW_CREDITS}回まで無料。クレジットカードの登録は不要です。
           </p>
+        </div>
+      </section>
+
+      {/* About: what this service currently is, in plain terms - demoed the
+          same way the app itself takes it in, through voice. */}
+      <section className="border-b border-line bg-surface-1">
+        <div className="mx-auto w-full max-w-[1100px] px-5 py-16 sm:px-8">
+          <p className="mx-auto max-w-[70ch] text-center text-[13px] font-medium tracking-[0.14em] text-accent">
+            話すだけで、記録になる
+          </p>
+          <VoiceTranscribeChat text={ABOUT_TEXT} />
         </div>
       </section>
 
@@ -170,6 +239,11 @@ export default async function LandingPage() {
               どれも単体で使えますが、実験に紐づけると結果が一箇所に集まります。
             </p>
           </header>
+
+          <ImagePlaceholder
+            className="mt-10 aspect-[16/9]"
+            caption="記録ウィザード（/record）の実画面スクリーンショット。上部のステップバー（実験選択・試薬/Lot・テンプレート・実験ノート・論文検索）と、選択済みの実験・試薬・テンプレートを示すサマリーバーが写っているものが望ましい。実データではなくサンプルの実験名・試薬名を使うこと。"
+          />
 
           <div className="mt-12 grid gap-x-10 gap-y-11 sm:grid-cols-2 lg:grid-cols-3">
             {FEATURES.map((f) => (
@@ -189,8 +263,37 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* Principles, with imagery */}
+      {/* AI-generated figures, highlighted separately: the newest and most
+          visually demonstrable feature, so it gets its own section with a
+          sample-image placeholder rather than one card among nine. */}
       <section className="border-b border-line">
+        <div className="mx-auto grid w-full max-w-[1100px] items-center gap-12 px-5 py-20 sm:px-8 lg:grid-cols-2">
+          <div>
+            <h2 className="font-serif text-3xl font-semibold text-ink">
+              言葉から、論文用の模式図へ
+            </h2>
+            <p className="mt-3 text-[15px] leading-relaxed text-ink-2">
+              実験ノートの内容と指示（プロンプト）から、生化学・生物学分野の模式図をAIが生成します。
+              BioRenderで作るような、細胞・分子経路・実験フローの図を、既存の記録を土台にその場で作成できます。
+              画像はアップロードでも追加でき、生成した図は他のレポートでも再利用できます。
+            </p>
+            <Link
+              href={signedIn ? "/record?step=4" : "/login"}
+              className="mt-8 inline-block rounded-md border border-line px-5 py-2.5 text-[14px] font-medium text-ink transition-colors hover:bg-surface-1"
+            >
+              実験ノートを開く
+            </Link>
+          </div>
+
+          <ImagePlaceholder
+            className="aspect-[4/3]"
+            caption="AIが生成したBioRender風の模式図の実例1〜2点（例: 細胞のシグナル伝達経路図、実験フローチャート、簡易な棒グラフ/概念図）。実際に /record のステップ4「グラフ・画像を挿入する」で生成した画像をそのまま使うのが最も説得力がある。"
+          />
+        </div>
+      </section>
+
+      {/* Principles, with imagery */}
+      <section className="border-b border-line bg-surface-1">
         <div className="mx-auto grid w-full max-w-[1100px] items-center gap-12 px-5 py-20 sm:px-8 lg:grid-cols-2">
           <div>
             <h2 className="font-serif text-3xl font-semibold text-ink">
@@ -224,6 +327,27 @@ export default async function LandingPage() {
         </div>
       </section>
 
+      {/* Dashboard, as the place everything lands */}
+      <section className="border-b border-line">
+        <div className="mx-auto grid w-full max-w-[1100px] items-center gap-12 px-5 py-20 sm:px-8 lg:grid-cols-2">
+          <ImagePlaceholder
+            className="aspect-[4/3]"
+            caption="ダッシュボード（/dashboard）画面のスクリーンショット。先頭の「今日のラボレポート」一覧と、その下の「すべてのラボレポート（実験ごと）」の折りたたみ表示が両方見えるものが望ましい。"
+          />
+
+          <div>
+            <h2 className="font-serif text-3xl font-semibold text-ink">
+              今日の記録が、いちばん上に来る
+            </h2>
+            <p className="mt-3 text-[15px] leading-relaxed text-ink-2">
+              記録ウィザードを完了すると、その日のうちはヘッダーの「今日の実験記録」ボタンからすぐ見返して修正できます。
+              ダッシュボードを開けば、今日作成したラボレポートが常に先頭に並び、その下では過去の記録を実験ごとにまとめて
+              確認できます。PDFはいつでも開いてダウンロードできます。
+            </p>
+          </div>
+        </div>
+      </section>
+
       {/* Pricing */}
       <section className="border-b border-line bg-surface-1">
         <div className="mx-auto grid w-full max-w-[1100px] items-center gap-12 px-5 py-20 sm:px-8 lg:grid-cols-2">
@@ -241,15 +365,16 @@ export default async function LandingPage() {
           <div className="order-1 lg:order-2">
             <h2 className="font-serif text-3xl font-semibold text-ink">まず無料で試せます</h2>
             <p className="mt-3 text-[15px] leading-relaxed text-ink-2">
-              実験ノート・データ整理・統計・論文検索は、アカウントを作ればそのまま使えます。
+              記録ウィザード・データ整理・統計・論文検索は、アカウントを作ればそのまま使えます。
               AI査読だけは1回ごとの従量制で、最初の{FREE_PEER_REVIEW_CREDITS}回は無料です。
             </p>
 
             <ul className="mt-8 flex flex-col gap-3 text-[14px] leading-relaxed text-ink-2">
               {[
                 `AI査読は最初の${FREE_PEER_REVIEW_CREDITS}回まで無料`,
-                "以降は使った回数だけの支払い。定額の縛りはありません",
-                "まとめ買いのセットも用意しています",
+                ...PEER_REVIEW_CREDIT_PACKS.map(
+                  (p) => `以降は ${p.name} ¥${p.amountJpy.toLocaleString("ja-JP")} から。定額の縛りはありません`,
+                ),
               ].map((line) => (
                 <li key={line} className="flex gap-2.5">
                   <span aria-hidden className="mt-[2px] text-accent">✓</span>
@@ -300,17 +425,53 @@ export default async function LandingPage() {
   );
 }
 
-function SiteHeader({ signedIn }: { signedIn: boolean }) {
+/**
+ * A reserved slot for an asset that does not exist yet (a product
+ * screenshot or a generated figure sample - see the callers for exactly
+ * what belongs in each one). Rendered as a dashed placeholder, with the
+ * Japanese caption visible on the page itself, so the gap is obvious to
+ * anyone reviewing the live site and not only to a developer reading the
+ * source. Swap for a real `<Image>` once the asset is captured.
+ */
+function ImagePlaceholder({ caption, className }: { caption: string; className?: string }) {
   return (
-    <header className="sticky top-0 z-30 border-b border-line bg-surface-1/90 backdrop-blur">
+    <div
+      className={`flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-line bg-surface-1 p-8 text-center ${className ?? ""}`}
+    >
+      <svg
+        aria-hidden
+        viewBox="0 0 24 24"
+        className="h-8 w-8 text-ink-3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      >
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <circle cx="8.5" cy="9.5" r="1.5" />
+        <path d="m21 15-5-5-9 9" />
+      </svg>
+      <p className="max-w-[46ch] text-[12.5px] leading-relaxed text-ink-3">画像未挿入 — {caption}</p>
+    </div>
+  );
+}
+
+function SiteHeader({ signedIn, overHero = false }: { signedIn: boolean; overHero?: boolean }) {
+  return (
+    <header
+      className={
+        overHero
+          ? "fixed inset-x-0 top-0 z-30 border-b border-line/40 bg-surface-1/80 backdrop-blur"
+          : "sticky top-0 z-30 border-b border-line bg-surface-1/90 backdrop-blur"
+      }
+    >
       <div className="mx-auto flex w-full max-w-[1100px] items-center justify-between gap-4 px-5 py-3.5 sm:px-8">
         <Link href="/" className="flex items-center gap-2.5">
           <Image
             src="/LOGO.png"
             alt=""
-            width={32}
-            height={32}
-            className="h-8 w-8 rounded-md object-contain"
+            width={39}
+            height={39}
+            className="h-[38.4px] w-[38.4px] rounded-md object-contain"
           />
           <span className="text-[15px] font-semibold text-ink">研究データ管理</span>
         </Link>

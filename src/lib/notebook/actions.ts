@@ -20,12 +20,12 @@ export interface SaveNotebookEntryInput {
 }
 
 /**
- * Saves one notebook entry.
+ * Saves a new notebook entry.
  *
- * Always an insert, never an update: `notebook_entries` is append-only (see
- * the migration), so every save becomes a new, permanent version instead of
- * overwriting what was recorded before. The list a researcher sees is the
- * full history, not just the latest edit.
+ * Always an insert - `updateNotebookEntry` below is the separate path for
+ * revising one created earlier today. Once that day has passed, the entry
+ * is permanently fixed: `lock_stale_notebook_entry` enforces that at the
+ * database itself, not just in this function.
  */
 export async function saveNotebookEntry(
   input: SaveNotebookEntryInput,
@@ -65,6 +65,58 @@ export async function saveNotebookEntry(
   return { ok: true, data: { id: data.id, createdAt: data.created_at } };
 }
 
+export interface UpdateNotebookEntryInput {
+  id: string;
+  title: string;
+  values: Record<string, unknown>;
+  bodyMd: string;
+}
+
+/**
+ * Revises an entry created earlier today.
+ *
+ * The RLS policy allows the update unconditionally for a lab writer, and it
+ * is `lock_stale_notebook_entry` - a trigger, not this function - that
+ * actually refuses one for a past day. That is deliberate: the trigger runs
+ * for every writer including a service-role admin tool, so the boundary
+ * cannot be worked around by calling the database a different way. This
+ * function's own error message exists only to translate that failure into
+ * Japanese rather than surfacing Postgres's raw exception text.
+ */
+export async function updateNotebookEntry(
+  input: UpdateNotebookEntryInput,
+): Promise<ActionResult<{ id: string }>> {
+  const ctx = await getSessionContext();
+  if (!ctx) return { ok: false, error: "ログインしていません。" };
+  const title = input.title.trim();
+  if (!title) return { ok: false, error: "タイトルを入力してください。" };
+
+  const supabase = await createServerSupabase();
+  const { data, error } = await supabase
+    .from("notebook_entries")
+    .update({ title, values: input.values as Json, body_md: input.bodyMd })
+    .eq("id", input.id)
+    .select("id, lab_id, experiment_id")
+    .maybeSingle();
+
+  if (error) {
+    if (/作成日を過ぎている/.test(error.message)) return { ok: false, error: error.message };
+    return { ok: false, error: "更新に失敗しました。" };
+  }
+  if (!data) return { ok: false, error: "この記録は編集できません（作成日を過ぎているか、権限がありません）。" };
+
+  await logAudit({
+    labId: data.lab_id,
+    userId: ctx.user.id,
+    action: "notebook.entry.updated",
+    entity: "notebook_entry",
+    entityId: data.id,
+    detail: { experiment_id: data.experiment_id, title },
+  });
+
+  return { ok: true, data: { id: data.id } };
+}
+
 export interface NotebookEntrySummary {
   id: string;
   title: string;
@@ -72,6 +124,7 @@ export interface NotebookEntrySummary {
   created_at: string;
   created_by: string | null;
   body_md: string;
+  values: Record<string, unknown>;
 }
 
 /** Every saved version for one experiment, newest first. */
@@ -85,13 +138,138 @@ export async function listNotebookEntries(
   const supabase = await createServerSupabase();
   const { data, error } = await supabase
     .from("notebook_entries")
-    .select("id, title, template_slug, created_at, created_by, body_md")
+    .select("id, title, template_slug, created_at, created_by, body_md, values")
     .eq("experiment_id", experimentId)
     .order("created_at", { ascending: false })
     .limit(50);
 
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: data ?? [] };
+  const rows: NotebookEntrySummary[] = (data ?? []).map((r) => ({
+    ...r,
+    values:
+      r.values && typeof r.values === "object" && !Array.isArray(r.values)
+        ? (r.values as Record<string, unknown>)
+        : {},
+  }));
+  return { ok: true, data: rows };
+}
+
+function jstDayStartIso(now = new Date()): string {
+  const [y, m, d] = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo" })
+    .format(now)
+    .split("-")
+    .map(Number);
+  return new Date(Date.UTC(y, m - 1, d) - 9 * 60 * 60 * 1000).toISOString();
+}
+
+export interface MyNotebookEntrySummary {
+  id: string;
+  title: string;
+  created_at: string;
+  experiment_id: string;
+  experiment_name: string;
+  lab_id: string;
+  lab_name: string;
+  template_slug: string | null;
+}
+
+export interface MyNotebookEntriesByExperiment {
+  experimentId: string;
+  experimentName: string;
+  labId: string;
+  labName: string;
+  entries: MyNotebookEntrySummary[];
+}
+
+type NotebookJoinRow = {
+  id: string;
+  title: string;
+  created_at: string;
+  experiment_id: string;
+  lab_id: string;
+  template_slug: string | null;
+  experiments: { name: string } | { name: string }[] | null;
+  laboratories: { name: string } | { name: string }[] | null;
+};
+
+function mapNotebookJoinRow(r: NotebookJoinRow): MyNotebookEntrySummary {
+  const experiment = Array.isArray(r.experiments) ? r.experiments[0] : r.experiments;
+  const lab = Array.isArray(r.laboratories) ? r.laboratories[0] : r.laboratories;
+  return {
+    id: r.id,
+    title: r.title,
+    created_at: r.created_at,
+    experiment_id: r.experiment_id,
+    experiment_name: experiment?.name ?? "—",
+    lab_id: r.lab_id,
+    lab_name: lab?.name ?? "—",
+    template_slug: r.template_slug,
+  };
+}
+
+/**
+ * Lab reports the caller wrote today (JST) — same source as the header's
+ * 「今日の実験記録を見る」count (`notebook_entries`), not PDF uploads.
+ */
+export async function listMyNotebookEntriesToday(): Promise<ActionResult<MyNotebookEntrySummary[]>> {
+  const ctx = await getSessionContext();
+  if (!ctx) return { ok: false, error: "ログインしていません。" };
+
+  const supabase = await createServerSupabase();
+  const { data, error } = await supabase
+    .from("notebook_entries")
+    .select("id, title, created_at, experiment_id, lab_id, template_slug, experiments(name), laboratories(name)")
+    .eq("created_by", ctx.user.id)
+    .gte("created_at", jstDayStartIso())
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (error) return { ok: false, error: error.message };
+  return {
+    ok: true,
+    data: ((data ?? []) as unknown as NotebookJoinRow[]).map(mapNotebookJoinRow),
+  };
+}
+
+/**
+ * Every lab report the caller has written, grouped by experiment (newest
+ * activity first). Matches the dashboard's "すべてのラボレポート" section to
+ * the same `notebook_entries` the header already counts.
+ */
+export async function listMyNotebookEntriesGrouped(
+  limit = 200,
+): Promise<ActionResult<MyNotebookEntriesByExperiment[]>> {
+  const ctx = await getSessionContext();
+  if (!ctx) return { ok: false, error: "ログインしていません。" };
+
+  const supabase = await createServerSupabase();
+  const { data, error } = await supabase
+    .from("notebook_entries")
+    .select("id, title, created_at, experiment_id, lab_id, template_slug, experiments(name), laboratories(name)")
+    .eq("created_by", ctx.user.id)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) return { ok: false, error: error.message };
+
+  const groups = new Map<string, MyNotebookEntriesByExperiment>();
+  for (const raw of (data ?? []) as unknown as NotebookJoinRow[]) {
+    const entry = mapNotebookJoinRow(raw);
+    let group = groups.get(entry.experiment_id);
+    if (!group) {
+      group = {
+        experimentId: entry.experiment_id,
+        experimentName: entry.experiment_name,
+        labId: entry.lab_id,
+        labName: entry.lab_name,
+        entries: [],
+      };
+      groups.set(entry.experiment_id, group);
+    }
+    group.entries.push(entry);
+  }
+
+  return { ok: true, data: [...groups.values()] };
 }
 
 export interface NotebookPrefillContext {
@@ -103,7 +281,8 @@ export interface NotebookPrefillContext {
 
 /**
  * Data for "today's notebook" prefill: signed-in operator, the last entry
- * for this experiment + template (stable fields only), and reagent lots.
+ * for this experiment + template (stable fields only), and reagent lots
+ * from that same experiment.
  */
 export async function getNotebookPrefillContext(
   labId: string,
@@ -139,6 +318,7 @@ export async function getNotebookPrefillContext(
       .from("reagents")
       .select("*")
       .eq("lab_id", labId)
+      .eq("experiment_id", experimentId)
       .order("created_at", { ascending: false }),
   ]);
 

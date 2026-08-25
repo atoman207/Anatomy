@@ -269,6 +269,76 @@ export async function transcribeAudio(
   };
 }
 
+export interface GeneratedImage {
+  /** Base64-encoded PNG, undecorated (no `data:` prefix). */
+  base64: string;
+  model: string;
+}
+
+/**
+ * Fixed framing applied to every notebook image request, never something a
+ * caller's prompt can override.
+ *
+ * This is a lab notebook, not a general image generator: the feature exists
+ * to illustrate a protocol or a concept from the researcher's own record, so
+ * every request - whatever it names - is rendered as a labeled scientific
+ * diagram in a clean, flat, professional illustration style (the kind common
+ * to biology/biochemistry figure tools, e.g. BioRender-style panels: vector
+ * shapes, a white background, a muted palette, clear callout labels) rather
+ * than a photorealistic or decorative image.
+ */
+const SCIENTIFIC_FIGURE_STYLE = [
+  "Create a clean, professional scientific/biology or biochemistry diagram",
+  "illustrating the following concept for a laboratory notebook, in the flat,",
+  "labeled, vector-illustration style common to biology figure tools (e.g.",
+  "BioRender-style panels): schematic shapes, a white background, a muted",
+  "professional color palette, clear callout labels where useful, no",
+  "photorealism, no decorative or unrelated imagery, no watermarks or logos.",
+  "Concept to illustrate:",
+].join(" ");
+
+/**
+ * Generates one illustrative image (a schematic, a diagram, a plate layout)
+ * from a free-text prompt, for the notebook step's "AIで生成" insert action.
+ *
+ * Separate from `respondStructured`: the images endpoint returns base64
+ * pixel data rather than JSON text, so it needs its own response handling,
+ * but shares the same key/timeout/error plumbing as every other call here.
+ */
+export async function generateImage(
+  prompt: string,
+  opts: { size?: "1024x1024" | "1024x1536" | "1536x1024"; timeoutMs?: number } = {},
+): Promise<GeneratedImage> {
+  const key = requireKey();
+  const cfg = aiConfig();
+
+  const res = await post(
+    "/images/generations",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: cfg.image,
+        prompt: `${SCIENTIFIC_FIGURE_STYLE} ${prompt}`,
+        size: opts.size ?? "1024x1024",
+        n: 1,
+      }),
+    },
+    opts.timeoutMs ?? 90_000,
+  );
+
+  if (!res.ok) throw await failure(res);
+
+  const body = await res.json();
+  const b64 = body.data?.[0]?.b64_json;
+  if (!b64) throw new AiError("モデルが画像を返しませんでした。", 502);
+
+  return { base64: b64, model: cfg.image };
+}
+
 /** Quick reachability probe used by the health endpoint. */
 export async function checkAi(): Promise<{
   ok: boolean;

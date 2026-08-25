@@ -14,7 +14,7 @@ export type PlatformRole = "admin" | "user";
 export type ExperimentStatus = "planned" | "in_progress" | "complete" | "archived";
 export type AnalysisKind =
   | "ttest" | "anova" | "pca" | "kmeans" | "hierarchical" | "differential" | "descriptive";
-export type FigureKind = "volcano" | "heatmap" | "pca" | "other";
+export type FigureKind = "volcano" | "heatmap" | "pca" | "other" | "ai_image";
 /** Billing plan and Stripe subscription status; mirror of migration 0002. */
 export type BillingPlan = "free" | "pro" | "team";
 export type BillingStatus =
@@ -131,6 +131,10 @@ export type RawFileRow = {
   inferred_batch: string | null;
   inferred_order: number | null;
   issues: Json;
+  kind: "raw" | "report_preview" | "report_final";
+  storage_path: string | null;
+  mime_type: string | null;
+  created_by: string | null;
   created_at: string;
 }
 
@@ -258,6 +262,7 @@ export type SavedPaper = {
 export type Reagent = {
   id: string;
   lab_id: string;
+  experiment_id: string | null;
   name: string;
   category: string | null;
   vendor: string | null;
@@ -404,7 +409,7 @@ export type Database = {
       experiments: TableDef<Experiment, Insert<Experiment, "status" | "tags" | "experiment_date">>;
       notebook_templates: TableDef<NotebookTemplateRow>;
       notebook_entries: TableDef<NotebookEntry>;
-      raw_files: TableDef<RawFileRow>;
+      raw_files: TableDef<RawFileRow, Insert<RawFileRow, "kind">>;
       sample_sheets: TableDef<SampleSheetRow>;
       rename_operations: TableDef<RenameOperation>;
       datasets: TableDef<Dataset>;

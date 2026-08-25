@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode,
+  Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode,
 } from "react";
 import { usePathname } from "next/navigation";
 import { cx } from "@/components/ui";
@@ -14,6 +14,7 @@ import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import type { MeResponse } from "@/app/api/me/route";
 import type { NotificationsResponse } from "@/app/api/notifications/route";
+import type { TodayResponse } from "@/app/api/notebook/today/route";
 
 /**
  * The application frame: fixed sidebar, top bar, scrolling content.
@@ -35,6 +36,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { toast } = useToast();
   const [me, setMe] = useState<MeResponse | null>(null);
   const [notifications, setNotifications] = useState<NotificationsResponse | null>(null);
+  const [today, setToday] = useState<TodayResponse | null>(null);
   const toastedNoticeIds = useRef(new Set<string>());
   const collapsed = useSyncExternalStore(
     subscribeSidebar,
@@ -60,15 +62,18 @@ export function AppShell({ children }: { children: ReactNode }) {
 
     const read = async () => {
       try {
-        const [meRes, noticeRes] = await Promise.all([
+        const [meRes, noticeRes, todayRes] = await Promise.all([
           fetch("/api/me", { cache: "no-store" }),
           fetch("/api/notifications", { cache: "no-store" }),
+          fetch("/api/notebook/today", { cache: "no-store" }),
         ]);
         const nextMe = (await meRes.json()) as MeResponse;
         const nextNotices = (await noticeRes.json()) as NotificationsResponse;
+        const nextToday = (await todayRes.json()) as TodayResponse;
         if (cancelled) return;
         setMe(nextMe);
         setNotifications(nextNotices);
+        setToday(nextToday);
 
         // Surface urgent notices as toasts once each, so they are not missed
         // waiting inside the header bell. Info items stay in the dropdown.
@@ -139,7 +144,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         )}
         style={{ width: collapsed ? "var(--sidebar-width-collapsed)" : "var(--sidebar-width)" }}
       >
-        <Sidebar me={me} collapsed={collapsed} />
+        {/* Sidebar reads useSearchParams() (for highlighting a step deep
+            link like /record?step=4) - Suspense is required here, otherwise
+            static generation of any page that doesn't itself provide search
+            params (e.g. the 404 page) fails the build. */}
+        <Suspense fallback={null}>
+          <Sidebar me={me} collapsed={collapsed} />
+        </Suspense>
       </aside>
 
       {/* Mobile drawer */}
@@ -151,7 +162,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             className="fixed inset-0 z-40 bg-black/60 lg:hidden"
           />
           <aside className="fixed inset-y-0 left-0 z-50 w-[var(--sidebar-width)] border-r border-[var(--shell-border)] lg:hidden">
-            <Sidebar me={me} collapsed={false} onNavigate={() => setDrawerOpen(false)} />
+            <Suspense fallback={null}>
+              <Sidebar me={me} collapsed={false} onNavigate={() => setDrawerOpen(false)} />
+            </Suspense>
           </aside>
         </>
       )}
@@ -175,12 +188,16 @@ export function AppShell({ children }: { children: ReactNode }) {
           } as React.CSSProperties
         }
       >
-        <Header
-          me={me}
-          notifications={notifications}
-          onToggleSidebar={toggle}
-          sidebarCollapsed={collapsed}
-        />
+        {/* Header also reads useSearchParams() - same Suspense requirement as Sidebar above. */}
+        <Suspense fallback={null}>
+          <Header
+            me={me}
+            notifications={notifications}
+            today={today}
+            onToggleSidebar={toggle}
+            sidebarCollapsed={collapsed}
+          />
+        </Suspense>
         <main className="flex-1 px-4 py-5 sm:px-6 sm:py-6">
           <div className="mx-auto w-full max-w-[1280px]">{children}</div>
         </main>

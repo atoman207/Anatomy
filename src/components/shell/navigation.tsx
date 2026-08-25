@@ -208,11 +208,11 @@ export const NAV_GROUPS: NavGroup[] = [
     id: "record",
     label: "記録",
     items: [
-      { href: "/notebook", label: "実験ノート", icon: icons.notebook },
-      { href: "/voice", label: "音声メモ", icon: icons.voice },
-      { href: "/reagents", label: "試薬・Lot", icon: icons.reagents },
-      { href: "/experiments", label: "実験一覧", icon: icons.experiments },
-      { href: "/literature", label: "論文検索", icon: icons.literature },
+      { href: "/record?step=1", label: "実験選択", icon: icons.experiments },
+      { href: "/record?step=2", label: "試薬・Lot", icon: icons.reagents },
+      { href: "/record?step=3", label: "テンプレート", icon: icons.templates },
+      { href: "/record?step=4", label: "実験ノート", icon: icons.notebook },
+      { href: "/record?step=5", label: "論文検索", icon: icons.literature },
     ],
   },
   {
@@ -290,13 +290,48 @@ export function visibleGroups(v: NavVisibility): NavGroup[] {
   }).filter((g): g is NavGroup => g !== null);
 }
 
+/** Pathname of a nav href, ignoring any query string. */
+export function navPath(href: string): string {
+  const q = href.indexOf("?");
+  return q === -1 ? href : href.slice(0, q);
+}
+
+/**
+ * Whether this nav item is the current page.
+ *
+ * The five 記録 steps share `/record` and differ only by `?step=`; when the
+ * query is missing, step 1 is the default so a bare `/record` still lights up
+ * 実験選択 rather than every item in the group.
+ */
+export function navItemActive(
+  item: NavItem,
+  pathname: string,
+  searchParams?: { get(name: string): string | null },
+): boolean {
+  const path = navPath(item.href);
+  const pathMatches = item.exact
+    ? pathname === path
+    : pathname === path || pathname.startsWith(`${path}/`);
+  if (!pathMatches) return false;
+
+  const query = item.href.includes("?") ? item.href.slice(item.href.indexOf("?") + 1) : "";
+  if (!query) return true;
+  const expected = new URLSearchParams(query);
+  for (const [key, value] of expected) {
+    const actual = searchParams?.get(key) ?? (key === "step" ? "1" : null);
+    if (actual !== value) return false;
+  }
+  return true;
+}
+
 /** The label for the current route, used as the header title. */
-export function titleForPath(pathname: string): string {
+export function titleForPath(pathname: string, search?: string): string {
+  const searchParams = new URLSearchParams(search ?? "");
   let best: { label: string; length: number } | null = null;
   for (const group of NAV_GROUPS) {
     for (const item of group.items) {
-      const matches = item.exact ? pathname === item.href : pathname.startsWith(item.href);
-      if (matches && (!best || item.href.length > best.length)) {
+      if (!navItemActive(item, pathname, searchParams)) continue;
+      if (!best || item.href.length > best.length) {
         best = { label: item.label, length: item.href.length };
       }
     }

@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { cx } from "@/components/ui";
-import { visibleGroups, type NavVisibility } from "./navigation";
+import { useWorkspace } from "@/components/workspace";
+import { navItemActive, navPath, visibleGroups, type NavVisibility } from "./navigation";
 import type { MeResponse } from "@/app/api/me/route";
 
 /**
@@ -25,6 +26,8 @@ export function Sidebar({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const ws = useWorkspace();
   const [folded, setFolded] = useState<Record<string, boolean>>({});
 
   const visibility: NavVisibility = {
@@ -96,14 +99,20 @@ export function Sidebar({
               {!isFolded && (
                 <ul className="flex flex-col gap-0.5">
                   {group.items.map((item) => {
-                    const active = item.exact
-                      ? pathname === item.href
-                      : pathname === item.href || pathname.startsWith(`${item.href}/`);
+                    const active = pathname === "/record" && navPath(item.href) === "/record"
+                      ? item.href === `/record?step=${ws.wizardStep}`
+                      : navItemActive(item, pathname, searchParams);
                     return (
                       <li key={item.href}>
                         <Link
                           href={item.href}
-                          onClick={onNavigate}
+                          onClick={() => {
+                            const step = Number(new URLSearchParams(item.href.split("?")[1] ?? "").get("step"));
+                            if (navPath(item.href) === "/record" && step >= 1 && step <= 5) {
+                              ws.setWizardStep(step);
+                            }
+                            onNavigate?.();
+                          }}
                           aria-current={active ? "page" : undefined}
                           title={collapsed ? item.label : undefined}
                           className={cx(

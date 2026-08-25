@@ -1,4 +1,4 @@
-import type { ReactNode, SelectHTMLAttributes, InputHTMLAttributes, TextareaHTMLAttributes, ButtonHTMLAttributes } from "react";
+import { forwardRef, type ReactNode, SelectHTMLAttributes, InputHTMLAttributes, TextareaHTMLAttributes, ButtonHTMLAttributes } from "react";
 import { Icon, type IconName } from "./icons";
 
 export function cx(...parts: (string | false | null | undefined)[]): string {
@@ -90,9 +90,11 @@ export function TextInput({ className, ...rest }: InputHTMLAttributes<HTMLInputE
   return <input className={cx(controlClass, className)} {...rest} />;
 }
 
-export function TextArea({ className, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={cx(controlClass, "min-h-20 resize-y", className)} {...rest} />;
-}
+export const TextArea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
+  function TextArea({ className, ...rest }, ref) {
+    return <textarea ref={ref} className={cx(controlClass, "min-h-20 resize-y", className)} {...rest} />;
+  },
+);
 
 export function Select({ className, children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (

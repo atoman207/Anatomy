@@ -1125,3 +1125,40 @@ export function validateTemplateValues(
 export function getTemplate(id: string): NotebookTemplate | undefined {
   return BUILT_IN_TEMPLATES.find((t) => t.id === id);
 }
+
+/**
+ * Built-ins grouped by category, in first-appearance order (not sorted) so
+ * the generic template stays at the top of the list. Computed once at module
+ * load; shared by the template step (choosing) and the notebook step
+ * (resolving `ws.templateKey` back into a full template), so the two never
+ * drift into slightly different groupings.
+ */
+export const BUILT_IN_BY_CATEGORY: [string, NotebookTemplate[]][] = (() => {
+  const groups = new Map<string, NotebookTemplate[]>();
+  for (const t of BUILT_IN_TEMPLATES) {
+    const list = groups.get(t.category);
+    if (list) list.push(t);
+    else groups.set(t.category, [t]);
+  }
+  return [...groups.entries()];
+})();
+
+/** A custom (lab-created) template row, in the same shape as a built-in one. */
+export function templateFromCustomRow(row: {
+  slug: string;
+  name: string;
+  description: string | null;
+  category: string | null;
+  fields: unknown;
+  body: string;
+}): NotebookTemplate {
+  const fields = Array.isArray(row.fields) ? (row.fields as unknown as TemplateField[]) : [];
+  return {
+    id: row.slug,
+    name: row.name,
+    description: row.description ?? "",
+    category: row.category || "カスタム",
+    fields,
+    body: row.body,
+  };
+}

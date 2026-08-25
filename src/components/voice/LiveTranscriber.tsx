@@ -1,27 +1,33 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Badge, Button } from "@/components/ui";
+import { Badge, Button, TextArea, cx } from "@/components/ui";
 import { useToast } from "@/components/shell/Toast";
 import {
-  SpeechSession, isWebSpeechSupported, fullTranscript,
+  SpeechSession, isWebSpeechSupported, fullTranscript, joinJapanese,
   EMPTY_TRANSCRIPT, type TranscriptState,
 } from "@/lib/voice/webSpeech";
 
 /**
- * Free, real-time Japanese dictation using the browser's own speech engine.
+ * Free, real-time dictation using the browser's speech engine.
  *
- * No API key and no per-minute cost. Text appears while you speak, which the
- * upload-and-wait path cannot do — worth having even alongside it.
+ * The transcript box is always a normal text field (type / paste / edit).
+ * Speaking appends onto whatever is already there; pause, edit, then continue.
+ * The mic control sits in the lower-right corner of the box.
  */
 export function LiveTranscriber({
-  onCommit, onUnavailable, disabled,
+  onCommit, onUnavailable, disabled, committedText = "", onCommittedTextChange, lang = "ja-JP",
 }: {
-  /** Called with the finished transcript when the user stops. */
+  /** Called with the finished transcript when the user stops speaking. */
   onCommit: (text: string) => void;
   /** Called when this browser cannot run recognition at all. */
   onUnavailable?: (reason: string) => void;
   disabled?: boolean;
+  /** Current transcript — editable while not listening. */
+  committedText?: string;
+  onCommittedTextChange?: (text: string) => void;
+  /** BCP-47 recognition language. Defaults to Japanese; pass "en-US" for English. */
+  lang?: string;
 }) {
   const supported = useSyncExternalStore(
     () => () => {},
@@ -37,7 +43,9 @@ export function LiveTranscriber({
 
   const sessionRef = useRef<SpeechSession | null>(null);
   const startedAtRef = useRef(0);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  /** Snapshot of the editable text when listening began — speech appends onto this. */
+  const baseTextRef = useRef("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     return () => {
@@ -54,22 +62,31 @@ export function LiveTranscriber({
     return () => clearInterval(id);
   }, [listening]);
 
-  // Keep the newest words in view during a long dictation.
+  // Keep the caret / scroll near the newest words during a long dictation.
   useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [state]);
+    if (!listening) return;
+    const el = textareaRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [listening, state]);
 
   const start = useCallback(() => {
     setDead(false);
-    // Flip the UI immediately. Chrome can take a beat to fire `onstart`
-    // (mic permission, connecting to the speech service), and leaving the
-    // start button in place makes it look like the click did nothing.
     setListening(true);
+
+    const base = (committedText ?? "").trimEnd();
+    baseTextRef.current = base;
 
     const session = new SpeechSession(
       {
-        onTranscript: setState,
+        onTranscript: (next) => {
+          setState(next);
+          // Live-push the growing transcript so a parent that keys off the
+          // text (e.g. enabling "次のステップ") stays up to date mid-speech.
+          const spoken = fullTranscript(next);
+          const merged = base ? joinJapanese(base, spoken) : spoken;
+          onCommittedTextChange?.(merged);
+        },
         onError: (e) => toast(e.message, { tone: "danger", title: "エラー" }),
         onStateChange: setListening,
         onDead: () => {
@@ -80,29 +97,39 @@ export function LiveTranscriber({
           );
         },
       },
-      { lang: "ja-JP" },
+      { lang },
     );
 
     sessionRef.current?.dispose();
     sessionRef.current = session;
     startedAtRef.current = Date.now();
     setElapsed(0);
-    // Continue from whatever is already there rather than starting over.
-    session.setTranscript(state.final);
+    setState(EMPTY_TRANSCRIPT);
+    // Session starts empty; we merge onto `base` ourselves so manual edits
+    // between pauses are never overwritten by a stale recognizer buffer.
+    session.setTranscript("");
     session.start();
-  }, [onUnavailable, state.final, toast]);
+  }, [committedText, lang, onCommittedTextChange, onUnavailable, toast]);
 
   const stop = useCallback(() => {
     const session = sessionRef.current;
     session?.stop();
-    const text = session ? fullTranscript(session.transcript) : fullTranscript(state);
-    if (text.trim()) onCommit(text.trim());
-  }, [onCommit, state]);
+    const spoken = session ? fullTranscript(session.transcript) : fullTranscript(state);
+    const base = baseTextRef.current;
+    const merged = (base ? joinJapanese(base, spoken) : spoken).trim();
+    setState(EMPTY_TRANSCRIPT);
+    if (merged) {
+      onCommittedTextChange?.(merged);
+      onCommit(merged);
+    }
+  }, [onCommit, onCommittedTextChange, state]);
 
   function clear() {
     sessionRef.current?.dispose();
     sessionRef.current = null;
     setState(EMPTY_TRANSCRIPT);
+    baseTextRef.current = "";
+    onCommittedTextChange?.("");
     setDead(false);
     setElapsed(0);
     setListening(false);
@@ -118,66 +145,82 @@ export function LiveTranscriber({
   }
 
   const mmss = `${Math.floor(elapsed / 60)}:${String(Math.floor(elapsed % 60)).padStart(2, "0")}`;
-  const charCount = fullTranscript(state).length;
+  const hasText = (committedText ?? "").trim().length > 0;
+  const spokenLive = fullTranscript(state);
+  const displayValue = listening
+    ? (baseTextRef.current ? joinJapanese(baseTextRef.current, spokenLive) : spokenLive)
+    : (committedText ?? "");
+  const continueLabel = hasText ? "話し続ける" : "話し始める";
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-3">
-        {!listening ? (
-          <Button type="button" variant="primary" icon="mic" onClick={start} disabled={disabled || dead}>
-            話し始める
-          </Button>
-        ) : (
-          <Button type="button" variant="danger" icon="stop" onClick={stop}>停止して確定</Button>
-        )}
+    <div className="flex flex-col gap-2">
+      <div className="relative">
+        <TextArea
+          ref={textareaRef}
+          value={displayValue}
+          onChange={(e) => {
+            if (listening) return;
+            onCommittedTextChange?.(e.target.value);
+          }}
+          readOnly={listening}
+          disabled={disabled && !listening}
+          placeholder="ここに直接入力・貼り付けできます。「話し始める」で音声も追加されます。"
+          className="min-h-32 resize-y pb-12 pr-14 font-mono text-[13px] leading-relaxed"
+          aria-label="書き起こしテキスト"
+        />
 
-        {charCount > 0 && !listening && (
-          <Button type="button" icon="clear" onClick={clear}>クリア</Button>
-        )}
-
-        {listening && (
-          <div className="flex items-center gap-2">
-            <span
-              aria-hidden
-              className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-[var(--danger)]"
+        <div className="absolute bottom-2 right-2 flex items-center gap-1.5">
+          {listening && (
+            <span className="mr-1 flex items-center gap-1.5 rounded-full bg-surface-1/90 px-2 py-0.5 text-[11px] text-ink-2 shadow-sm">
+              <span
+                aria-hidden
+                className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--danger)]"
+              />
+              <span className="font-mono tabular-nums">{mmss}</span>
+            </span>
+          )}
+          {!listening ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="primary"
+              icon="mic"
+              onClick={start}
+              disabled={disabled || dead}
+              title={continueLabel}
+              aria-label={continueLabel}
+              className="!px-2.5 !py-2 shadow-[var(--shadow-sm)]"
             />
-            <span className="font-mono text-sm tabular-nums text-ink">{mmss}</span>
-            <span className="text-xs text-ink-3">認識中…</span>
-          </div>
-        )}
-
-        {charCount > 0 && <Badge tone="neutral">{charCount} 文字</Badge>}
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              variant="danger"
+              icon="stop"
+              onClick={stop}
+              title="停止して編集"
+              aria-label="停止して編集"
+              className="!px-2.5 !py-2 shadow-[var(--shadow-sm)]"
+            />
+          )}
+        </div>
       </div>
 
-      <div
-        ref={scrollRef}
-        aria-live="polite"
-        aria-label="認識結果"
-        className="max-h-56 min-h-24 overflow-y-auto rounded-lg border border-line bg-surface-1 px-3 py-2.5 text-sm leading-relaxed"
-      >
-        {state.final && <span className="text-ink">{state.final}</span>}
-        {/* Interim text is shown greyed so it reads as provisional: the
-            engine revises it as the phrase completes. */}
-        {state.interim && (
-          <span className="text-ink-3 italic">
-            {state.final ? " " : ""}
-            {state.interim}
-          </span>
+      <div className="flex flex-wrap items-center gap-2">
+        {hasText && !listening && (
+          <Button type="button" size="sm" icon="clear" onClick={clear} disabled={disabled}>
+            クリア
+          </Button>
         )}
-        {!state.final && !state.interim && (
-          <span className="text-ink-3">
-            {listening
-              ? "話してください。認識された文字がここに表示されます…"
-              : "「話し始める」を押すと、話した内容がリアルタイムで文字になります。"}
-          </span>
-        )}
-      </div>
-
-      {listening && (
-        <p className="text-[11px] text-ink-3">
-          区切りのよいところで自動的に確定されます。一時的に止まっても自動で再開します。
+        {hasText && <Badge tone="neutral">{displayValue.length} 文字</Badge>}
+        <p className={cx("text-[11px] text-ink-3", listening ? "text-ink-2" : undefined)}>
+          {listening
+            ? "認識中… 右下の停止ボタンで止めてから編集できます。"
+            : hasText
+              ? "右下のマイクで、この続きから話し続けられます。"
+              : "入力・貼り付けするか、右下のマイクで話し始めてください。"}
         </p>
-      )}
+      </div>
     </div>
   );
 }

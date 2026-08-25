@@ -606,6 +606,7 @@ alter table public.saved_papers add column if not exists pages  text;
 create table if not exists public.reagents (
   id          uuid primary key default gen_random_uuid(),
   lab_id      uuid not null references public.laboratories (id) on delete cascade,
+  experiment_id uuid references public.experiments (id) on delete cascade,
   name        text not null,
   category    text,
   vendor      text,
@@ -618,7 +619,11 @@ create table if not exists public.reagents (
   updated_at  timestamptz not null default now()
 );
 
+alter table public.reagents
+  add column if not exists experiment_id uuid references public.experiments (id) on delete cascade;
+
 create index if not exists reagents_lab_idx on public.reagents (lab_id);
+create index if not exists reagents_experiment_idx on public.reagents (experiment_id);
 
 do $$
 declare
@@ -1601,3 +1606,143 @@ alter table public.lab_invites enable row level security;
 drop policy if exists lab_invites_select on public.lab_invites;
 create policy lab_invites_select on public.lab_invites
   for select using (public.is_lab_admin(lab_id));
+
+-- ============================================================================
+-- Notebook entries: same-day editing
+--
+-- Entries used to be pure insert-only (see saveNotebookEntry's own doc
+-- comment: "always an insert, never an update"), which meant fixing a typo
+-- required a whole new dated version. The actual integrity requirement was
+-- narrower than that: a lab report should be editable while it is still
+-- "today's" entry, and permanently fixed once that day has passed — not
+-- fixed from the instant it is saved.
+--
+-- The boundary is JST (Asia/Tokyo), not the database's session timezone,
+-- since every date shown in this app's UI is a Japanese calendar date
+-- (toLocaleDateString("ja-JP")) - a server running in UTC must not lock an
+-- entry out from under a researcher still working within their own "today".
+--
+-- Safe to re-run: every statement is guarded.
+-- ============================================================================
+
+drop policy if exists notebook_entries_update on public.notebook_entries;
+create policy notebook_entries_update on public.notebook_entries
+  for update using (public.can_write_lab(lab_id)) with check (public.can_write_lab(lab_id));
+
+-- Same shape as prevent_confirmed_voice_note_edit: fires unconditionally,
+-- including against the service-role client, so the boundary cannot be
+-- bypassed by an admin tool that forgets to check the date itself.
+create or replace function public.prevent_stale_notebook_entry_edit()
+returns trigger
+language plpgsql
+as $$
+begin
+  if (old.created_at at time zone 'Asia/Tokyo')::date
+     <> (now() at time zone 'Asia/Tokyo')::date
+  then
+    raise exception 'この記録は作成日を過ぎているため編集できません。';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists lock_stale_notebook_entry on public.notebook_entries;
+create trigger lock_stale_notebook_entry
+  before update on public.notebook_entries
+  for each row execute function public.prevent_stale_notebook_entry_edit();
+
+-- ============================================================================
+-- Report PDFs
+--
+-- The five 記録 tools (実験選択・試薬/Lot・音声メモ・実験ノート・論文検索) are now one
+-- guided flow that ends by producing a PDF - a preview on request, and a final
+-- version when the researcher finishes. Both get stored, not just downloaded,
+-- so "what did we hand off for this experiment" has an answer later.
+--
+-- Reuses `raw_files` (kept generic on purpose already) instead of a new table:
+-- a report PDF is, structurally, just another file that belongs to an
+-- experiment. `kind` distinguishes a report PDF from an ordinary catalogued
+-- raw instrument file, and `storage_path` is new because the existing `path`
+-- column already means something else there (the original client-side
+-- filename/relative path of an uploaded-metadata row) - conflating the two
+-- would make old rows ambiguous.
+--
+-- Safe to re-run: every statement is guarded.
+-- ============================================================================
+
+alter table public.raw_files add column if not exists kind text not null default 'raw';
+alter table public.raw_files add column if not exists storage_path text;
+alter table public.raw_files add column if not exists mime_type text;
+alter table public.raw_files add column if not exists created_by uuid references auth.users (id) on delete set null;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.raw_files'::regclass
+      and conname = 'raw_files_kind_check'
+  ) then
+    alter table public.raw_files
+      add constraint raw_files_kind_check
+      check (kind in ('raw', 'report_preview', 'report_final'));
+  end if;
+end $$;
+
+create index if not exists raw_files_kind_idx on public.raw_files (experiment_id, kind);
+
+-- A private bucket: report PDFs may contain unpublished results, so they are
+-- fetched only through a signed URL the server hands out after checking lab
+-- membership, never through a public bucket URL.
+insert into storage.buckets (id, name, public)
+values ('lab-reports', 'lab-reports', false)
+on conflict (id) do nothing;
+
+-- Objects are stored as `{lab_id}/{experiment_id}/{filename}`, so the first
+-- path segment is exactly what `is_lab_member` / `can_write_lab` already key
+-- on - the same helpers every other lab-scoped policy in this file uses.
+drop policy if exists lab_reports_select on storage.objects;
+create policy lab_reports_select on storage.objects
+  for select using (
+    bucket_id = 'lab-reports'
+    and public.is_lab_member(((storage.foldername(name))[1])::uuid)
+  );
+
+drop policy if exists lab_reports_insert on storage.objects;
+create policy lab_reports_insert on storage.objects
+  for insert with check (
+    bucket_id = 'lab-reports'
+    and public.can_write_lab(((storage.foldername(name))[1])::uuid)
+  );
+
+drop policy if exists lab_reports_update on storage.objects;
+create policy lab_reports_update on storage.objects
+  for update using (
+    bucket_id = 'lab-reports'
+    and public.can_write_lab(((storage.foldername(name))[1])::uuid)
+  ) with check (
+    bucket_id = 'lab-reports'
+    and public.can_write_lab(((storage.foldername(name))[1])::uuid)
+  );
+
+drop policy if exists lab_reports_delete on storage.objects;
+create policy lab_reports_delete on storage.objects
+  for delete using (
+    bucket_id = 'lab-reports'
+    and public.can_write_lab(((storage.foldername(name))[1])::uuid)
+  );
+
+-- ============================================================================
+-- AI-generated figures
+--
+-- The notebook step's "AIで画像を生成" action used to only queue the image as a
+-- workspace clip - fine for the current report, but nothing survived past the
+-- browser session: no durable row, no created_by, nothing to pick again from
+-- "保存済みの図から選ぶ" the way a chart from /analyze can be. Adding one enum
+-- value lets it go through the exact same `figures` insert every other figure
+-- kind already uses (see saveFigure), stored as a small SVG wrapper around the
+-- PNG so the existing `svg text` column and clip-insertion code need no change.
+--
+-- Safe to re-run: ADD VALUE IF NOT EXISTS is itself idempotent.
+-- ============================================================================
+
+alter type public.figure_kind add value if not exists 'ai_image';

@@ -29,6 +29,7 @@ export async function POST(request: Request) {
     const retmax = Math.min(50, Math.max(1, Number(body?.retmax) || 20));
     const yearsBack = Number(body?.yearsBack) || undefined;
     const sort = body?.sort === "pub_date" ? "pub_date" : "relevance";
+    const restrictJapan = body?.restrictJapan === true;
     const explicitQuery =
       typeof body?.query === "string" && body.query.trim() ? body.query.trim() : null;
 
@@ -71,6 +72,7 @@ export async function POST(request: Request) {
       sort,
       yearsBack,
       includeAbstracts: true,
+      restrictJapan,
     });
 
     return NextResponse.json({

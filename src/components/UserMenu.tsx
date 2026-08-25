@@ -136,8 +136,8 @@ export function UserMenu() {
           )}
 
           <nav className="flex flex-col py-1">
-            <MenuLink href="/experiments" onClick={() => setOpen(false)}>
-              実験一覧
+            <MenuLink href="/record" onClick={() => setOpen(false)}>
+              実験記録
             </MenuLink>
             {me.canAccessAdmin && (
               <MenuLink href="/admin" onClick={() => setOpen(false)}>

@@ -92,6 +92,15 @@ export interface PubMedSearchOptions {
   minYear?: number;
   maxYear?: number;
   includeAbstracts?: boolean;
+  /**
+   * Limit to papers with at least one author affiliated with a Japanese
+   * institution, via PubMed's own `[Affiliation]` field - a real index term,
+   * not a post-hoc guess from journal name or language. A hard filter rather
+   * than a "boost": re-ranking without it would need a second unfiltered
+   * query to compare against, doubling latency for no accuracy PubMed's own
+   * index doesn't already give us for free.
+   */
+  restrictJapan?: boolean;
 }
 
 /** Runs esearch, then esummary, then optionally efetch for abstracts. */
@@ -113,6 +122,9 @@ export async function searchPubMed(
   const max = opts.maxYear ?? (min ? now : undefined);
   if (min && max) {
     term = `(${term}) AND ("${min}"[Date - Publication] : "${max}"[Date - Publication])`;
+  }
+  if (opts.restrictJapan) {
+    term = `(${term}) AND Japan[Affiliation]`;
   }
 
   const searchUrl = new URL(`${BASE}/esearch.fcgi`);
@@ -153,12 +165,42 @@ export async function searchPubMed(
     notes.push(`全 ${total.toLocaleString()} 件中 ${ids.length} 件を表示しています。`);
   }
 
+  const { articles, notes: hydrateNotes } = await hydrateArticles(ids, opts.includeAbstracts !== false);
+  notes.push(...hydrateNotes);
+
+  return { query: term, translatedQuery: translated, total, articles, notes };
+}
+
+/**
+ * Turns a bare list of PMIDs into full records: esummary for bibliographic
+ * detail, efetch for abstracts. The two calls depend only on the id list, not
+ * on each other, so they run concurrently rather than one after the other -
+ * this is the main latency win over the old sequential version, since efetch
+ * (25s timeout) was previously paid in full on top of esummary's own round
+ * trip even though nothing here needs the summary before fetching abstracts.
+ */
+async function hydrateArticles(
+  ids: string[],
+  includeAbstracts: boolean,
+): Promise<{ articles: PubMedArticle[]; notes: string[] }> {
+  const notes: string[] = [];
+
   const summaryUrl = new URL(`${BASE}/esummary.fcgi`);
   summaryUrl.searchParams.set("db", "pubmed");
   summaryUrl.searchParams.set("id", ids.join(","));
   summaryUrl.searchParams.set("retmode", "json");
 
-  const summaryRes = await get(summaryUrl);
+  const [summaryRes, abstracts] = await Promise.all([
+    get(summaryUrl),
+    includeAbstracts
+      ? fetchAbstracts(ids).catch(() => {
+          // Abstracts are an enhancement; a failure here should not lose the hits.
+          notes.push("抄録の取得に失敗しました。書誌情報のみ表示しています。");
+          return new Map<string, string>();
+        })
+      : Promise.resolve(new Map<string, string>()),
+  ]);
+
   if (!summaryRes.ok) {
     throw new Error(`PubMed の書誌取得に失敗しました (HTTP ${summaryRes.status})`);
   }
@@ -185,7 +227,7 @@ export async function searchPubMed(
         .map((x: { name: string }) => x.name),
       doi,
       pmcid,
-      abstract: null,
+      abstract: abstracts.get(pmid) ?? null,
       publicationTypes: a.pubtype ?? [],
       url: `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`,
       doiUrl: doi ? `https://doi.org/${doi}` : null,
@@ -195,19 +237,67 @@ export async function searchPubMed(
     });
   }
 
-  if (opts.includeAbstracts !== false && articles.length) {
-    try {
-      const abstracts = await fetchAbstracts(ids);
-      for (const article of articles) {
-        article.abstract = abstracts.get(article.pmid) ?? null;
-      }
-    } catch {
-      // Abstracts are an enhancement; a failure here should not lose the hits.
-      notes.push("抄録の取得に失敗しました。書誌情報のみ表示しています。");
-    }
+  return { articles, notes };
+}
+
+export interface SimilarArticlesResult {
+  sourcePmid: string;
+  total: number;
+  articles: PubMedArticle[];
+  notes: string[];
+}
+
+/**
+ * Papers PubMed itself considers related to one already-known article, via
+ * ELink's `neighbor_score` - the same "similar articles" ranking PubMed's own
+ * site shows, computed from term-weighted content similarity across the whole
+ * index rather than a keyword re-search. No model call: turning "find similar
+ * papers" into a fresh free-text query is exactly the kind of plausible-but-
+ * unverified step `searchPubMed`'s own module doc warns against, and it would
+ * also cost the query-builder's ~60s round trip for no accuracy gain over an
+ * algorithm NCBI already runs and ranks by score. This is why the feature is
+ * both faster and more accurate than re-querying: one extra HTTP call, using
+ * NCBI's own relevance judgment instead of an LLM's guess at good search terms.
+ */
+export async function findSimilarArticles(
+  pmid: string,
+  opts: { retmax?: number } = {},
+): Promise<SimilarArticlesResult> {
+  const retmax = Math.min(50, Math.max(1, opts.retmax ?? 10));
+
+  const linkUrl = new URL(`${BASE}/elink.fcgi`);
+  linkUrl.searchParams.set("dbfrom", "pubmed");
+  linkUrl.searchParams.set("db", "pubmed");
+  linkUrl.searchParams.set("id", pmid);
+  linkUrl.searchParams.set("cmd", "neighbor_score");
+  linkUrl.searchParams.set("retmode", "json");
+
+  const linkRes = await get(linkUrl);
+  if (!linkRes.ok) {
+    throw new Error(`類似論文の取得に失敗しました (HTTP ${linkRes.status})`);
+  }
+  const linkBody = await linkRes.json();
+
+  const linksets = linkBody.linksets?.[0]?.linksetdbs as
+    | { linkname: string; links: { id: string; score?: string }[] }[]
+    | undefined;
+  const scored = linksets?.find((l) => l.linkname === "pubmed_pubmed")?.links ?? [];
+
+  // ELink returns the source article itself as the top "neighbor"; drop it,
+  // then take the next `retmax` by descending score (already ranked, but
+  // sorted explicitly since the API does not document that as a guarantee).
+  const ids = scored
+    .filter((l) => l.id !== pmid)
+    .sort((a, b) => Number(b.score ?? 0) - Number(a.score ?? 0))
+    .slice(0, retmax)
+    .map((l) => l.id);
+
+  if (ids.length === 0) {
+    return { sourcePmid: pmid, total: 0, articles: [], notes: ["類似論文が見つかりませんでした。"] };
   }
 
-  return { query: term, translatedQuery: translated, total, articles, notes };
+  const { articles, notes } = await hydrateArticles(ids, true);
+  return { sourcePmid: pmid, total: articles.length, articles, notes };
 }
 
 /** efetch returns XML; only the abstract text is needed. */

@@ -4,6 +4,10 @@ import { Icon, type IconName } from "@/components/icons";
 import { requireUser } from "@/lib/auth/guards";
 import { listRecentPeerReviews } from "@/lib/peerReview/actions";
 import { getMyPeerReviewCredits } from "@/lib/peerReview/credits";
+import {
+  listMyNotebookEntriesGrouped,
+  listMyNotebookEntriesToday,
+} from "@/lib/notebook/actions";
 import { FREE_PEER_REVIEW_CREDITS } from "@/lib/peerReview/creditPacks";
 import { getLabEntitlement } from "@/lib/billing/subscription";
 import { STATUS_LABELS } from "@/lib/billing/plans";
@@ -83,10 +87,12 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
   const isAdmin = ctx.isPlatformAdmin;
 
   const primaryLab = ctx.memberships[0] ?? null;
-  const [recentReviews, credits, entitlement] = await Promise.all([
+  const [recentReviews, credits, entitlement, todaysReports, reportGroups] = await Promise.all([
     listRecentPeerReviews(10).then((r) => r.data ?? []),
     getMyPeerReviewCredits(),
     primaryLab ? getLabEntitlement(primaryLab.labId) : Promise.resolve(null),
+    listMyNotebookEntriesToday().then((r) => r.data ?? []),
+    listMyNotebookEntriesGrouped().then((r) => r.data ?? []),
   ]);
 
   const planName = entitlement?.plan.name ?? "フリー";
@@ -101,6 +107,90 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
           そのページは管理者のみが利用できます。権限が必要な場合は管理者に依頼してください。
         </Callout>
       )}
+
+      <section className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-ink-2">今日のラボレポート</h2>
+          <Link href="/record?step=4" className="text-xs text-accent underline">
+            実験記録を開く
+          </Link>
+        </div>
+        <Card>
+          {todaysReports.length === 0 ? (
+            <EmptyState title="今日作成されたラボレポートはまだありません">
+              <Link href="/record?step=4" className="text-accent underline">実験記録</Link>
+              でレポートを作成すると、ここに表示されます。
+            </EmptyState>
+          ) : (
+            <ul className="flex flex-col divide-y divide-[var(--border)] text-[13px]">
+              {todaysReports.map((r) => (
+                <li key={r.id} className="flex items-center gap-3 py-1.5 first:pt-0 last:pb-0">
+                  <span className="min-w-0 flex-1 truncate font-medium text-ink">{r.title}</span>
+                  <span className="hidden shrink-0 truncate text-[11px] text-ink-3 sm:block sm:max-w-[240px]">
+                    {r.experiment_name} ・ {r.lab_name}
+                  </span>
+                  <span className="shrink-0 text-[11px] text-ink-3">
+                    {new Date(r.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                  <Link
+                    href={`/record?step=4`}
+                    className="shrink-0 text-[11px] text-accent underline underline-offset-2"
+                  >
+                    開く
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-ink-2">すべてのラボレポート（実験ごと）</h2>
+          <Link href="/experiments" className="text-xs text-accent underline">
+            実験一覧を見る
+          </Link>
+        </div>
+        <Card subtitle="あなたが作成したラボレポートを、実験ごとにまとめて確認できます。">
+          {reportGroups.length === 0 ? (
+            <EmptyState title="まだラボレポートがありません">
+              <Link href="/record?step=4" className="text-accent underline">実験記録</Link>
+              でレポートを作成すると、実験ごとにここへまとまります。
+            </EmptyState>
+          ) : (
+            <div className="flex flex-col divide-y divide-[var(--border)]">
+              {reportGroups.map((g, i) => (
+                <details key={g.experimentId} className="py-2 first:pt-0 last:pb-0" open={i === 0}>
+                  <summary className="cursor-pointer text-[13px] font-medium text-ink">
+                    {g.experimentName}
+                    <span className="ml-1.5 font-normal text-ink-3">
+                      ・ {g.labName} ・ {g.entries.length} 件
+                    </span>
+                  </summary>
+                  <ul className="mt-2 flex flex-col gap-1.5 pl-3">
+                    {g.entries.map((r) => (
+                      <li key={r.id} className="flex items-center gap-2 text-[12px]">
+                        <span className="min-w-0 flex-1 truncate text-ink-2">{r.title}</span>
+                        {r.template_slug && <Badge>{r.template_slug}</Badge>}
+                        <span className="shrink-0 text-ink-3">
+                          {new Date(r.created_at).toLocaleDateString("ja-JP")}
+                        </span>
+                        <Link
+                          href="/record?step=4"
+                          className="shrink-0 text-accent underline underline-offset-2"
+                        >
+                          開く
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ))}
+            </div>
+          )}
+        </Card>
+      </section>
 
       {credits && (
         <Card
