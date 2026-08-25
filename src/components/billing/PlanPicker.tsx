@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { Badge, Button, Callout, cx } from "@/components/ui";
 import { useToast } from "@/components/shell/Toast";
 import {
-  formatJpy, PLAN_LIST, type PlanId,
+  formatBillingPeriod, formatJpy, PLAN_LIST, planAmountFor,
+  type BillingInterval, type Plan, type PlanId,
 } from "@/lib/billing/plans";
 import type { PlanOfferMap } from "@/lib/billing/priceResolution";
 import {
@@ -26,28 +27,38 @@ import {
 /** How long a toast that is about to be replaced by a page leave stays visible. */
 const REDIRECT_TOAST_DELAY_MS = 700;
 
+/** Default tab: month, so cards open on the monthly price only. */
+const DEFAULT_INTERVAL: BillingInterval = "month";
+
 export interface PlanPickerProps {
   labId: string;
   labName: string;
-  /** The plan in force right now. */
   currentPlan: PlanId;
-  /** True when the signed-in user may change this laboratory's plan. */
   canManage: boolean;
-  /** True once a Stripe account is connected; false runs the mock checkout instead. */
   stripeConfigured: boolean;
-  /** True once a subscription (real or mock) exists, so cancelling is worth offering. */
   hasSubscription: boolean;
-  /** `success` or `cancel`, when checkout has just sent the browser back. */
   checkoutOutcome: "success" | "cancel" | null;
-  /**
-   * What each plan currently sells at, resolved on the server.
-   *
-   * Passed in rather than read from the catalogue here, so that a price
-   * changed at `/admin/billing` is the one advertised - a card showing the
-   * catalogue's ¥50 next to a Checkout session that charges ¥480 is a
-   * mis-sale, not a display bug.
-   */
   offers: PlanOfferMap;
+}
+
+/** Year / month options for a plan that supports both cadences. */
+function dualBillingOptions(plan: Plan): { interval: BillingInterval; amount: number }[] {
+  if (
+    !plan.alternateSelectable
+    || plan.alternateAmountJpy == null
+    || !plan.alternateBillingInterval
+  ) {
+    return [{ interval: plan.billingInterval, amount: plan.amountJpy }];
+  }
+  const primary = { interval: plan.billingInterval, amount: plan.amountJpy };
+  const alternate = {
+    interval: plan.alternateBillingInterval,
+    amount: plan.alternateAmountJpy,
+  };
+  // Tabs always appear as 年 | 月 left-to-right.
+  return primary.interval === "year"
+    ? [primary, alternate]
+    : [alternate, primary];
 }
 
 export function PlanPicker({
@@ -57,16 +68,12 @@ export function PlanPicker({
   const router = useRouter();
   const { toast } = useToast();
   const [busy, setBusy] = useState<string | null>(null);
+  const [intervals, setIntervals] = useState<Record<PlanId, BillingInterval>>({
+    free: DEFAULT_INTERVAL,
+    pro: DEFAULT_INTERVAL,
+    team: DEFAULT_INTERVAL,
+  });
 
-  /*
-   * The browser returns here before Stripe's webhook necessarily has. One
-   * sync pulls the subscription straight from Stripe so the page shows the
-   * new plan immediately; the webhook remains the authoritative path, and
-   * this is idempotent with it. Without Stripe connected there is nothing to
-   * sync - the mock checkout already wrote the final state itself - so this
-   * only refreshes. The ref keeps React's development double-effect from
-   * firing it twice.
-   */
   const synced = useRef(false);
   useEffect(() => {
     if (checkoutOutcome === "cancel") {
@@ -81,9 +88,6 @@ export function PlanPicker({
       return;
     }
 
-    // Nested so the immediate setBusy("sync") below is not a direct
-    // synchronous call in the effect body itself, matching the pattern
-    // AppShell's own identity-refresh effect uses for the same reason.
     void (async () => {
       setBusy("sync");
       try {
@@ -104,16 +108,15 @@ export function PlanPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkoutOutcome, labId, canManage, stripeConfigured, router]);
 
-  /** Every redirect-away action shows what is about to happen, then leaves. */
   function goTo(url: string, message: string) {
     toast(message, { tone: "info" });
     window.setTimeout(() => window.location.assign(url), REDIRECT_TOAST_DELAY_MS);
   }
 
-  async function choose(plan: PlanId) {
+  async function choose(plan: PlanId, interval?: BillingInterval) {
     setBusy(plan);
     try {
-      const res = await startCheckout(labId, plan);
+      const res = await startCheckout(labId, plan, interval);
       if (!res.ok || !res.data) {
         toast(res.error ?? "決済を開始できませんでした。", { tone: "danger" });
         return;
@@ -146,12 +149,12 @@ export function PlanPicker({
   }
 
   async function cancel() {
-    if (!window.confirm("プランを解約し、フリープランに戻します。よろしいですか？")) return;
+    if (!window.confirm("プランを解約します。よろしいですか？")) return;
     setBusy("cancel");
     const res = await cancelMockSubscription(labId);
     if (!res.ok) toast(res.error ?? "解約できませんでした。", { tone: "danger" });
     else {
-      toast("解約しました。フリープランに戻りました。", { tone: "good" });
+      toast("解約しました。", { tone: "good" });
       router.refresh();
     }
     setBusy(null);
@@ -168,81 +171,148 @@ export function PlanPicker({
     setBusy(null);
   }
 
-  const downgrade = stripeConfigured ? portal : cancel;
-
   return (
-    <div className="flex flex-col gap-4">
-      <div className="grid gap-4 md:grid-cols-3">
+    <div className="flex flex-col gap-5">
+      <div className="grid gap-5 md:grid-cols-3">
         {PLAN_LIST.map((plan) => {
           const isCurrent = plan.id === currentPlan;
-          const paid = plan.amountJpy > 0;
           const offer = offers[plan.id];
+          const options = dualBillingOptions(plan);
+          const dual = options.length > 1;
+          const selectedInterval = dual
+            ? intervals[plan.id]
+            : plan.billingInterval;
+          const displayAmount = dual
+            ? planAmountFor(plan, selectedInterval)
+            : offer.amountJpy;
+
           return (
             <section
               key={plan.id}
               className={cx(
-                "flex flex-col rounded-lg border bg-surface-1 p-5",
-                isCurrent ? "border-accent shadow-[var(--shadow-sm)]" : "border-line",
+                "relative flex flex-col overflow-hidden rounded-2xl border bg-surface-1 p-0 shadow-[0_8px_30px_-12px_rgba(26,54,93,0.18)] transition-shadow duration-200",
+                isCurrent
+                  ? "border-[var(--good)] ring-1 ring-[var(--good)]/30"
+                  : plan.popular
+                    ? "border-[var(--good)]/50"
+                    : "border-line hover:shadow-[0_12px_36px_-14px_rgba(26,54,93,0.22)]",
               )}
             >
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="font-serif text-base font-semibold text-ink">{plan.name}</h3>
-                {isCurrent && <Badge tone="accent">現在のプラン</Badge>}
-              </div>
-              <p className="mt-1 text-[13px] text-ink-3">{plan.tagline}</p>
-
-              <p className="mt-4 flex items-baseline gap-1">
-                <span className="font-serif text-[28px] font-semibold text-ink">
-                  {offer.amountJpy === 0 ? "無料" : formatJpy(offer.amountJpy)}
-                </span>
-                {paid && <span className="text-[13px] text-ink-3">/ 月（税込）</span>}
-              </p>
-
-              <ul className="mt-4 flex flex-1 flex-col gap-2 text-[13px] leading-relaxed text-ink-2">
-                {plan.features.map((f) => (
-                  <li key={f} className="flex gap-2">
-                    <span aria-hidden className="text-accent">・</span>
-                    <span>{f}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <div className="mt-5">
-                {isCurrent ? (
-                  <Button disabled className="w-full">利用中</Button>
-                ) : !paid ? (
-                  <Button
-                    variant="secondary"
-                    className="w-full"
-                    disabled={!canManage || busy !== null || !hasSubscription}
-                    onClick={downgrade}
-                  >
-                    ダウングレードする
-                  </Button>
-                ) : !offer.purchasable ? (
-                  /*
-                   * No price exists for this plan yet, so Checkout has nothing
-                   * to sell. Saying so is better than an enabled button whose
-                   * only possible outcome is an error toast.
-                   */
-                  <>
-                    <Button variant="secondary" className="w-full" disabled>
-                      準備中
-                    </Button>
-                    <p className="mt-2 text-[12px] leading-snug text-ink-3">
-                      価格が未設定のため、現在はお申し込みいただけません。
-                    </p>
-                  </>
-                ) : (
-                  <Button
-                    variant="primary"
-                    className="w-full"
-                    disabled={!canManage || busy !== null}
-                    onClick={() => choose(plan.id)}
-                  >
-                    {busy === plan.id ? "処理中…" : `${plan.name}にする`}
-                  </Button>
+              <div
+                className={cx(
+                  "h-1.5 w-full",
+                  isCurrent || plan.popular
+                    ? "bg-[linear-gradient(90deg,var(--good)_0%,#34d399_100%)]"
+                    : "bg-[linear-gradient(90deg,var(--accent)_0%,var(--accent-light)_100%)]",
                 )}
+                aria-hidden
+              />
+
+              <div className="flex flex-1 flex-col p-5 pt-4">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <h3 className="font-serif text-lg font-semibold tracking-tight text-ink">
+                    {plan.name}
+                  </h3>
+                  <div className="flex flex-wrap items-center justify-end gap-1.5">
+                    {plan.popular && <Badge tone="good">人気</Badge>}
+                    {isCurrent && <Badge tone="good">現在のプラン</Badge>}
+                  </div>
+                </div>
+
+                {dual && (
+                  <div
+                    role="tablist"
+                    aria-label={`${plan.name}の支払い周期`}
+                    className="mt-4 grid grid-cols-2 gap-1 rounded-full border border-line bg-surface-2/80 p-1"
+                  >
+                    {options.map((opt) => {
+                      const selected = selectedInterval === opt.interval;
+                      const label = opt.interval === "year" ? "年" : "月";
+                      return (
+                        <button
+                          key={opt.interval}
+                          type="button"
+                          role="tab"
+                          aria-selected={selected}
+                          onClick={() =>
+                            setIntervals((prev) => ({ ...prev, [plan.id]: opt.interval }))
+                          }
+                          className={cx(
+                            "rounded-full px-2 py-1.5 text-[13px] font-semibold transition-colors duration-150",
+                            selected
+                              ? "bg-[var(--good)] text-white shadow-[0_2px_8px_rgba(5,150,105,0.35)]"
+                              : "text-ink-3 hover:bg-surface-1 hover:text-ink",
+                          )}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <p className="mt-3 text-[13px] leading-snug text-ink-3">{plan.tagline}</p>
+                {plan.popular && plan.popularReason && (
+                  <p className="mt-2 rounded-lg bg-[var(--good-soft)]/70 px-3 py-2 text-[12px] leading-relaxed text-[var(--good)]">
+                    {plan.popularReason}
+                  </p>
+                )}
+
+                <p className="mt-5 flex items-baseline gap-1.5">
+                  <span className="font-serif text-[32px] font-semibold leading-none tracking-tight text-ink">
+                    {formatJpy(displayAmount)}
+                  </span>
+                  <span className="text-[13px] text-ink-3">
+                    / {formatBillingPeriod(selectedInterval)}（税込）
+                  </span>
+                </p>
+
+                <ul className="mt-5 flex flex-1 flex-col gap-2.5 text-[13px] leading-relaxed text-ink-2">
+                  {plan.features.map((f) => (
+                    <li key={f} className="flex gap-2.5">
+                      <span
+                        aria-hidden
+                        className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-[var(--good-soft)] text-[10px] font-bold text-[var(--good)]"
+                      >
+                        ✓
+                      </span>
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="mt-6">
+                  {isCurrent ? (
+                    <Button
+                      disabled
+                      className="w-full !border-[var(--good)]/40 !bg-[var(--good-soft)] !text-[var(--good)]"
+                    >
+                      利用中
+                    </Button>
+                  ) : !offer.purchasable ? (
+                    <>
+                      <Button variant="secondary" className="w-full" disabled>
+                        準備中
+                      </Button>
+                      <p className="mt-2 text-[12px] leading-snug text-ink-3">
+                        価格が未設定のため、現在はお申し込みいただけません。
+                      </p>
+                    </>
+                  ) : (
+                    <Button
+                      variant="primary"
+                      className={cx(
+                        "w-full",
+                        plan.popular &&
+                          "!bg-[var(--good)] !shadow-[0_4px_14px_rgba(5,150,105,0.35)] hover:!bg-[#047857]",
+                      )}
+                      disabled={!canManage || busy !== null}
+                      onClick={() => choose(plan.id, selectedInterval)}
+                    >
+                      {busy === plan.id ? "処理中…" : `${plan.name}にする`}
+                    </Button>
+                  )}
+                </div>
               </div>
             </section>
           );

@@ -4,22 +4,24 @@ import { readFileSync } from "node:fs";
 
 import {
   aggregateReview, allMajorConcerns, allRecommendations, CATEGORY_LABELS,
-  peerReviewToMarkdown, REVIEWER_LABELS,
-  type MethodsReviewResult, type NoveltyReviewResult, type StructureReviewResult,
+  peerReviewToMarkdown, REVIEWER_LABELS, severityTone, TIER_LABELS,
+  type MethodsReviewResult, type NoveltyReviewResult, type PublicationAssessment,
+  type StructureReviewResult,
 } from "../src/lib/ai/peerReviewReport";
 import { extractPdfText, PdfExtractionError } from "../src/lib/peerReview/pdf";
-import { withRubricNotes } from "../src/lib/ai/peerReview";
+import { withPersonality, withRubricNotes, withTier } from "../src/lib/ai/peerReview";
 import {
   avatarFor, DEFAULT_REVIEWER_NAMES, defaultReviewerProfiles,
 } from "../src/lib/ai/reviewerProfiles";
 import { PEER_REVIEW_CREDIT_PACKS } from "../src/lib/peerReview/creditPacks";
+import { randomPersonalities, REVIEWER_PERSONALITIES } from "../src/lib/ai/reviewerPersonalities";
 
 function methods(overrides: Partial<MethodsReviewResult> = {}): MethodsReviewResult {
   return {
     reviewer: "methods",
     overall_score: 72,
     category_scores: { validity: 70, reproducibility: 65, statistics: 75, methods: 80 },
-    major_concerns: ["対照群の設定が不十分です。"],
+    major_concerns: [{ issue: "対照群の設定が不十分です。", severity: 7 }],
     minor_concerns: ["サンプルサイズの根拠が記載されていません。"],
     recommendations: ["Methodsにsample size determinationの計算根拠を追記してください。"],
     summary: "方法は概ね妥当だが、対照群の説明が不足している。",
@@ -45,7 +47,7 @@ function structure(overrides: Partial<StructureReviewResult> = {}): StructureRev
     reviewer: "structure",
     overall_score: 75,
     category_scores: { logic: 74, discussion: 76, citations: 77 },
-    major_concerns: ["Figure 3だけでは結論を十分に支持できません。"],
+    major_concerns: [{ issue: "Figure 3だけでは結論を十分に支持できません。", severity: 6 }],
     minor_concerns: [],
     recommendations: ["Figure 3に追加解析を検討してください。"],
     summary: "論理展開は概ね一貫しているが、一部結論が先行している。",
@@ -122,6 +124,14 @@ test("REVIEWER_LABELS and CATEGORY_LABELS cover exactly what aggregateReview pro
     Object.keys(CATEGORY_LABELS).sort(),
     Object.keys(report.categoryScores).sort(),
   );
+});
+
+test("aggregateReview defaults to the standard tier and carries whichever tier it is given", () => {
+  const report = aggregateReview([methods(), novelty(), structure()]);
+  assert.equal(report.tier, "standard");
+
+  const topReport = aggregateReview([methods(), novelty(), structure()], "top");
+  assert.equal(topReport.tier, "top");
 });
 
 /* ------------------------------------------------------------------ */
@@ -220,6 +230,69 @@ test("markdown output never leaves a template placeholder unresolved", () => {
   assert.ok(!/undefined|NaN/.test(md));
 });
 
+test("the rendered report states which tier it was evaluated under", () => {
+  const standardMd = peerReviewToMarkdown(aggregateReview([methods(), novelty(), structure()], "standard"), { title: "t" });
+  const topMd = peerReviewToMarkdown(aggregateReview([methods(), novelty(), structure()], "top"), { title: "t" });
+  assert.ok(standardMd.includes(TIER_LABELS.standard.title));
+  assert.ok(topMd.includes(TIER_LABELS.top.title));
+});
+
+test("major concerns render with their numeric severity, not just prose", () => {
+  const report = aggregateReview([methods(), novelty(), structure()]);
+  const md = peerReviewToMarkdown(report, { title: "t" });
+  assert.ok(md.includes("対照群の設定が不十分です。（深刻度: 7 / 10）"));
+  assert.ok(md.includes("Figure 3だけでは結論を十分に支持できません。（深刻度: 6 / 10）"));
+});
+
+function assessment(overrides: Partial<PublicationAssessment> = {}): PublicationAssessment {
+  return {
+    tier: "standard",
+    impactFactorEstimate: { min: 3, max: 6, rationale: "分野内で中堅の専門誌に相当する内容です。" },
+    recommendedJournals: [
+      { name: "Osteoarthritis and Cartilage", typicalImpactFactor: 7.6, rationale: "軟骨代謝の主題と直接合致します。" },
+      { name: "Journal of Orthopaedic Research", typicalImpactFactor: null, rationale: "方法論の水準が合致します。" },
+    ],
+    acceptanceLikelihood: { rating: "moderate", percentRange: "30〜50%", rationale: "主要な指摘への対応次第です。" },
+    targetJournal: null,
+    summary: "分野専門誌への投稿が現実的です。",
+    ...overrides,
+  };
+}
+
+test("the publication assessment section is included only when supplied", () => {
+  const report = aggregateReview([methods(), novelty(), structure()]);
+  const withAssessment = peerReviewToMarkdown(report, { title: "t", assessment: assessment() });
+  const withoutAssessment = peerReviewToMarkdown(report, { title: "t" });
+
+  assert.ok(withAssessment.includes("掲載可能性の評価"));
+  assert.ok(withAssessment.includes("3 〜 6"));
+  assert.ok(withAssessment.includes("Osteoarthritis and Cartilage"));
+  assert.ok(withAssessment.includes("IF 7.6"));
+  // A journal the model was unsure of never gets a fabricated number.
+  assert.ok(withAssessment.includes("Journal of Orthopaedic Research"));
+  assert.ok(withAssessment.includes("実際の査読結果・採否を保証するものではありません"));
+
+  assert.ok(!withoutAssessment.includes("掲載可能性の評価"));
+});
+
+test("a named target journal's acceptance estimate renders as its own headline, distinct from the generic range", () => {
+  const report = aggregateReview([methods(), novelty(), structure()]);
+  const withTarget = peerReviewToMarkdown(report, {
+    title: "t",
+    assessment: assessment({
+      targetJournal: {
+        name: "Osteoarthritis and Cartilage",
+        acceptancePercent: 35,
+        rationale: "統計面の指摘への対応次第で射程内です。",
+      },
+    }),
+  });
+  assert.ok(withTarget.includes("「Osteoarthritis and Cartilage」への採択可能性: 約35%"));
+
+  const withoutTarget = peerReviewToMarkdown(report, { title: "t", assessment: assessment() });
+  assert.ok(!withoutTarget.includes("への採択可能性: 約"));
+});
+
 /* ------------------------------------------------------------------ */
 /* PDF text extraction                                                 */
 /* ------------------------------------------------------------------ */
@@ -279,13 +352,14 @@ test("extractPdfText rejects a file that is not a PDF, in Japanese, rather than 
 /* Reviewer names and rubric notes                                     */
 /* ------------------------------------------------------------------ */
 
-test("the default reviewer names are actual Japanese names, one per role, none blank", () => {
+test("the default reviewer names are generic labels, one per role, none blank", () => {
+  // Deliberately generic ("Researcher N") rather than a real-sounding personal
+  // name, per customer feedback - see reviewerProfiles.ts. This test used to
+  // require a Japanese personal name; that requirement is exactly what the
+  // feedback asked to remove.
   for (const role of ["methods", "novelty", "structure"] as const) {
     const name = DEFAULT_REVIEWER_NAMES[role];
     assert.ok(name.trim().length > 0, `${role} has no default name`);
-    // At least one CJK ideograph or kana character, so this can never silently
-    // regress to a placeholder like "Reviewer 1" or an empty string.
-    assert.ok(/[぀-ヿ㐀-鿿]/.test(name), `${role}'s name "${name}" is not Japanese`);
   }
   // All three are distinct - three reviewers must not collapse into one identity.
   const names = Object.values(DEFAULT_REVIEWER_NAMES);
@@ -312,6 +386,69 @@ test("withRubricNotes appends admin notes as a clearly separated supplement", ()
   assert.ok(out.startsWith("base prompt"));
   assert.ok(out.includes("再現性を厳しく見てください。"));
   assert.notEqual(out, "base prompt");
+});
+
+/* ------------------------------------------------------------------ */
+/* Review tier (Nature/Science/Cell vs. a typical international journal) */
+/* ------------------------------------------------------------------ */
+
+test("withTier appends different, tier-specific instructions for top vs standard", () => {
+  const top = withTier("base prompt", "top");
+  const standard = withTier("base prompt", "standard");
+  assert.ok(top.startsWith("base prompt"));
+  assert.ok(standard.startsWith("base prompt"));
+  assert.notEqual(top, standard);
+  // Each mentions its own tier's title, so a reviewer prompt can never
+  // silently run under the wrong bar without it being visible in the prompt.
+  assert.ok(top.includes(TIER_LABELS.top.title));
+  assert.ok(standard.includes(TIER_LABELS.standard.title));
+});
+
+/* ------------------------------------------------------------------ */
+/* Reviewer personalities                                              */
+/* ------------------------------------------------------------------ */
+
+test("withPersonality leaves the base prompt untouched when nothing is selected", () => {
+  assert.equal(withPersonality("base prompt", undefined), "base prompt");
+  assert.equal(withPersonality("base prompt", null), "base prompt");
+});
+
+test("withPersonality appends the matching catalogue instruction and nothing else", () => {
+  const out = withPersonality("base prompt", "strict");
+  assert.ok(out.startsWith("base prompt"));
+  const strict = REVIEWER_PERSONALITIES.find((p) => p.id === "strict")!;
+  assert.ok(out.includes(strict.promptInstruction));
+});
+
+test("every personality produces a distinct instruction", () => {
+  const outputs = REVIEWER_PERSONALITIES.map((p) => withPersonality("base", p.id));
+  assert.equal(new Set(outputs).size, outputs.length);
+});
+
+test("randomPersonalities assigns one personality per role, from the real catalogue", () => {
+  const ids = new Set(REVIEWER_PERSONALITIES.map((p) => p.id));
+  const roles = ["methods", "novelty", "structure"] as const;
+  const picked = randomPersonalities(roles);
+  for (const role of roles) {
+    assert.ok(ids.has(picked[role]), `${role} got an id not in the catalogue: ${picked[role]}`);
+  }
+});
+
+test("randomPersonalities picks distinct personalities across the three roles when the catalogue allows it", () => {
+  const roles = ["methods", "novelty", "structure"] as const;
+  const picked = randomPersonalities(roles);
+  const values = Object.values(picked);
+  // REVIEWER_PERSONALITIES currently has 6 entries, comfortably more than 3.
+  assert.equal(new Set(values).size, values.length);
+});
+
+test("severityTone escalates from good to danger as severity rises", () => {
+  assert.equal(severityTone(1), "good");
+  assert.equal(severityTone(3), "good");
+  assert.equal(severityTone(4), "warn");
+  assert.equal(severityTone(6), "warn");
+  assert.equal(severityTone(7), "danger");
+  assert.equal(severityTone(10), "danger");
 });
 
 /* ------------------------------------------------------------------ */

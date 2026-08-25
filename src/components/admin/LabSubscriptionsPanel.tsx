@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import { Badge, Button, Field, Select, TextInput, cx } from "@/components/ui";
 import { useToast } from "@/components/shell/Toast";
 import {
-  formatUsage, PLANS, PLAN_LIST, STATUS_LABELS, type PlanId,
+  formatUsage, PLANS, PLAN_LIST, STATUS_LABELS, statusGrantsAccess, type PlanId,
 } from "@/lib/billing/plans";
 import {
-  adminBillingPortal, adminChangeLabPlan, adminSyncLab, grantPlanWithoutPayment,
+  adminBillingPortal, adminCancelLabPlan, adminChangeLabPlan, adminSyncLab, grantPlanWithoutPayment,
 } from "@/lib/billing/adminSubscriptionActions";
 import type { LabSubscriptionRow } from "@/lib/billing/adminSubscriptions";
 
@@ -46,7 +46,9 @@ export function LabSubscriptionsPanel({
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter((r) => {
-      if (filter === "paid" && r.plan === "free") return false;
+      if (filter === "paid" && !(r.status && statusGrantsAccess(r.status) && r.stripeSubscriptionId)) {
+        return false;
+      }
       if (filter === "risk" && !(r.status === "past_due" || r.status === "unpaid" || r.overLimit)) {
         return false;
       }
@@ -135,7 +137,9 @@ export function LabSubscriptionsPanel({
                       <span className="block truncate text-[11px] text-ink-3">{r.ownerEmail ?? ""}</span>
                     </td>
                     <td className="border-b border-line px-3 py-2.5">
-                      <Badge tone={r.plan === "free" ? "neutral" : "accent"}>{PLANS[r.plan].name}</Badge>
+                      <Badge tone={r.status && statusGrantsAccess(r.status) ? "accent" : "neutral"}>
+                        {PLANS[r.plan].name}
+                      </Badge>
                       {r.manualGrant && <Badge tone="warn">手動付与</Badge>}
                     </td>
                     <td className="border-b border-line px-3 py-2.5">
@@ -240,14 +244,22 @@ function LabControls({ row, testMode }: { row: LabSubscriptionRow; testMode: boo
           disabled={busy !== null || plan === row.plan}
           onClick={() => {
             const label = PLANS[plan].name;
-            const confirmed = plan === "free"
-              ? window.confirm(row.labName + " を解約し、期間終了時にフリープランへ戻します。よろしいですか？")
-              : window.confirm(row.labName + " を" + label + "プランへ変更します。差額は日割りで請求されます。よろしいですか？");
-            if (!confirmed) return;
+            if (!window.confirm(row.labName + " を" + label + "プランへ変更します。差額は日割りで請求されます。よろしいですか？")) return;
             void run("plan", () => adminChangeLabPlan(row.labId, plan), label + "プランに変更しました。");
           }}
         >
           {busy === "plan" ? "変更中…" : "適用"}
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={busy !== null || !row.stripeSubscriptionId}
+          onClick={() => {
+            if (!window.confirm(row.labName + " の契約を解約し、期間終了時に未契約状態へ戻します。よろしいですか？")) return;
+            void run("cancel", () => adminCancelLabPlan(row.labId), "解約を予約しました。");
+          }}
+        >
+          {busy === "cancel" ? "解約中…" : "解約する"}
         </Button>
 
         <span aria-hidden className="hidden h-8 w-px bg-line sm:block" />

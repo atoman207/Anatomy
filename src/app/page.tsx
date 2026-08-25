@@ -4,11 +4,13 @@ import type { Metadata } from "next";
 import { getSessionContext } from "@/lib/auth/guards";
 import { FREE_PEER_REVIEW_CREDITS, PEER_REVIEW_CREDIT_PACKS } from "@/lib/peerReview/creditPacks";
 import { VoiceTranscribeChat } from "@/components/landing/VoiceTranscribeChat";
+import { SiteHeader } from "@/components/landing/SiteHeader";
+import { SiteFooter } from "@/components/landing/SiteFooter";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "研究データ管理 — 記録ウィザードから統計・AI査読まで",
+  title: "LABNOTE. — 記録ウィザードから統計・AI査読まで",
   description:
     "実験選択・試薬管理・テンプレート・音声入力・論文検索を一つの記録ウィザードにまとめ、PDFレポートまで自動作成。統計解析・AI査読・研究室管理も一つのプラットフォームで。",
 };
@@ -35,13 +37,10 @@ export const metadata: Metadata = {
  * 論文検索) that ends by generating and storing a PDF. The feature cards and
  * flow section below describe that wizard, not the old standalone pages.
  *
- * IMAGE PLACEHOLDERS: three spots below are intentionally left as
- * `<ImagePlaceholder>` boxes rather than photographs, each with a Japanese
- * caption explaining exactly what asset belongs there (a real product
- * screenshot or a generated sample, not more Japan scenery - the four
- * existing Unsplash photos already cover the "moodboard" role well and
- * should stay where they are). Replace each placeholder by swapping it for
- * an <Image> once the asset exists; see each caption for sizing/content.
+ * Product screenshots: features uses `/2-bg.png`, AI-figures uses `/bg3.png`,
+ * principles uses `/bg4.png`, dashboard uses `/bg5.png`, pricing uses
+ * `/bg6.png`, and the closing CTA uses `/bg7.png`. Mood photography
+ * (Unsplash) lives under `/landing/`.
  */
 
 /** Fed into the hero's voice-transcription demo below, verbatim. */
@@ -184,15 +183,15 @@ export default async function LandingPage() {
         <SiteHeader signedIn={signedIn} overHero />
 
         <div className="relative z-10 mx-auto flex w-full max-w-[1100px] flex-1 flex-col justify-center px-5 pb-16 pt-24 sm:px-8 sm:pb-20 sm:pt-28">
-          <p className="text-[13px] font-medium tracking-[0.18em] text-ink-2">
+          <p className="text-[14px] font-medium tracking-[0.18em] text-ink-2">
             研究室のための記録・解析プラットフォーム
           </p>
-          <h1 className="mt-4 max-w-[22ch] font-serif text-4xl font-semibold leading-tight text-ink sm:text-5xl">
+          <h1 className="mt-4 max-w-[16ch] font-serif text-7xl font-semibold leading-[1.05] text-ink sm:text-8xl">
             今日の実験を話すだけで、
             <br />
             投稿前の査読まで。
           </h1>
-          <p className="mt-6 max-w-[56ch] text-[15px] leading-relaxed text-ink-2 sm:text-base">
+          <p className="mt-6 max-w-[56ch] text-[16px] leading-relaxed text-ink-2 sm:text-lg">
             実験・試薬の選択から、音声入力によるノート作成、AI画像生成、類似論文の自動検索、統計解析、AI査読まで。
             研究室で散らばりがちな作業を一つの記録ウィザードにまとめ、完了と同時にPDFレポートとして保存します。
           </p>
@@ -210,9 +209,15 @@ export default async function LandingPage() {
             >
               できることを見る
             </Link>
+            <Link
+              href="/contact"
+              className="rounded-md border border-line bg-white/70 px-6 py-3 text-[15px] font-medium text-ink backdrop-blur-sm transition-colors hover:bg-white"
+            >
+              お問い合わせ
+            </Link>
           </div>
 
-          <p className="mt-5 text-[13px] text-ink-3">
+          <p className="mt-5 text-[14px] text-ink-3">
             AI査読は最初の{FREE_PEER_REVIEW_CREDITS}回まで無料。クレジットカードの登録は不要です。
           </p>
         </div>
@@ -220,7 +225,7 @@ export default async function LandingPage() {
 
       {/* About: what this service currently is, in plain terms - demoed the
           same way the app itself takes it in, through voice. */}
-      <section className="border-b border-line bg-surface-1">
+      <section id="about" className="scroll-mt-8 border-b border-line bg-surface-1">
         <div className="mx-auto w-full max-w-[1100px] px-5 py-16 sm:px-8">
           <p className="mx-auto max-w-[70ch] text-center text-[13px] font-medium tracking-[0.14em] text-accent">
             話すだけで、記録になる
@@ -234,23 +239,28 @@ export default async function LandingPage() {
         <div className="mx-auto w-full max-w-[1100px] px-5 py-20 sm:px-8">
           <header className="max-w-[60ch]">
             <h2 className="font-serif text-3xl font-semibold text-ink">できること</h2>
-            <p className="mt-3 text-[15px] leading-relaxed text-ink-2">
+            <p className="mt-3 text-[16px] leading-relaxed text-ink-2">
               ひとつの研究が、着想から投稿までに通る道筋にあわせて機能が並んでいます。
               どれも単体で使えますが、実験に紐づけると結果が一箇所に集まります。
             </p>
           </header>
 
-          <ImagePlaceholder
-            className="mt-10 aspect-[16/9]"
-            caption="記録ウィザード（/record）の実画面スクリーンショット。上部のステップバー（実験選択・試薬/Lot・テンプレート・実験ノート・論文検索）と、選択済みの実験・試薬・テンプレートを示すサマリーバーが写っているものが望ましい。実データではなくサンプルの実験名・試薬名を使うこと。"
-          />
+          <div className="relative mt-10 aspect-[16/9] w-full overflow-hidden rounded-lg">
+            <Image
+              src="/2-bg.png"
+              alt="記録ウィザードの画面イメージ"
+              fill
+              sizes="(max-width: 1100px) 100vw, 1100px"
+              className="object-cover object-center"
+            />
+          </div>
 
           <div className="mt-12 grid gap-x-10 gap-y-11 sm:grid-cols-2 lg:grid-cols-3">
             {FEATURES.map((f) => (
-              <article key={f.href} className="flex flex-col">
+              <article key={f.title} className="flex flex-col">
                 <p className="text-[12px] font-medium tracking-wider text-accent">{f.lead}</p>
                 <h3 className="mt-1.5 font-serif text-xl font-semibold text-ink">{f.title}</h3>
-                <p className="mt-2.5 flex-1 text-[14px] leading-relaxed text-ink-2">{f.body}</p>
+                <p className="mt-2.5 flex-1 text-[15px] leading-relaxed text-ink-2">{f.body}</p>
                 <Link
                   href={f.href}
                   className="mt-4 w-fit text-[13px] font-medium text-accent underline decoration-accent/30 underline-offset-4 hover:decoration-accent"
@@ -265,14 +275,14 @@ export default async function LandingPage() {
 
       {/* AI-generated figures, highlighted separately: the newest and most
           visually demonstrable feature, so it gets its own section with a
-          sample-image placeholder rather than one card among nine. */}
+          sample image rather than one card among nine. */}
       <section className="border-b border-line">
         <div className="mx-auto grid w-full max-w-[1100px] items-center gap-12 px-5 py-20 sm:px-8 lg:grid-cols-2">
           <div>
             <h2 className="font-serif text-3xl font-semibold text-ink">
               言葉から、論文用の模式図へ
             </h2>
-            <p className="mt-3 text-[15px] leading-relaxed text-ink-2">
+            <p className="mt-3 text-[16px] leading-relaxed text-ink-2">
               実験ノートの内容と指示（プロンプト）から、生化学・生物学分野の模式図をAIが生成します。
               BioRenderで作るような、細胞・分子経路・実験フローの図を、既存の記録を土台にその場で作成できます。
               画像はアップロードでも追加でき、生成した図は他のレポートでも再利用できます。
@@ -285,10 +295,15 @@ export default async function LandingPage() {
             </Link>
           </div>
 
-          <ImagePlaceholder
-            className="aspect-[4/3]"
-            caption="AIが生成したBioRender風の模式図の実例1〜2点（例: 細胞のシグナル伝達経路図、実験フローチャート、簡易な棒グラフ/概念図）。実際に /record のステップ4「グラフ・画像を挿入する」で生成した画像をそのまま使うのが最も説得力がある。"
-          />
+          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-lg">
+            <Image
+              src="/bg3.png"
+              alt="AIが生成したBioRender風の模式図の実例"
+              fill
+              sizes="(min-width: 1024px) 520px, 100vw"
+              className="object-cover object-center"
+            />
+          </div>
         </div>
       </section>
 
@@ -299,7 +314,7 @@ export default async function LandingPage() {
             <h2 className="font-serif text-3xl font-semibold text-ink">
               「あとから書き換えていない」と言えること
             </h2>
-            <p className="mt-3 text-[15px] leading-relaxed text-ink-2">
+            <p className="mt-3 text-[16px] leading-relaxed text-ink-2">
               研究記録に必要なのは、速さより、後から説明できることです。
               このアプリは、記録を消せない・書き換えられない仕組みをデータベース側に持たせています。
             </p>
@@ -308,7 +323,7 @@ export default async function LandingPage() {
               {PRINCIPLES.map((p) => (
                 <div key={p.title} className="py-5 first:pt-0 last:pb-0">
                   <dt className="text-[15px] font-medium text-ink">{p.title}</dt>
-                  <dd className="mt-1.5 text-[14px] leading-relaxed text-ink-2">{p.body}</dd>
+                  <dd className="mt-1.5 text-[15px] leading-relaxed text-ink-2">{p.body}</dd>
                 </div>
               ))}
             </dl>
@@ -316,8 +331,8 @@ export default async function LandingPage() {
 
           <div className="overflow-hidden rounded-lg border border-line">
             <Image
-              src="/landing/torii-kyoto.jpg"
-              alt="伏見稲荷大社の千本鳥居（京都市伏見区）"
+              src="/bg4.png"
+              alt="改ざんできない研究記録の仕組みを示す画面イメージ"
               width={1200}
               height={800}
               sizes="(min-width: 1024px) 520px, 100vw"
@@ -330,16 +345,21 @@ export default async function LandingPage() {
       {/* Dashboard, as the place everything lands */}
       <section className="border-b border-line">
         <div className="mx-auto grid w-full max-w-[1100px] items-center gap-12 px-5 py-20 sm:px-8 lg:grid-cols-2">
-          <ImagePlaceholder
-            className="aspect-[4/3]"
-            caption="ダッシュボード（/dashboard）画面のスクリーンショット。先頭の「今日のラボレポート」一覧と、その下の「すべてのラボレポート（実験ごと）」の折りたたみ表示が両方見えるものが望ましい。"
-          />
+          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-lg">
+            <Image
+              src="/bg5.png"
+              alt="ダッシュボード画面：今日のラボレポートと実験ごとの一覧"
+              fill
+              sizes="(min-width: 1024px) 520px, 100vw"
+              className="object-cover object-center"
+            />
+          </div>
 
           <div>
             <h2 className="font-serif text-3xl font-semibold text-ink">
               今日の記録が、いちばん上に来る
             </h2>
-            <p className="mt-3 text-[15px] leading-relaxed text-ink-2">
+            <p className="mt-3 text-[16px] leading-relaxed text-ink-2">
               記録ウィザードを完了すると、その日のうちはヘッダーの「今日の実験記録」ボタンからすぐ見返して修正できます。
               ダッシュボードを開けば、今日作成したラボレポートが常に先頭に並び、その下では過去の記録を実験ごとにまとめて
               確認できます。PDFはいつでも開いてダウンロードできます。
@@ -349,12 +369,12 @@ export default async function LandingPage() {
       </section>
 
       {/* Pricing */}
-      <section className="border-b border-line bg-surface-1">
+      <section id="pricing" className="scroll-mt-8 border-b border-line bg-surface-1">
         <div className="mx-auto grid w-full max-w-[1100px] items-center gap-12 px-5 py-20 sm:px-8 lg:grid-cols-2">
           <div className="order-2 overflow-hidden rounded-lg border border-line lg:order-1">
             <Image
-              src="/landing/sakura-kyoto.jpg"
-              alt="大沢池のほとりに咲く桜（京都市右京区）"
+              src="/bg6.png"
+              alt="無料で始められる機能とAI査読の料金プラン"
               width={1200}
               height={800}
               sizes="(min-width: 1024px) 520px, 100vw"
@@ -364,16 +384,18 @@ export default async function LandingPage() {
 
           <div className="order-1 lg:order-2">
             <h2 className="font-serif text-3xl font-semibold text-ink">まず無料で試せます</h2>
-            <p className="mt-3 text-[15px] leading-relaxed text-ink-2">
+            <p className="mt-3 text-[16px] leading-relaxed text-ink-2">
               記録ウィザード・データ整理・統計・論文検索は、アカウントを作ればそのまま使えます。
               AI査読だけは1回ごとの従量制で、最初の{FREE_PEER_REVIEW_CREDITS}回は無料です。
             </p>
 
-            <ul className="mt-8 flex flex-col gap-3 text-[14px] leading-relaxed text-ink-2">
+            <ul className="mt-8 flex flex-col gap-3 text-[15px] leading-relaxed text-ink-2">
               {[
                 `AI査読は最初の${FREE_PEER_REVIEW_CREDITS}回まで無料`,
-                ...PEER_REVIEW_CREDIT_PACKS.map(
-                  (p) => `以降は ${p.name} ¥${p.amountJpy.toLocaleString("ja-JP")} から。定額の縛りはありません`,
+                ...PEER_REVIEW_CREDIT_PACKS.map((p) =>
+                  p.billingInterval === "month"
+                    ? `${p.name} ¥${p.amountJpy.toLocaleString("ja-JP")} / 月`
+                    : `${p.name} ¥${p.amountJpy.toLocaleString("ja-JP")}`,
                 ),
               ].map((line) => (
                 <li key={line} className="flex gap-2.5">
@@ -393,134 +415,19 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* Closing call to action */}
-      <section className="relative isolate overflow-hidden">
+      {/* Closing visual */}
+      <section className="relative isolate min-h-[440px] overflow-hidden sm:min-h-[560px]">
         <Image
-          src="/landing/tokyo-night.jpg"
-          alt="夜の東京タワーと都心の街並み（東京都港区）"
+          src="/bg7.png"
+          alt=""
           fill
           sizes="100vw"
           className="-z-10 object-cover"
         />
-        <div aria-hidden className="absolute inset-0 -z-10 bg-black/70" />
-
-        <div className="mx-auto w-full max-w-[1100px] px-5 py-24 text-center sm:px-8">
-          <h2 className="font-serif text-3xl font-semibold text-white sm:text-4xl">
-            今日の実験から、記録を残しませんか
-          </h2>
-          <p className="mx-auto mt-4 max-w-[46ch] text-[15px] leading-relaxed text-white/85">
-            アカウント作成後すぐに使い始められます。個人用のワークスペースは自動で用意されます。
-          </p>
-          <Link
-            href={signedIn ? "/dashboard" : "/login"}
-            className="mt-9 inline-block rounded-md bg-accent px-8 py-3.5 text-[15px] font-medium text-accent-contrast transition-opacity hover:opacity-90"
-          >
-            {signedIn ? "ダッシュボードへ" : "無料で始める"}
-          </Link>
-        </div>
+        <div aria-hidden className="absolute inset-0 -z-10 bg-black/40" />
       </section>
 
       <SiteFooter />
     </div>
-  );
-}
-
-/**
- * A reserved slot for an asset that does not exist yet (a product
- * screenshot or a generated figure sample - see the callers for exactly
- * what belongs in each one). Rendered as a dashed placeholder, with the
- * Japanese caption visible on the page itself, so the gap is obvious to
- * anyone reviewing the live site and not only to a developer reading the
- * source. Swap for a real `<Image>` once the asset is captured.
- */
-function ImagePlaceholder({ caption, className }: { caption: string; className?: string }) {
-  return (
-    <div
-      className={`flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-line bg-surface-1 p-8 text-center ${className ?? ""}`}
-    >
-      <svg
-        aria-hidden
-        viewBox="0 0 24 24"
-        className="h-8 w-8 text-ink-3"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      >
-        <rect x="3" y="4" width="18" height="16" rx="2" />
-        <circle cx="8.5" cy="9.5" r="1.5" />
-        <path d="m21 15-5-5-9 9" />
-      </svg>
-      <p className="max-w-[46ch] text-[12.5px] leading-relaxed text-ink-3">画像未挿入 — {caption}</p>
-    </div>
-  );
-}
-
-function SiteHeader({ signedIn, overHero = false }: { signedIn: boolean; overHero?: boolean }) {
-  return (
-    <header
-      className={
-        overHero
-          ? "fixed inset-x-0 top-0 z-30 border-b border-line/40 bg-surface-1/80 backdrop-blur"
-          : "sticky top-0 z-30 border-b border-line bg-surface-1/90 backdrop-blur"
-      }
-    >
-      <div className="mx-auto flex w-full max-w-[1100px] items-center justify-between gap-4 px-5 py-3.5 sm:px-8">
-        <Link href="/" className="flex items-center gap-2.5">
-          <Image
-            src="/LOGO.png"
-            alt=""
-            width={39}
-            height={39}
-            className="h-[38.4px] w-[38.4px] rounded-md object-contain"
-          />
-          <span className="text-[15px] font-semibold text-ink">研究データ管理</span>
-        </Link>
-
-        <nav className="flex items-center gap-2 sm:gap-5">
-          <Link
-            href="#features"
-            className="hidden text-[14px] text-ink-2 transition-colors hover:text-ink sm:block"
-          >
-            できること
-          </Link>
-          {signedIn ? (
-            <Link
-              href="/dashboard"
-              className="rounded-md bg-accent px-4 py-2 text-[14px] font-medium text-accent-contrast transition-opacity hover:opacity-90"
-            >
-              ダッシュボード
-            </Link>
-          ) : (
-            <>
-              <Link
-                href="/login"
-                className="text-[14px] text-ink-2 transition-colors hover:text-ink"
-              >
-                ログイン
-              </Link>
-              <Link
-                href="/login"
-                className="rounded-md bg-accent px-4 py-2 text-[14px] font-medium text-accent-contrast transition-opacity hover:opacity-90"
-              >
-                無料で始める
-              </Link>
-            </>
-          )}
-        </nav>
-      </div>
-    </header>
-  );
-}
-
-function SiteFooter() {
-  return (
-    <footer className="mt-auto border-t border-line bg-surface-1">
-      <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-3 px-5 py-8 text-[12px] text-ink-3 sm:flex-row sm:items-center sm:justify-between sm:px-8">
-        <p>保存するまで、データは外部へ送信されません。</p>
-        <p>
-          写真: Unsplash（Marina Konno／Ryuta／Sarmat Batagov／T Y）
-        </p>
-      </div>
-    </footer>
   );
 }

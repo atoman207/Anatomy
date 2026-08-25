@@ -94,7 +94,7 @@ export default async function LabsPage() {
               <span key="n" className="font-medium text-ink">{v.name}</span>,
               <span key="o" className="font-mono text-ink-2">{v.ownerEmail}</span>,
               <span key="p" className="flex flex-wrap items-center gap-1.5">
-                <Badge tone={v.planName === "フリー" ? "neutral" : "accent"}>{v.planName}</Badge>
+                <Badge tone={v.planName === "個人研究者" ? "neutral" : "accent"}>{v.planName}</Badge>
                 {v.status && v.status !== "active" && (
                   <Badge tone={STATUS_LABELS[v.status].tone}>{STATUS_LABELS[v.status].ja}</Badge>
                 )}

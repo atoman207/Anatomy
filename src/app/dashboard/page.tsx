@@ -95,7 +95,7 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
     listMyNotebookEntriesGrouped().then((r) => r.data ?? []),
   ]);
 
-  const planName = entitlement?.plan.name ?? "フリー";
+  const planName = entitlement?.plan.name ?? "個人研究者";
   const planStatus = entitlement?.status
     ? STATUS_LABELS[entitlement.status]
     : { ja: "未契約", tone: "neutral" as const };

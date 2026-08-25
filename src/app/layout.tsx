@@ -44,7 +44,7 @@ const roboto = Roboto({
 });
 
 export const metadata: Metadata = {
-  title: "研究データ管理",
+  title: "LABNOTE.",
   description: "研究データの整理、解析、実験ノート。",
   icons: {
     icon: "/LOGO.png",

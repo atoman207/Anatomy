@@ -115,7 +115,11 @@ export async function listReportFiles(
           .createSignedUrl(r.storage_path, SIGNED_URL_TTL_SECONDS);
         signedUrl = signed?.signedUrl ?? null;
       }
-      return { id: r.id, name: r.name, kind: r.kind, created_at: r.created_at, signedUrl };
+      // The query above already restricts kind to these two values.
+      return {
+        id: r.id, name: r.name, kind: r.kind as "report_preview" | "report_final",
+        created_at: r.created_at, signedUrl,
+      };
     }),
   );
 

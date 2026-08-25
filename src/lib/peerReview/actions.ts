@@ -4,6 +4,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { getSessionContext, logAudit } from "@/lib/auth/guards";
 import type { Json, PeerReviewRow } from "@/lib/supabase/types";
 import type { PeerReviewReport } from "@/lib/ai/peerReview";
+import type { CategoryScores } from "@/lib/ai/peerReviewReport";
 
 export interface ActionResult<T = undefined> {
   ok: boolean;
@@ -169,4 +170,72 @@ export async function getPeerReview(id: string): Promise<ActionResult<PeerReview
   if (error) return { ok: false, error: error.message };
   if (!data) return { ok: false, error: "レビューが見つかりません。" };
   return { ok: true, data };
+}
+
+export interface ReviewChainEntry {
+  id: string;
+  title: string;
+  overall_score: number;
+  category_scores: CategoryScores;
+  created_at: string;
+}
+
+/**
+ * Walks `previous_review_id` back from one review to its full revision
+ * history, oldest first - "how did the score change between drafts" only
+ * has an answer once every earlier version in the chain is known, not just
+ * the immediately preceding one.
+ *
+ * Capped at 20 hops: a chain that long is already far past what the score-
+ * trend chart needs to be useful, and the cap keeps a corrupted or
+ * self-referential `previous_review_id` from looping forever.
+ */
+interface ReviewChainRow {
+  id: string;
+  title: string;
+  overall_score: number;
+  category_scores: Json;
+  previous_review_id: string | null;
+  created_at: string;
+}
+
+/** Isolated so the loop below never has to infer Supabase's own query-builder type itself. */
+async function fetchOneChainRow(
+  supabase: Awaited<ReturnType<typeof createServerSupabase>>,
+  id: string,
+): Promise<ReviewChainRow | null> {
+  const { data, error } = await supabase
+    .from("peer_reviews")
+    .select("id, title, overall_score, category_scores, previous_review_id, created_at")
+    .eq("id", id)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data as unknown as ReviewChainRow;
+}
+
+export async function getReviewChain(id: string): Promise<ActionResult<ReviewChainEntry[]>> {
+  const ctx = await getSessionContext();
+  if (!ctx) return { ok: false, error: "ログインしていません。" };
+
+  const supabase = await createServerSupabase();
+  const chain: ReviewChainEntry[] = [];
+  const seen = new Set<string>();
+  let currentId: string | null = id;
+
+  while (currentId && !seen.has(currentId) && chain.length < 20) {
+    seen.add(currentId);
+    const row = await fetchOneChainRow(supabase, currentId);
+    if (!row) break;
+    chain.push({
+      id: row.id,
+      title: row.title,
+      overall_score: Number(row.overall_score),
+      category_scores: row.category_scores as unknown as CategoryScores,
+      created_at: row.created_at,
+    });
+    currentId = row.previous_review_id;
+  }
+
+  chain.reverse();
+  return { ok: true, data: chain };
 }

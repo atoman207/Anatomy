@@ -178,14 +178,14 @@ export function BillingDashboard({ initial }: { initial: BillingDashboardData })
           />
           <StatTile label="解約済み" value={subscriptions.canceled} />
           <StatTile label="研究室" value={plans.labs} hint={plans.members + " メンバー"} />
-          <StatTile label="プロ" value={plans.pro} />
-          <StatTile label="チーム" value={plans.team} />
           <StatTile
-            label="フリー"
+            label="個人研究者"
             value={plans.free}
             hint={plans.mock > 0 ? "うち手動付与 " + plans.mock : undefined}
             tone={plans.mock > 0 ? "warn" : undefined}
           />
+          <StatTile label="研究室プラン" value={plans.pro} />
+          <StatTile label="大学・研究機関" value={plans.team} />
         </div>
       </div>
 

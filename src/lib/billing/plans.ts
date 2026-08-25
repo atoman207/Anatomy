@@ -13,10 +13,6 @@
  * from Stripe. Editing one changes neither an existing subscriber's bill nor
  * a configured plan's price - see `planOffers` for which number is shown.
  *
- * They started as beta prices - deliberately under ¥100 so the subscribe →
- * renew → cancel path could be exercised against real cards for almost
- * nothing - and they are still ¥50 and ¥90.
- *
  * The limits below mirror `plan_limits` in supabase/migrations/all.sql.
  * The database is the authority - it is what the quota triggers consult - and
  * these copies exist so the UI can show "3 / 20" without a round trip.
@@ -25,10 +21,13 @@
 
 export type PlanId = "free" | "pro" | "team";
 
+export type BillingInterval = "month" | "year";
+
 export const PLAN_IDS: PlanId[] = ["free", "pro", "team"];
 
 /** `null` means unlimited. */
 export interface PlanLimits {
+  maxLabs: number | null;
   maxMembers: number | null;
   maxExperiments: number | null;
   maxDatasets: number | null;
@@ -40,12 +39,25 @@ export interface Plan {
   name: string;
   tagline: string;
   /**
-   * Monthly price in yen.
+   * Price in yen for one billing period (month or year).
    *
    * JPY is one of Stripe's zero-decimal currencies, so this number is passed
-   * to Stripe as `unit_amount` unchanged - 50 means ¥50, not 50 sen.
+   * to Stripe as `unit_amount` unchanged - 3000 means ¥3,000, not 30 sen.
    */
   amountJpy: number;
+  billingInterval: BillingInterval;
+  /**
+   * Second price shown on the card (e.g. monthly alongside yearly).
+   * When `alternateSelectable` is true, the customer can check out at either.
+   */
+  alternateAmountJpy?: number;
+  alternateBillingInterval?: BillingInterval;
+  /** When true, the alternate cadence is a real checkout choice, not just a label. */
+  alternateSelectable?: boolean;
+  /** Highlighted as the recommended / most-chosen tier. */
+  popular?: boolean;
+  /** Short reason shown under the popular badge. */
+  popularReason?: string;
   limits: PlanLimits;
   /** Shown as the bullet list on the pricing card. */
   features: string[];
@@ -57,54 +69,82 @@ export interface Plan {
  */
 export const STRIPE_MIN_JPY = 50;
 
-/**
- * A sanity ceiling, not a product decision.
- *
- * The beta deliberately priced under ¥100; live billing has no such limit, so
- * this only exists to catch a typo that would charge a customer a hundred
- * times the intended amount (¥5000 where ¥50 was meant). Raise it when the
- * real prices are set.
- */
-export const MAX_REASONABLE_JPY = 100_000;
+/** Sanity ceiling for admin price edits and setup scripts. */
+export const MAX_REASONABLE_JPY = 1_000_000;
 
 export const PLANS: Record<PlanId, Plan> = {
   free: {
     id: "free",
-    name: "フリー",
-    tagline: "個人・小規模での試用に。",
-    amountJpy: 0,
-    limits: { maxMembers: 3, maxExperiments: 20, maxDatasets: 20, aiEnabled: false },
+    name: "個人研究者",
+    tagline: "1研究室・メンバー5名・実験10件まで。",
+    amountJpy: 30_000,
+    billingInterval: "year",
+    alternateAmountJpy: 3_000,
+    alternateBillingInterval: "month",
+    alternateSelectable: true,
+    limits: {
+      maxLabs: 1,
+      maxMembers: 5,
+      maxExperiments: 10,
+      maxDatasets: null,
+      aiEnabled: true,
+    },
     features: [
-      "メンバー 3 名まで",
-      "実験 20 件・データセット 20 件まで",
+      "研究室 1 つまで",
+      "メンバー 5 名まで",
+      "実験 10 件まで",
+      "AI機能（音声文字起こし・構造化・論文要約）",
       "統計解析・作図・実験ノートはすべて利用可能",
-      "AI機能（音声文字起こし・論文要約）は利用できません",
     ],
   },
   pro: {
     id: "pro",
-    name: "プロ",
-    tagline: "AI機能を使う研究室に。",
-    amountJpy: 50,
-    limits: { maxMembers: 10, maxExperiments: 200, maxDatasets: 200, aiEnabled: true },
+    name: "研究室",
+    tagline: "10研究室・メンバー100名・実験200件まで。",
+    amountJpy: 50_000,
+    billingInterval: "year",
+    alternateAmountJpy: 5_000,
+    alternateBillingInterval: "month",
+    alternateSelectable: true,
+    popular: true,
+    popularReason:
+      "研究室規模にちょうどよく、個人プランより枠が大きく増える一方、機関プランより手頃なため、最も選ばれています。年額なら月額換算よりお得です。",
+    limits: {
+      maxLabs: 10,
+      maxMembers: 100,
+      maxExperiments: 200,
+      maxDatasets: null,
+      aiEnabled: true,
+    },
     features: [
-      "メンバー 10 名まで",
-      "実験 200 件・データセット 200 件まで",
+      "研究室 10 まで",
+      "メンバー 100 名まで（全体）",
+      "実験 200 件まで（全体）",
       "AI機能（音声文字起こし・構造化・論文要約）",
-      "フリープランの全機能",
+      "個人研究者プランの全機能",
     ],
   },
   team: {
     id: "team",
-    name: "チーム",
-    tagline: "人数・件数の上限なし。",
-    amountJpy: 90,
-    limits: { maxMembers: null, maxExperiments: null, maxDatasets: null, aiEnabled: true },
+    name: "大学・研究機関",
+    tagline: "研究室・メンバー・実験数に上限なし。",
+    amountJpy: 50_000,
+    billingInterval: "month",
+    alternateAmountJpy: 400_000,
+    alternateBillingInterval: "year",
+    alternateSelectable: true,
+    limits: {
+      maxLabs: null,
+      maxMembers: null,
+      maxExperiments: null,
+      maxDatasets: null,
+      aiEnabled: true,
+    },
     features: [
-      "メンバー数 無制限",
-      "実験・データセット 無制限",
+      "研究室・メンバー・実験数 無制限",
       "AI機能（音声文字起こし・構造化・論文要約）",
-      "プロプランの全機能",
+      "研究室プランの全機能",
+      "機関向けサポート",
     ],
   },
 };
@@ -178,9 +218,14 @@ export const STATUS_LABELS: Record<SubscriptionStatus, { ja: string; tone: "good
   paused: { ja: "一時停止", tone: "neutral" },
 };
 
-/** `¥50 / 月`. Zero-decimal, so no fractional part is ever shown. */
+/** `¥3,000`. Zero-decimal, so no fractional part is ever shown. */
 export function formatJpy(amount: number): string {
   return `¥${amount.toLocaleString("ja-JP")}`;
+}
+
+/** Human label for the billing cadence shown on pricing cards. */
+export function formatBillingPeriod(interval: BillingInterval): string {
+  return interval === "year" ? "年" : "月";
 }
 
 /**
@@ -199,10 +244,25 @@ export function formatUsage(used: number, limit: number | null): string {
   return `${used} / ${limit === null ? "無制限" : limit}`;
 }
 
+/** Amount charged for a plan at a given cadence (primary or alternate). */
+export function planAmountFor(
+  plan: Plan,
+  interval: BillingInterval,
+): number {
+  if (interval === plan.billingInterval) return plan.amountJpy;
+  if (
+    plan.alternateBillingInterval === interval
+    && plan.alternateAmountJpy != null
+  ) {
+    return plan.alternateAmountJpy;
+  }
+  return plan.amountJpy;
+}
+
 /** The cheapest plan that would admit `used` rows of this kind. */
 export function smallestPlanFor(
   used: number,
-  key: "maxMembers" | "maxExperiments" | "maxDatasets",
+  key: "maxMembers" | "maxExperiments" | "maxDatasets" | "maxLabs",
 ): Plan | null {
   for (const plan of PLAN_LIST) {
     if (withinLimit(used, plan.limits[key])) return plan;

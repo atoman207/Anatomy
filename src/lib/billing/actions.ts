@@ -19,11 +19,11 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { assertIsLabOwner, getSessionContext, logAudit } from "@/lib/auth/guards";
-import { isPlanId, PLANS, type PlanId } from "./plans";
+import { isPlanId, PLANS, planAmountFor, type BillingInterval, type PlanId } from "./plans";
 import {
   getStripe, isMockCheckoutAllowed, isStripeConfigured, siteOrigin,
 } from "./stripe";
-import { resolvePriceId } from "./priceStore";
+import { resolvePriceId, savePlanPrice } from "./priceStore";
 import { describeStripeError } from "./stripeAdmin";
 import { ensureCustomer, isMockId, MOCK_ID_PREFIX, persistSubscription } from "./store";
 
@@ -77,19 +77,20 @@ function message(e: unknown, fallback: string): string {
 export async function startCheckout(
   labId: string,
   plan: string,
+  interval?: BillingInterval,
 ): Promise<ActionResult<CheckoutOutcome>> {
   try {
     const ctx = await ownerContext(labId);
 
-    if (!isPlanId(plan) || plan === "free") {
-      return { ok: false, error: "有料プランを選択してください。" };
+    if (!isPlanId(plan)) {
+      return { ok: false, error: "プランを選択してください。" };
     }
 
+    const catalogue = PLANS[plan];
+    const billingInterval = interval ?? catalogue.billingInterval;
+    const amountJpy = planAmountFor(catalogue, billingInterval);
+
     if (!isStripeConfigured()) {
-      // Development without keys falls back to the mock checkout. A deployed
-      // build never does - see `isMockCheckoutAllowed` - because granting a
-      // paid plan with no payment behind it would be indistinguishable from
-      // working correctly until the invoices failed to arrive.
       if (!isMockCheckoutAllowed()) {
         return {
           ok: false,
@@ -98,21 +99,25 @@ export async function startCheckout(
       }
       await logAudit({
         labId, userId: ctx.user.id, action: "billing.mock_checkout_started",
-        entity: "lab_subscription", entityId: labId, detail: { plan },
+        entity: "lab_subscription", entityId: labId,
+        detail: { plan, interval: billingInterval, amount_jpy: amountJpy },
       });
       return {
         ok: true,
-        data: { kind: "redirect", url: `/billing/checkout?lab=${labId}&plan=${plan}` },
+        data: {
+          kind: "redirect",
+          url: `/billing/checkout?lab=${labId}&plan=${plan}&interval=${billingInterval}`,
+        },
       };
     }
 
-    const price = await resolvePriceId(plan);
+    const price = await resolveCheckoutPriceId(plan, billingInterval, amountJpy);
     if (!price) {
       return {
         ok: false,
         error:
-          `${PLANS[plan].name}プランの価格がまだ作成されていません。` +
-          "システム管理者が「管理 → 料金設定」で価格を作成してください。",
+          `${catalogue.name}プランの価格がまだ作成されていません。` +
+          "システム管理者が「管理 → 料金設定」で価格を作成するか、npm run stripe:setup を実行してください。",
       };
     }
 
@@ -142,13 +147,14 @@ export async function startCheckout(
           items: [{ id: item.id, price }],
           proration_behavior: "create_prorations",
           cancel_at_period_end: false,
-          metadata: { lab_id: labId, plan },
+          metadata: { lab_id: labId, plan, interval: billingInterval },
         });
         await persistSubscription(labId, updated);
 
         await logAudit({
           labId, userId: ctx.user.id, action: "billing.plan_changed",
-          entity: "lab_subscription", entityId: labId, detail: { plan },
+          entity: "lab_subscription", entityId: labId,
+          detail: { plan, interval: billingInterval },
         });
         revalidatePath("/billing");
         return { ok: true, data: { kind: "updated", plan } };
@@ -161,8 +167,10 @@ export async function startCheckout(
       customer,
       line_items: [{ price, quantity: 1 }],
       client_reference_id: labId,
-      metadata: { lab_id: labId, plan },
-      subscription_data: { metadata: { lab_id: labId, plan } },
+      metadata: { lab_id: labId, plan, interval: billingInterval },
+      subscription_data: {
+        metadata: { lab_id: labId, plan, interval: billingInterval },
+      },
       success_url: `${origin}/billing?checkout=success&lab=${labId}`,
       cancel_url: `${origin}/billing?checkout=cancel&lab=${labId}`,
       allow_promotion_codes: true,
@@ -175,12 +183,85 @@ export async function startCheckout(
 
     await logAudit({
       labId, userId: ctx.user.id, action: "billing.checkout_started",
-      entity: "lab_subscription", entityId: labId, detail: { plan },
+      entity: "lab_subscription", entityId: labId,
+      detail: { plan, interval: billingInterval },
     });
 
     return { ok: true, data: { kind: "redirect", url: session.url } };
   } catch (e) {
     return { ok: false, error: message(e, "決済を開始できませんでした。") };
+  }
+}
+
+/**
+ * Prefer a Stripe price that matches the catalogue amount and interval, so a
+ * stale plan_prices row left over from an older catalogue cannot under/over
+ * charge. Falls back to the stored primary id when the product lookup fails.
+ */
+async function resolveCheckoutPriceId(
+  plan: PlanId,
+  interval: BillingInterval,
+  amountJpy: number,
+): Promise<string | null> {
+  if (plan === "pro" && interval === "month") {
+    const fromEnv = process.env.STRIPE_PRICE_PRO_MONTHLY;
+    if (fromEnv) return fromEnv;
+  }
+  if (plan === "free" && interval === "month") {
+    const fromEnv = process.env.STRIPE_PRICE_FREE_MONTHLY;
+    if (fromEnv) return fromEnv;
+  }
+  if (plan === "team" && interval === "year") {
+    const fromEnv = process.env.STRIPE_PRICE_TEAM_YEARLY;
+    if (fromEnv) return fromEnv;
+  }
+
+  const stripe = getStripe();
+  const productId = `chondro_${plan}`;
+  try {
+    const listed = await stripe.prices.list({ product: productId, active: true, limit: 100 });
+    const match = listed.data.find(
+      (p) =>
+        p.currency === "jpy"
+        && p.unit_amount === amountJpy
+        && p.recurring?.interval === interval,
+    );
+    if (match) return match.id;
+
+    // Ensure the product exists, then create the matching price.
+    try {
+      await stripe.products.retrieve(productId);
+    } catch {
+      await stripe.products.create({
+        id: productId,
+        name: `LABNOTE ${PLANS[plan].name}`,
+        metadata: { chondro_plan: plan },
+      });
+    }
+
+    const created = await stripe.prices.create({
+      product: productId,
+      currency: "jpy",
+      unit_amount: amountJpy,
+      recurring: { interval },
+      metadata: { chondro_plan: plan, chondro_interval: interval },
+    });
+
+    // Keep plan_prices in step for the primary cadence.
+    if (interval === PLANS[plan].billingInterval) {
+      try {
+        await savePlanPrice(plan, created.id, amountJpy, null);
+      } catch {
+        // Display still works from catalogue; charging already uses created.id.
+      }
+    }
+
+    return created.id;
+  } catch {
+    if (interval === PLANS[plan].billingInterval) {
+      return resolvePriceId(plan);
+    }
+    return null;
   }
 }
 
@@ -317,8 +398,8 @@ export async function completeMockCheckout(
   try {
     const ctx = await ownerContext(labId);
 
-    if (!isPlanId(plan) || plan === "free") {
-      return { ok: false, error: "有料プランを選択してください。" };
+    if (!isPlanId(plan)) {
+      return { ok: false, error: "プランを選択してください。" };
     }
     if (isStripeConfigured()) {
       return { ok: false, error: "Stripe が接続されています。決済ページからお手続きください。" };

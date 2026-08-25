@@ -5,6 +5,8 @@ import { createAdminSupabase } from "@/lib/supabase/server";
 import {
   assertCanManageLab, assertIsLabOwner, getSessionContext, logAudit,
 } from "@/lib/auth/guards";
+import { getOwnerMaxLabs } from "@/lib/billing/subscription";
+import { formatUsage } from "@/lib/billing/plans";
 import { LAB_ROLES, LAB_ROLE_LABELS } from "@/lib/auth/roles";
 import type { LabRole } from "@/lib/supabase/types";
 
@@ -84,6 +86,20 @@ export async function createLabAction(
     if (name.length > 120) return fail("名称が長すぎます（最大120文字）。");
 
     const admin = createAdminSupabase();
+    const { count: ownedCount } = await admin
+      .from("lab_members")
+      .select("lab_id", { count: "exact", head: true })
+      .eq("user_id", ctx.user.id)
+      .eq("role", "owner");
+    const maxLabs = await getOwnerMaxLabs(ctx.user.id);
+    const owned = ownedCount ?? 0;
+    if (maxLabs !== null && owned >= maxLabs) {
+      return fail(
+        `オーナーとして作成できる研究室は ${formatUsage(owned, maxLabs)} までです。` +
+          "プランをアップグレードするか、不要な研究室を整理してください。",
+      );
+    }
+
     const { data: lab, error } = await admin
       .from("laboratories")
       .insert({ name, description, owner_id: ctx.user.id })

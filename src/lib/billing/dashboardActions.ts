@@ -69,21 +69,19 @@ async function planDistribution(): Promise<PlanDistribution> {
     for (const row of subs.data ?? []) {
       const entitled =
         row.status === "active" || row.status === "trialing" || row.status === "past_due";
-      if (entitled && row.plan === "pro") out.pro += 1;
+      if (entitled && row.plan === "free" && row.stripe_subscription_id) out.free += 1;
+      else if (entitled && row.plan === "pro") out.pro += 1;
       else if (entitled && row.plan === "team") out.team += 1;
 
       if (row.status === "past_due" || row.status === "unpaid") out.atRisk += 1;
       // A paid plan with no real Stripe object behind it: granted by the
       // in-app mock checkout, or comped by an administrator. Worth counting
       // separately, because it is entitlement the revenue chart never shows.
-      if (entitled && row.plan !== "free" && isMockId(row.stripe_subscription_id)) {
+      if (entitled && isMockId(row.stripe_subscription_id)) {
         out.mock += 1;
       }
     }
 
-    // Every laboratory without an entitled paid row is on free, including the
-    // ones with no subscription row at all.
-    out.free = Math.max(out.labs - out.pro - out.team, 0);
     return out;
   } catch {
     return empty;

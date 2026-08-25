@@ -52,9 +52,9 @@ if (liveMode) {
  * that module is TypeScript; tests/peerReview.test.ts asserts the two agree.
  */
 const CREDIT_PACKS = [
-  { id: "single", name: "1件", credits: 1, amountJpy: 50 },
-  { id: "ten", name: "10件セット", credits: 10, amountJpy: 100 },
-  { id: "hundred", name: "100件セット", credits: 100, amountJpy: 150 },
+  { id: "single", name: "1件", credits: 1, amountJpy: 100 },
+  { id: "thirty", name: "30件セット", credits: 30, amountJpy: 2000 },
+  { id: "monthly", name: "無制限（月額）", credits: 10000, amountJpy: 5000 },
 ];
 
 const STRIPE_MIN_JPY = 50;

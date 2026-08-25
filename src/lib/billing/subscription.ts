@@ -1,10 +1,10 @@
 import "server-only";
 
-import { createServerSupabase } from "@/lib/supabase/server";
+import { createAdminSupabase, createServerSupabase } from "@/lib/supabase/server";
 import { getSessionContext } from "@/lib/auth/guards";
 import {
-  effectivePlan, isPlanId, isSubscriptionStatus,
-  type Plan, type PlanId, type SubscriptionStatus,
+  effectivePlan, isPlanId, isSubscriptionStatus, statusGrantsAccess,
+  PLANS, type Plan, type PlanId, type SubscriptionStatus,
 } from "./plans";
 import type { LabSubscription } from "@/lib/supabase/types";
 
@@ -40,7 +40,7 @@ const FREE: Omit<LabEntitlement, "labId"> = {
   currentPeriodEnd: null,
   cancelAtPeriodEnd: false,
   hasStripeSubscription: false,
-  aiEnabled: effectivePlan(null, null).limits.aiEnabled,
+  aiEnabled: false,
 };
 
 /** The raw row, or null when the caller may not read it or none exists. */
@@ -81,8 +81,35 @@ export async function getLabEntitlement(labId: string): Promise<LabEntitlement> 
     currentPeriodEnd: row.current_period_end,
     cancelAtPeriodEnd: row.cancel_at_period_end,
     hasStripeSubscription: Boolean(row.stripe_subscription_id),
-    aiEnabled: plan.limits.aiEnabled,
+    aiEnabled:
+      plan.limits.aiEnabled
+      && statusGrantsAccess(status ?? "canceled")
+      && (plan.id !== "free" || Boolean(row.stripe_subscription_id)),
   };
+}
+
+/** Tier order for picking the best subscription among owned labs. */
+const PLAN_TIER: Record<PlanId, number> = { free: 0, pro: 1, team: 2 };
+
+/**
+ * The max labs an owner may create, from the highest-tier active subscription
+ * among labs they own. Without any subscription, individual-researcher limits apply.
+ */
+export async function getOwnerMaxLabs(userId: string): Promise<number | null> {
+  const admin = createAdminSupabase();
+  const { data: memberships } = await admin
+    .from("lab_members")
+    .select("lab_id")
+    .eq("user_id", userId)
+    .eq("role", "owner");
+  if (!memberships?.length) return PLANS.free.limits.maxLabs;
+
+  let best: PlanId = "free";
+  for (const m of memberships) {
+    const ent = await getLabEntitlement(m.lab_id);
+    if (PLAN_TIER[ent.planId] > PLAN_TIER[best]) best = ent.planId;
+  }
+  return PLANS[best].limits.maxLabs;
 }
 
 export interface LabUsage {
@@ -169,8 +196,8 @@ export async function requireAiAccess(labId: string | null | undefined): Promise
       ok: false,
       status: 402,
       error:
-        `AI機能は${entitlement.plan.name}プランではご利用いただけません。` +
-        "「料金・支払い」からプロプラン以上にアップグレードしてください。",
+        `AI機能は有料プランのご契約が必要です（${entitlement.plan.name}）。` +
+        "「料金・支払い」からプランをお選びください。",
     };
   }
 

@@ -5,12 +5,28 @@ import { useCallback, useEffect, useRef, useState } from "react";
 type Phase = "idle" | "listening" | "typing" | "done";
 
 const LISTEN_MS = 950;
-/** Half the original 13ms/char pace, per request. */
-const MS_PER_CHAR = 26;
+/** Half of the previous 26ms/char pace. */
+const MS_PER_CHAR = 52;
 const RESTART_DELAY_MS = 3000;
-const WAVE_HEIGHTS = [35, 70, 100, 55, 85, 40, 65, 90, 50, 30];
-/** One marquee lap of small mic glyphs; rendered twice back-to-back for a seamless loop. */
-const MARQUEE_GLYPHS = Array.from({ length: 10 }, (_, i) => i);
+/** How long the strip takes to fill its width before scrolling. */
+const WAVE_FILL_MS = 900;
+/** Classic equalizer bar geometry (rounded stems, readable gaps). */
+const BAR_PX = 3;
+const BAR_GAP_PX = 2.5;
+const BAR_RX = 1.5;
+/**
+ * Enough samples for one full-width lap (~640px). Duplicated in the DOM
+ * for a seamless left→right scroll after the strip has filled.
+ */
+const FREQ_BARS = Array.from({ length: 110 }, (_, i) => {
+  const t = i / 110;
+  const a = 42 + 28 * Math.sin(t * Math.PI * 5.5);
+  const b = 16 * Math.sin(t * Math.PI * 13 + 0.8);
+  const c = 8 * Math.sin(t * Math.PI * 29 + 1.4);
+  return Math.max(12, Math.min(100, a + b + c));
+});
+/** Brand blue stops live on the SVG gradient below. */
+const WAVE_TRACK_WIDTH_PX = FREQ_BARS.length * (BAR_PX + BAR_GAP_PX);
 
 /**
  * A decorative, self-playing demo of the app's own voice-input feature (see
@@ -33,17 +49,23 @@ const MARQUEE_GLYPHS = Array.from({ length: 10 }, (_, i) => i);
 export function VoiceTranscribeChat({ text }: { text: string }) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [shownLength, setShownLength] = useState(0);
+  /** 0 = hidden, 1 = strip filled across its width (then scroll kicks in). */
+  const [waveFill, setWaveFill] = useState(0);
+  const [waveScrolling, setWaveScrolling] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
+  const waveRafRef = useRef<number | null>(null);
   const listenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const restartTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoplayedRef = useRef(false);
 
   const clearTimers = useCallback(() => {
     if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    if (waveRafRef.current !== null) cancelAnimationFrame(waveRafRef.current);
     if (listenTimeoutRef.current !== null) clearTimeout(listenTimeoutRef.current);
     if (restartTimeoutRef.current !== null) clearTimeout(restartTimeoutRef.current);
     rafRef.current = null;
+    waveRafRef.current = null;
     listenTimeoutRef.current = null;
     restartTimeoutRef.current = null;
   }, []);
@@ -60,6 +82,34 @@ export function VoiceTranscribeChat({ text }: { text: string }) {
     [clearTimers],
   );
 
+  const stop = useCallback(() => {
+    clearTimers();
+    try {
+      window.speechSynthesis?.cancel();
+    } catch {
+      /* noop */
+    }
+    setWaveScrolling(false);
+    setPhase("done");
+  }, [clearTimers]);
+
+  const startWave = useCallback(() => {
+    setWaveFill(0);
+    setWaveScrolling(false);
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / WAVE_FILL_MS);
+      setWaveFill(t);
+      if (t >= 1) {
+        setWaveScrolling(true);
+        waveRafRef.current = null;
+        return;
+      }
+      waveRafRef.current = requestAnimationFrame(tick);
+    };
+    waveRafRef.current = requestAnimationFrame(tick);
+  }, []);
+
   const play = useCallback(() => {
     clearTimers();
     try {
@@ -69,6 +119,8 @@ export function VoiceTranscribeChat({ text }: { text: string }) {
     }
     setShownLength(0);
     setPhase("listening");
+    // Waveform appears the moment sound / listening starts.
+    startWave();
 
     try {
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
@@ -90,6 +142,7 @@ export function VoiceTranscribeChat({ text }: { text: string }) {
         setShownLength(next);
         if (next >= text.length) {
           setPhase("done");
+          setWaveScrolling(false);
           rafRef.current = null;
           // Loop on its own - a visitor should not have to touch anything
           // to see the whole cycle more than once.
@@ -100,7 +153,7 @@ export function VoiceTranscribeChat({ text }: { text: string }) {
       };
       rafRef.current = requestAnimationFrame(tick);
     }, LISTEN_MS);
-  }, [clearTimers, text]);
+  }, [clearTimers, startWave, text]);
 
   // Starts on its own the first time this section is scrolled into view -
   // the whole point is that nobody has to click a mic button to see it.
@@ -123,129 +176,124 @@ export function VoiceTranscribeChat({ text }: { text: string }) {
   }, []);
 
   const shown = text.slice(0, shownLength);
-  const progressPct = phase === "done" ? 100 : Math.round((shownLength / text.length) * 100);
-  const busy = phase === "listening" || phase === "typing";
+  const recording = phase === "listening" || phase === "typing";
+  const waveVisible = phase !== "idle";
 
   return (
     <div ref={containerRef} className="mx-auto mt-10 max-w-[640px]">
       <style>{`
-        @keyframes chondroMicMarquee {
-          from { transform: translateX(0); }
-          to { transform: translateX(-50%); }
+        @keyframes chondroWaveScroll {
+          from { transform: translateX(-50%); }
+          to { transform: translateX(0); }
         }
       `}</style>
 
       <p className="sr-only">{text}</p>
 
-      {/* No outer frame border - only the inner message bubble reads as a
-          bordered "window", per request. */}
-      <div aria-hidden className="overflow-hidden rounded-2xl bg-surface-1 shadow-[0_8px_30px_rgba(0,0,0,0.08)]">
-        <div className="flex items-center gap-1.5 px-4 py-2.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
-          <span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
-          <span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
-          <span className="ml-3 text-[12px] text-ink-3">音声入力 — 実験ノートの文字起こし</span>
-        </div>
-
-        {/* A continuous strip of mic glyphs scrolling across the panel -
-            duplicated once so the loop point is invisible. */}
-        <div className="relative overflow-hidden bg-surface-2/60 py-2">
-          <div
-            className="flex w-max items-center gap-8 px-4"
-            style={{ animation: "chondroMicMarquee 16s linear infinite" }}
-          >
-            {[0, 1].map((dup) =>
-              MARQUEE_GLYPHS.map((i) => (
-                <svg
-                  key={`${dup}-${i}`}
-                  viewBox="0 0 24 24"
-                  className="h-4 w-4 shrink-0 text-accent/40"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                >
-                  <rect x="9" y="3" width="6" height="10" rx="3" />
-                  <path d="M6 10.5a6 6 0 0 0 12 0" strokeLinecap="round" />
-                  <path d="M12 16.5V20" strokeLinecap="round" />
-                </svg>
-              )),
-            )}
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-5 p-6 sm:p-8">
-          <div className="min-h-[9.5rem] rounded-xl border border-line bg-surface-0 p-4 sm:p-5">
-            {phase === "idle" ? (
-              <p className="text-[14px] leading-relaxed text-ink-3">
-                マイクをタップすると、話した内容がここに文字として現れます。
-              </p>
-            ) : (
-              <p className="whitespace-pre-wrap text-[14.5px] leading-relaxed text-ink">
-                {shown}
-                {phase === "typing" && (
-                  <span className="ml-0.5 inline-block h-[1em] w-[2px] translate-y-[3px] animate-pulse bg-accent" />
-                )}
-              </p>
-            )}
-          </div>
-
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={play}
-              disabled={busy}
-              className="relative grid h-14 w-14 shrink-0 place-items-center rounded-full bg-accent text-accent-contrast transition-transform hover:scale-105 disabled:cursor-default disabled:hover:scale-100"
-            >
-              {phase === "listening" && (
-                <>
-                  <span className="absolute inset-0 animate-ping rounded-full bg-accent/50" />
-                  <span className="absolute -inset-2 animate-ping rounded-full bg-accent/20 [animation-delay:200ms]" />
-                </>
+      {/* Flat panel — no floating card chrome (rounded shell, shadow, or
+          traffic-light title bar). */}
+      <div aria-hidden className="flex flex-col gap-5">
+        {(phase === "typing" || phase === "done") && (
+          <div className="min-h-[9.5rem] rounded-2xl border-[0.5px] border-black/10 bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)] sm:p-5">
+            <p className="whitespace-pre-wrap text-[14.5px] leading-relaxed text-ink">
+              {shown}
+              {phase === "typing" && (
+                <span className="ml-0.5 inline-block h-[1em] w-[2px] translate-y-[3px] animate-pulse bg-accent" />
               )}
+            </p>
+          </div>
+        )}
+
+        <div className="flex w-full items-center gap-4">
+          <button
+            type="button"
+            onClick={recording ? stop : play}
+            aria-label={recording ? "停止" : "録音開始"}
+            className="relative grid h-14 w-14 shrink-0 place-items-center rounded-full bg-accent text-accent-contrast transition-transform hover:scale-105"
+          >
+            {phase === "listening" && (
+              <>
+                <span className="absolute inset-0 animate-ping rounded-full bg-accent/50" />
+                <span className="absolute -inset-2 animate-ping rounded-full bg-accent/20 [animation-delay:200ms]" />
+              </>
+            )}
+            {recording ? (
+              <svg viewBox="0 0 24 24" className="relative h-5 w-5" fill="currentColor">
+                <rect x="6" y="6" width="12" height="12" rx="1.5" />
+              </svg>
+            ) : (
               <svg viewBox="0 0 24 24" className="relative h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <rect x="9" y="2.5" width="6" height="11" rx="3" />
                 <path d="M5.5 11a6.5 6.5 0 0 0 13 0" strokeLinecap="round" />
                 <path d="M12 17.5V21" strokeLinecap="round" />
                 <path d="M8.5 21h7" strokeLinecap="round" />
               </svg>
-            </button>
+            )}
+          </button>
 
-            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-              <p className="text-[13px] font-medium text-ink">
-                {phase === "idle" && "まもなく開始します…"}
-                {phase === "listening" && "聞き取っています…"}
-                {phase === "typing" && "文字起こし中…"}
-                {phase === "done" && "文字起こしが完了しました"}
-              </p>
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            <p className="text-[13px] font-medium text-ink">
+              {phase === "idle" && "まもなく開始します…"}
+              {phase === "listening" && "聞き取っています…"}
+              {phase === "typing" && "文字起こし中…"}
+              {phase === "done" && "文字起こしが完了しました"}
+            </p>
 
-              {phase === "listening" ? (
-                <div className="flex h-5 items-end gap-[3px]">
-                  {WAVE_HEIGHTS.map((h, i) => (
-                    <span
-                      key={i}
-                      className="w-[3px] animate-pulse rounded-full bg-accent"
-                      style={{ height: `${h}%`, animationDelay: `${i * 85}ms` }}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="h-1 w-full overflow-hidden rounded-full bg-surface-2">
-                  <div
-                    className="h-full bg-accent transition-[width] duration-100 ease-linear"
-                    style={{ width: `${phase === "idle" ? 0 : progressPct}%` }}
-                  />
-                </div>
-              )}
-            </div>
-
-            {phase === "done" && (
-              <button
-                type="button"
-                onClick={play}
-                className="shrink-0 text-[13px] font-medium text-accent underline decoration-accent/30 underline-offset-2 hover:decoration-accent"
+            {waveVisible && (
+              <div
+                className="relative h-[60px] w-full overflow-hidden"
+                role="img"
+                aria-label="音声周波数"
+                style={{
+                  clipPath: `inset(0 ${Math.max(0, (1 - waveFill) * 100)}% 0 0)`,
+                }}
               >
-                もう一度再生
-              </button>
+                <svg
+                  width={WAVE_TRACK_WIDTH_PX * 2}
+                  height={60}
+                  viewBox={`0 0 ${WAVE_TRACK_WIDTH_PX * 2} 60`}
+                  className="block h-full"
+                  style={{
+                    animation: waveScrolling ? "chondroWaveScroll 4.5s linear infinite" : undefined,
+                  }}
+                  aria-hidden
+                >
+                  <defs>
+                    <linearGradient
+                      id="chondroWaveGrad"
+                      gradientUnits="userSpaceOnUse"
+                      spreadMethod="repeat"
+                      x1={0}
+                      y1={0}
+                      x2={WAVE_TRACK_WIDTH_PX}
+                      y2={0}
+                    >
+                      <stop offset="0%" stopColor="#1d4ed8" />
+                      <stop offset="45%" stopColor="#2563eb" />
+                      <stop offset="100%" stopColor="#60a5fa" />
+                    </linearGradient>
+                  </defs>
+                  <g fill="url(#chondroWaveGrad)" opacity={phase === "done" ? 0.75 : 1}>
+                    {[0, 1].map((dup) =>
+                      FREQ_BARS.map((peak, i) => {
+                        const x = dup * WAVE_TRACK_WIDTH_PX + i * (BAR_PX + BAR_GAP_PX);
+                        const h = (peak / 100) * 56;
+                        const y = (60 - h) / 2;
+                        return (
+                          <rect
+                            key={`${dup}-${i}`}
+                            x={x}
+                            y={y}
+                            width={BAR_PX}
+                            height={h}
+                            rx={BAR_RX}
+                          />
+                        );
+                      }),
+                    )}
+                  </g>
+                </svg>
+              </div>
             )}
           </div>
         </div>

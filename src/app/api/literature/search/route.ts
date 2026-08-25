@@ -60,7 +60,7 @@ export async function POST(request: Request) {
           notes.push("AIが無効のため、入力をそのまま PubMed の検索式として使用しました。");
         } else if (!aiAllowed) {
           notes.push(
-            "検索式の自動生成はプロプラン以上の機能です。入力をそのまま PubMed の検索式として使用しました。",
+            "検索式の自動生成は有料プランの機能です。入力をそのまま PubMed の検索式として使用しました。",
           );
         }
       }

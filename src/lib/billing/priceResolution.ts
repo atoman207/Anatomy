@@ -118,12 +118,22 @@ export function planOffers(
 
   for (const plan of PLAN_LIST) {
     const stored = prices[plan.id];
-    const free = plan.amountJpy === 0;
+    // Ignore leftover list prices from earlier catalogues so the cards show
+    // the current amounts until Stripe prices are re-created via stripe:setup.
+    const staleLegacy = new Set([50, 90, 3_000, 100_000, 800_000]);
+    const staleBeta =
+      stored?.amountJpy != null
+      && staleLegacy.has(stored.amountJpy)
+      && stored.amountJpy !== plan.amountJpy;
+    const amountJpy =
+      stored?.amountJpy != null && !staleBeta
+        ? stored.amountJpy
+        : plan.amountJpy;
     offers[plan.id] = {
       plan: plan.id,
-      amountJpy: stored?.amountJpy ?? plan.amountJpy,
-      fromStripe: stored?.amountJpy != null,
-      purchasable: free || mockCheckout || Boolean(stored?.priceId),
+      amountJpy,
+      fromStripe: stored?.amountJpy != null && !staleBeta,
+      purchasable: mockCheckout || Boolean(stored?.priceId) || staleBeta,
     };
   }
 

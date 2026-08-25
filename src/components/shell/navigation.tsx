@@ -339,5 +339,5 @@ export function titleForPath(pathname: string, search?: string): string {
   if (best) return best.label;
   if (pathname.startsWith("/login")) return "ログイン";
   if (pathname.startsWith("/auth")) return "認証";
-  return "研究データ管理";
+  return "LABNOTE.";
 }

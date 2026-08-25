@@ -3,7 +3,7 @@ import {
 } from "@/components/ui";
 import { ReviewerAvatar } from "@/components/peerReview/ReviewerAvatar";
 import {
-  CATEGORY_LABELS, REVIEWER_LABELS, scoreTone,
+  CATEGORY_LABELS, REVIEWER_LABELS, scoreTone, severityTone,
   type CategoryScores, type PeerReviewReport, type ReviewerResult, type ReviewerRole,
 } from "@/lib/ai/peerReviewReport";
 import type { ReviewerProfile } from "@/lib/ai/reviewerProfiles";
@@ -87,11 +87,19 @@ function ReviewerCard({ result, profile }: { result: ReviewerResult; profile: Re
 
       {result.major_concerns.length > 0 && (
         <div className="mt-3">
-          <p className="text-[12px] font-semibold text-danger">重大な指摘</p>
-          <ol className="mt-1 flex flex-col gap-1 pl-4 text-[13px] leading-relaxed text-ink-2">
-            {result.major_concerns.map((c, i) => (
-              <li key={i} className="list-decimal">{c}</li>
-            ))}
+          <p className="text-[12px] font-semibold text-danger">重大な指摘（深刻度）</p>
+          <ol className="mt-1 flex flex-col gap-1.5 pl-4 text-[13px] leading-relaxed text-ink-2">
+            {result.major_concerns
+              .slice()
+              .sort((a, b) => b.severity - a.severity)
+              .map((c, i) => (
+                <li key={i} className="list-decimal">
+                  <span className="inline-flex flex-wrap items-center gap-1.5">
+                    {c.issue}
+                    <Badge tone={severityTone(c.severity)}>{c.severity} / 10</Badge>
+                  </span>
+                </li>
+              ))}
           </ol>
         </div>
       )}

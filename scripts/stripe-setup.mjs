@@ -8,10 +8,10 @@
  * that copies one into the other. It prints the resulting price ids to paste
  * into .env.local.
  *
- * JPY is a zero-decimal currency, so `unit_amount: 50` is ¥50 - not 50 sen -
- * and ¥50 is also Stripe's minimum charge for the currency, which is why the
- * cheapest plan sits exactly there. With a live key this creates prices that
- * charge real cards, so it prints the amounts and says so before doing it.
+ * JPY is a zero-decimal currency, so `unit_amount: 3000` is ¥3,000 - not 30 sen -
+ * and ¥50 is also Stripe's minimum charge for the currency. With a live key this
+ * creates prices that charge real cards, so it prints the amounts and says so
+ * before doing it.
  *
  * Safe to re-run: products and prices are looked up by a stable lookup key and
  * reused. Stripe prices are immutable, so changing an amount creates a new
@@ -54,13 +54,15 @@ if (liveMode) {
  * tests/billing.test.ts asserts the two agree.
  */
 const PAID_PLANS = [
-  { id: "pro", name: "chondro プロ", amountJpy: 50, envVar: "STRIPE_PRICE_PRO" },
-  { id: "team", name: "chondro チーム", amountJpy: 90, envVar: "STRIPE_PRICE_TEAM" },
+  { id: "free", name: "LABNOTE 個人研究者", amountJpy: 30_000, interval: "year", envVar: "STRIPE_PRICE_FREE" },
+  { id: "pro", name: "LABNOTE 研究室", amountJpy: 50_000, interval: "year", envVar: "STRIPE_PRICE_PRO" },
+  { id: "pro", name: "LABNOTE 研究室（月額）", amountJpy: 5_000, interval: "month", envVar: "STRIPE_PRICE_PRO_MONTHLY", skipDb: true },
+  { id: "team", name: "LABNOTE 大学・研究機関", amountJpy: 50_000, interval: "month", envVar: "STRIPE_PRICE_TEAM" },
 ];
 
 const STRIPE_MIN_JPY = 50;
 /** Not a product limit - a guard against a typo that would charge 100x the intent. */
-const MAX_REASONABLE_JPY = 100_000;
+const MAX_REASONABLE_JPY = 1_000_000;
 
 for (const plan of PAID_PLANS) {
   if (plan.amountJpy < STRIPE_MIN_JPY) {
@@ -76,7 +78,7 @@ for (const plan of PAID_PLANS) {
 if (liveMode) {
   console.log(
     `\nPrices about to be created (LIVE - real cards will be charged):\n` +
-      PAID_PLANS.map((p) => `  ${p.id.padEnd(5)} ¥${p.amountJpy}/month`).join("\n") +
+      PAID_PLANS.map((p) => `  ${p.id.padEnd(5)} ¥${p.amountJpy}/${p.interval === "year" ? "年" : "月"}`).join("\n") +
       "\n\nThese come from src/lib/billing/plans.ts. Stop now and edit that file\n" +
       "if these are still the beta amounts rather than your real prices.\n",
   );
@@ -84,15 +86,6 @@ if (liveMode) {
 
 const stripe = new Stripe(secret, { maxNetworkRetries: 2 });
 
-/**
- * A product per plan, so re-runs do not duplicate it.
- *
- * By deterministic id first, then by metadata. The id makes the lookup exact
- * - Stripe's search index lags creation by up to a minute - and the metadata
- * search still finds a product an earlier version of this script created
- * without one, so both paths keep converging on a single product per plan.
- * `src/lib/billing/priceActions.ts` looks it up the same way.
- */
 async function findOrCreateProduct(plan) {
   const id = `chondro_${plan.id}`;
 
@@ -116,20 +109,13 @@ async function findOrCreateProduct(plan) {
   });
 }
 
-/**
- * A monthly JPY price at the configured amount.
- *
- * Prices are immutable in Stripe, so an existing price at a different amount is
- * left alone and a new one is created - which is also why the lookup filters on
- * the amount and not only on the plan.
- */
 async function findOrCreatePrice(product, plan) {
   const existing = await stripe.prices.list({ product: product.id, active: true, limit: 100 });
   const match = existing.data.find(
     (p) =>
       p.currency === "jpy" &&
       p.unit_amount === plan.amountJpy &&
-      p.recurring?.interval === "month",
+      p.recurring?.interval === plan.interval,
   );
   if (match) return match;
 
@@ -137,7 +123,7 @@ async function findOrCreatePrice(product, plan) {
     product: product.id,
     currency: "jpy",
     unit_amount: plan.amountJpy,
-    recurring: { interval: "month" },
+    recurring: { interval: plan.interval },
     metadata: { chondro_plan: plan.id },
   });
 }
@@ -148,20 +134,14 @@ const created = [];
 for (const plan of PAID_PLANS) {
   const product = await findOrCreateProduct(plan);
   const price = await findOrCreatePrice(product, plan);
-  console.log(`${plan.id.padEnd(5)} ¥${String(plan.amountJpy).padStart(3)}/月  ${price.id}  (product ${product.id})`);
+  const unit = plan.interval === "year" ? "年" : "月";
+  console.log(`${plan.id.padEnd(5)} ¥${String(plan.amountJpy).padStart(7)}/${unit}  ${price.id}  (product ${product.id})`);
   lines.push(`${plan.envVar}=${price.id}`);
-  created.push({ plan: plan.id, priceId: price.id, amountJpy: price.unit_amount ?? plan.amountJpy });
+  if (!plan.skipDb) {
+    created.push({ plan: plan.id, priceId: price.id, amountJpy: price.unit_amount ?? plan.amountJpy });
+  }
 }
 
-/*
- * Store the ids in plan_prices as well as printing them.
- *
- * This is what makes the script enough on its own: the app reads the database
- * first, so a deployed build starts selling at these prices without anyone
- * copying the ids into a hosting dashboard and redeploying. The printed env
- * lines below are still offered as a fallback for a deployment that has no
- * database write access.
- */
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 let storedInDatabase = false;

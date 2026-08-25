@@ -82,7 +82,7 @@ export function VoiceStep({
       if (!json.ok) {
         toast(
           json.error ??
-            "AI機能はフリープランではご利用いただけません。「料金・支払い」からプロプラン以上にアップグレードしてください。",
+            "AI機能は有料プランのご契約が必要です。「料金・支払い」から個人研究者プランをお選びください。",
           { tone: "danger", title: "エラー" },
         );
         router.push("/billing");
@@ -253,7 +253,7 @@ export function VoiceStep({
             onSelect={() => void selectEngine("openai")}
             title="有料"
             badge={<Badge tone="neutral">従量課金</Badge>}
-            detail="録音した音声をAIが文字起こしします。研究室がプロプラン以上を契約している必要があります。"
+            detail="録音した音声をAIが文字起こしします。研究室が有料プランを契約している必要があります。"
           />
         </div>
       </Card>

@@ -1,38 +1,38 @@
 @import "tailwindcss";
 
 /*
- * Design tokens inspired by HATME corporate site (hatme.jp):
- * green primary, clean white surfaces, Noto Sans/Serif JP typography.
+ * Design tokens aligned with LabNote marketing visuals (home page /bg6–bg7):
+ * light-blue surfaces, navy type, blue primary — not green-on-gray.
  */
 :root {
-  --surface-0: #f7f7f7;
+  --surface-0: #f0f6fc;
   --surface-1: #ffffff;
-  --surface-2: #f7f7f7;
-  --surface-3: #deede0;
-  --border: #d4d4d4;
-  --border-strong: #333333;
-  --text-primary: #333333;
-  --text-secondary: #666666;
-  --text-muted: #838383;
-  --accent: #00913a;
-  --accent-hover: #007830;
-  --accent-light: #0fa14a;
+  --surface-2: #e8f2fb;
+  --surface-3: #d6e8f8;
+  --border: #c5d7ea;
+  --border-strong: #1e4a7a;
+  --text-primary: #1a365d;
+  --text-secondary: #4a6a8a;
+  --text-muted: #7a94ad;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-light: #3b82f6;
   --accent-contrast: #ffffff;
-  --accent-soft: #deede0;
-  --accent-gradient: linear-gradient(to right, #00913a 0%, #13c259 100%);
-  --accent-gradient-hover: linear-gradient(to right, #007830 0%, #0fa14a 100%);
-  --highlight: #ffe81d;
-  --link: #0763ce;
-  --good: #00913a;
-  --warn: #e97f02;
-  --danger: #ca0808;
-  --danger-soft: #fdecec;
-  --warn-soft: #fbedd2;
-  --good-soft: #deede0;
-  --footer-bg: #333333;
+  --accent-soft: #dbeafe;
+  --accent-gradient: linear-gradient(to right, #1d4ed8 0%, #3b82f6 100%);
+  --accent-gradient-hover: linear-gradient(to right, #1e40af 0%, #2563eb 100%);
+  --highlight: #fef08a;
+  --link: #2563eb;
+  --good: #059669;
+  --warn: #d97706;
+  --danger: #dc2626;
+  --danger-soft: #fee2e2;
+  --warn-soft: #fef3c7;
+  --good-soft: #d1fae5;
+  --footer-bg: #1a365d;
   --footer-text: #ffffff;
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-sm: 0 1px 3px rgba(37, 99, 235, 0.08);
+  --shadow-md: 0 4px 16px rgba(37, 99, 235, 0.12);
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 12px;
@@ -42,29 +42,29 @@
 }
 
 :root[data-theme="dark"] {
-  --surface-0: #1a1a1a;
-  --surface-1: #242424;
-  --surface-2: #2e2e2e;
-  --surface-3: #1e3324;
-  --border: #444444;
-  --border-strong: #666666;
-  --text-primary: #f0f0f0;
-  --text-secondary: #b0b0b0;
-  --text-muted: #888888;
-  --accent: #14d05f;
-  --accent-hover: #0fa14a;
-  --accent-light: #1bcd62;
+  --surface-0: #0f172a;
+  --surface-1: #1e293b;
+  --surface-2: #334155;
+  --surface-3: #1e3a5f;
+  --border: #334155;
+  --border-strong: #64748b;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --accent: #3b82f6;
+  --accent-hover: #60a5fa;
+  --accent-light: #60a5fa;
   --accent-contrast: #ffffff;
-  --accent-soft: #1e3324;
-  --accent-gradient: linear-gradient(to right, #00913a 0%, #14d05f 100%);
-  --accent-gradient-hover: linear-gradient(to right, #007830 0%, #0fa14a 100%);
-  --good: #14d05f;
-  --warn: #e97f02;
-  --danger: #e66767;
-  --danger-soft: #3a1f1f;
-  --warn-soft: #33290f;
-  --good-soft: #10291f;
-  --footer-bg: #1a1a1a;
+  --accent-soft: #1e3a5f;
+  --accent-gradient: linear-gradient(to right, #1d4ed8 0%, #3b82f6 100%);
+  --accent-gradient-hover: linear-gradient(to right, #2563eb 0%, #60a5fa 100%);
+  --good: #34d399;
+  --warn: #fbbf24;
+  --danger: #f87171;
+  --danger-soft: #450a0a;
+  --warn-soft: #422006;
+  --good-soft: #064e3b;
+  --footer-bg: #0f172a;
 }
 
 @theme inline {
@@ -328,31 +328,31 @@ textarea::placeholder {
 /* ------------------------------------------------------------------ */
 :root {
   --shell-bg: #ffffff;
-  --shell-bg-raised: #ffffff;
-  --shell-border: #d4d4d4;
-  --shell-text: #333333;
-  --shell-text-dim: #666666;
-  --shell-text-faint: #838383;
-  --shell-hover: #f0f0f0;
-  --shell-active-bg: #deede0;
-  --shell-active-text: #00913a;
-  --shell-accent: #00913a;
+  --shell-bg-raised: #f8fbff;
+  --shell-border: #c5d7ea;
+  --shell-text: #1a365d;
+  --shell-text-dim: #4a6a8a;
+  --shell-text-faint: #7a94ad;
+  --shell-hover: #eff6ff;
+  --shell-active-bg: #dbeafe;
+  --shell-active-text: #1d4ed8;
+  --shell-accent: #2563eb;
   --sidebar-width: 248px;
   --sidebar-width-collapsed: 68px;
   --header-height: 60px;
 }
 
 :root[data-theme="dark"] {
-  --shell-bg: #14161c;
-  --shell-bg-raised: #1b1e26;
-  --shell-border: #262a34;
-  --shell-text: #e6e8ec;
-  --shell-text-dim: #9098a8;
-  --shell-text-faint: #6a7183;
-  --shell-hover: #232733;
-  --shell-active-bg: #16311f;
-  --shell-active-text: #2fd06a;
-  --shell-accent: #14d05f;
+  --shell-bg: #0f172a;
+  --shell-bg-raised: #1e293b;
+  --shell-border: #334155;
+  --shell-text: #e2e8f0;
+  --shell-text-dim: #94a3b8;
+  --shell-text-faint: #64748b;
+  --shell-hover: #1e293b;
+  --shell-active-bg: #1e3a5f;
+  --shell-active-text: #60a5fa;
+  --shell-accent: #3b82f6;
 }
 
 /* Sidebar scrollbar, styled so it does not break the dark frame. */

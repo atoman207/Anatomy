@@ -41,15 +41,13 @@ test("every plan price is a whole yen amount Stripe will actually accept", () =>
 test("the catalogue is internally consistent", () => {
   assert.deepEqual(PLAN_IDS, ["free", "pro", "team"]);
   for (const id of PLAN_IDS) assert.equal(PLANS[id].id, id);
-  assert.deepEqual(PAID_PLANS.map((p) => p.id), ["pro", "team"]);
-  // Ordered cheapest first, which is what the pricing grid and
-  // smallestPlanFor() both rely on.
+  assert.deepEqual(PAID_PLANS.map((p) => p.id), ["free", "pro", "team"]);
   const amounts = PLAN_LIST.map((p) => p.amountJpy);
   assert.deepEqual(amounts, [...amounts].sort((a, b) => a - b));
 });
 
-test("only the paid plans include AI", () => {
-  assert.equal(PLANS.free.limits.aiEnabled, false);
+test("every plan includes AI when subscribed", () => {
+  assert.equal(PLANS.free.limits.aiEnabled, true);
   assert.equal(PLANS.pro.limits.aiEnabled, true);
   assert.equal(PLANS.team.limits.aiEnabled, true);
 });
@@ -110,13 +108,18 @@ test("usage is rendered with the unlimited case spelled out", () => {
   assert.equal(formatUsage(3, null), "3 / 無制限");
   assert.equal(formatJpy(50), "¥50");
   assert.equal(formatJpy(1000), "¥1,000");
+  assert.equal(formatJpy(3000), "¥3,000");
 });
 
 test("smallestPlanFor names the cheapest plan that would fit the usage", () => {
   assert.equal(smallestPlanFor(2, "maxMembers")?.id, "free");
-  assert.equal(smallestPlanFor(3, "maxMembers")?.id, "pro");
-  assert.equal(smallestPlanFor(50, "maxMembers")?.id, "team");
+  assert.equal(smallestPlanFor(5, "maxMembers")?.id, "pro");
+  assert.equal(smallestPlanFor(50, "maxMembers")?.id, "pro");
+  assert.equal(smallestPlanFor(101, "maxMembers")?.id, "team");
   assert.equal(smallestPlanFor(10_000, "maxExperiments")?.id, "team");
+  assert.equal(smallestPlanFor(0, "maxLabs")?.id, "free");
+  assert.equal(smallestPlanFor(9, "maxLabs")?.id, "pro");
+  assert.equal(smallestPlanFor(10, "maxLabs")?.id, "team");
 });
 
 /* ------------------------------------------------------------------ */
@@ -127,12 +130,14 @@ test("plans.ts limits match the plan_limits rows seeded by migration", () => {
   const sql = readFileSync(new URL("../supabase/migrations/all.sql", import.meta.url), "utf8");
 
   const rowPattern =
-    /\('(free|pro|team)',\s*(null|\d+),\s*(null|\d+),\s*(null|\d+),\s*(true|false)\)/g;
-  const seeded = new Map<string, { members: number | null; experiments: number | null; datasets: number | null; ai: boolean }>();
+    /\('(free|pro|team)',\s*(null|\d+),\s*(null|\d+),\s*(null|\d+),\s*(null|\d+),\s*(true|false)\)/g;
+  const seeded = new Map<string, {
+    labs: number | null; members: number | null; experiments: number | null; datasets: number | null; ai: boolean;
+  }>();
   for (const m of sql.matchAll(rowPattern)) {
     const num = (v: string) => (v === "null" ? null : Number(v));
     seeded.set(m[1], {
-      members: num(m[2]), experiments: num(m[3]), datasets: num(m[4]), ai: m[5] === "true",
+      labs: num(m[2]), members: num(m[3]), experiments: num(m[4]), datasets: num(m[5]), ai: m[6] === "true",
     });
   }
 
@@ -140,6 +145,7 @@ test("plans.ts limits match the plan_limits rows seeded by migration", () => {
   for (const id of PLAN_IDS) {
     const row = seeded.get(id)!;
     const limits = PLANS[id].limits;
+    assert.equal(limits.maxLabs, row.labs, `${id}: max_labs drifted`);
     assert.equal(limits.maxMembers, row.members, `${id}: max_members drifted`);
     assert.equal(limits.maxExperiments, row.experiments, `${id}: max_experiments drifted`);
     assert.equal(limits.maxDatasets, row.datasets, `${id}: max_datasets drifted`);
@@ -161,11 +167,11 @@ test("the SQL entitlement window matches statusGrantsAccess", () => {
 test("the setup script charges exactly what the catalogue advertises", () => {
   const js = readFileSync(new URL("../scripts/stripe-setup.mjs", import.meta.url), "utf8");
   for (const plan of PAID_PLANS) {
-    const pattern = new RegExp(`id: "${plan.id}"[^}]*amountJpy: (\\d+)`);
+    const pattern = new RegExp(`id: "${plan.id}"[^}]*amountJpy: ([\\d_]+)`);
     const found = js.match(pattern);
     assert.ok(found, `stripe-setup.mjs has no amount for ${plan.id}`);
     assert.equal(
-      Number(found[1]), plan.amountJpy,
+      Number(found[1].replace(/_/g, "")), plan.amountJpy,
       `${plan.id}: the script would create a price Stripe charges but the app does not show`,
     );
   }
@@ -333,16 +339,14 @@ test("every paid plan gets an entry even when both sources are empty", () => {
     Object.keys(prices).sort(),
     PAID_PLANS.map((p) => p.id).sort(),
   );
-  // The free plan has no Stripe price and must not appear.
-  assert.equal(prices["free" as PlanId], undefined);
 });
 
 test("a row for a plan that is not sold is ignored rather than inventing an entry", () => {
   const prices = mergePriceSources(
     {},
-    [{ plan: "free", stripe_price_id: "price_bogus", amount_jpy: 0, updated_at: null }],
+    [{ plan: "enterprise", stripe_price_id: "price_bogus", amount_jpy: 0, updated_at: null }],
   );
-  assert.equal(prices["free" as PlanId], undefined);
+  assert.equal(prices["enterprise" as PlanId], undefined);
 });
 
 test("the webhook can map a stored price id back to its plan", () => {
@@ -393,9 +397,6 @@ test("a plan with no price is not offered for sale", () => {
   for (const plan of PAID_PLANS) {
     assert.equal(offers[plan.id].purchasable, false, `${plan.id} has nothing to sell`);
   }
-  // Free is always available - downgrading needs no Stripe price at all.
-  assert.equal(offers.free.purchasable, true);
-  assert.equal(offers.free.amountJpy, 0);
 });
 
 test("the mock checkout can sell a plan that has no Stripe price", () => {

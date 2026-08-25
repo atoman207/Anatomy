@@ -90,9 +90,9 @@ function refreshAdminViews() {
  * `grantPlanWithoutPayment` below exists for when comping it really is what
  * the administrator meant.
  *
- * Downgrading to free cancels at the period end rather than immediately: the
- * laboratory has already paid for the current month, and taking the plan away
- * the moment somebody clicks would be taking back time that was bought.
+ * Cancellation is a separate action (`adminCancelLabPlan`): every catalogue
+ * plan including 個人研究者 is a paid product, so selecting it must change
+ * the Stripe price rather than end the subscription.
  */
 export async function adminChangeLabPlan(
   labId: string,
@@ -109,39 +109,13 @@ export async function adminChangeLabPlan(
     const row = await subscriptionRow(labId);
     const stripe = getStripe();
 
-    if (plan === "free") {
-      if (!hasLiveStripeSubscription(row) || !row?.stripe_subscription_id) {
-        // Nothing at Stripe to cancel: this is a manual grant, so revoking it
-        // is a local write.
-        await markSubscriptionCanceled(labId);
-        await logAudit({
-          labId, userId: ctx.user.id, action: "billing.admin_grant_revoked",
-          entity: "lab_subscription", entityId: labId, detail: { plan: "free" },
-        });
-        refreshAdminViews();
-        return { ok: true, data: "free" };
-      }
-
-      const updated = await stripe.subscriptions.update(row.stripe_subscription_id, {
-        cancel_at_period_end: true,
-      });
-      await persistSubscription(labId, updated);
-      await logAudit({
-        labId, userId: ctx.user.id, action: "billing.admin_plan_canceled",
-        entity: "lab_subscription", entityId: labId,
-        detail: { subscription_id: row.stripe_subscription_id, at_period_end: true },
-      });
-      refreshAdminViews();
-      return { ok: true, data: "free" };
-    }
-
     const price = await resolvePriceId(plan);
     if (!price) {
       return {
         ok: false,
         error:
           PLANS[plan].name + "プランの価格がまだ作成されていません。" +
-          "「料金設定」で価格を作成してください。",
+          "「料金設定」で価格を作成するか、npm run stripe:setup を実行してください。",
       };
     }
 
@@ -149,7 +123,7 @@ export async function adminChangeLabPlan(
       return {
         ok: false,
         error:
-          "この研究室には Stripe 上の有効な契約がないため、有料プランへ変更できません。" +
+          "この研究室には Stripe 上の有効な契約がないため、プランを変更できません。" +
           "支払い方法の登録が必要なので、研究室オーナーに申し込んでいただくか、" +
           "「手動付与」で無償付与してください。",
       };
@@ -185,6 +159,46 @@ export async function adminChangeLabPlan(
 }
 
 /**
+ * Schedules cancellation at period end (or revokes a manual grant immediately).
+ */
+export async function adminCancelLabPlan(labId: string): Promise<ActionResult<PlanId>> {
+  try {
+    const ctx = await platformAdmin();
+    if (!labId) return { ok: false, error: "研究室が指定されていません。" };
+    if (!isStripeConfigured()) {
+      return { ok: false, error: "決済が設定されていません（STRIPE_SECRET_KEY）。" };
+    }
+
+    const row = await subscriptionRow(labId);
+    const stripe = getStripe();
+
+    if (!hasLiveStripeSubscription(row) || !row?.stripe_subscription_id) {
+      await markSubscriptionCanceled(labId);
+      await logAudit({
+        labId, userId: ctx.user.id, action: "billing.admin_grant_revoked",
+        entity: "lab_subscription", entityId: labId, detail: { canceled: true },
+      });
+      refreshAdminViews();
+      return { ok: true, data: "free" };
+    }
+
+    const updated = await stripe.subscriptions.update(row.stripe_subscription_id, {
+      cancel_at_period_end: true,
+    });
+    await persistSubscription(labId, updated);
+    await logAudit({
+      labId, userId: ctx.user.id, action: "billing.admin_plan_canceled",
+      entity: "lab_subscription", entityId: labId,
+      detail: { subscription_id: row.stripe_subscription_id, at_period_end: true },
+    });
+    refreshAdminViews();
+    return { ok: true, data: "free" };
+  } catch (e) {
+    return { ok: false, error: describeStripeError(e) };
+  }
+}
+
+/**
  * Grants a paid plan with no payment behind it.
  *
  * A real thing administrators need - a partner laboratory, a pilot, a
@@ -205,8 +219,8 @@ export async function grantPlanWithoutPayment(
   try {
     const ctx = await platformAdmin();
     if (!labId) return { ok: false, error: "研究室が指定されていません。" };
-    if (!isPlanId(plan) || plan === "free") {
-      return { ok: false, error: "付与する有料プランを選択してください。" };
+    if (!isPlanId(plan)) {
+      return { ok: false, error: "付与するプランを選択してください。" };
     }
     const note = reason.trim();
     if (note.length < 3) {

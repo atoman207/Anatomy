@@ -65,7 +65,7 @@ function message(e: unknown, fallback: string): string {
  * set up by the script converges on the product it made rather than growing
  * a duplicate.
  */
-async function findOrCreateProduct(plan: Exclude<PlanId, "free">) {
+async function findOrCreateProduct(plan: PlanId) {
   const stripe = getStripe();
   const id = `chondro_${plan}`;
 
@@ -106,8 +106,8 @@ export async function createPlanPrice(
   try {
     const ctx = await platformAdmin();
 
-    if (!isPlanId(plan) || plan === "free") {
-      return { ok: false, error: "有料プランを選択してください。" };
+    if (!isPlanId(plan)) {
+      return { ok: false, error: "プランを選択してください。" };
     }
     if (!isStripeConfigured()) {
       return { ok: false, error: "決済が設定されていません（STRIPE_SECRET_KEY）。" };
@@ -130,10 +130,11 @@ export async function createPlanPrice(
 
     const stripe = getStripe();
     const product = await findOrCreateProduct(plan);
+    const interval = PLANS[plan].billingInterval;
 
     const existing = await stripe.prices.list({ product: product.id, active: true, limit: 100 });
     const reused = existing.data.find(
-      (p) => p.currency === "jpy" && p.unit_amount === amountJpy && p.recurring?.interval === "month",
+      (p) => p.currency === "jpy" && p.unit_amount === amountJpy && p.recurring?.interval === interval,
     );
     const price =
       reused ??
@@ -142,13 +143,13 @@ export async function createPlanPrice(
           product: product.id,
           currency: "jpy",
           unit_amount: amountJpy,
-          recurring: { interval: "month" },
+          recurring: { interval },
           metadata: { chondro_plan: plan },
         },
         // A double-submit that outruns the list above still creates one price
         // rather than two: the key is derived from exactly the fields being
         // sent, so a repeat is the same request and Stripe replays its answer.
-        { idempotencyKey: `plan-price:${product.id}:${amountJpy}` },
+        { idempotencyKey: `plan-price:${product.id}:${amountJpy}:${interval}` },
       ));
 
     await savePlanPrice(plan, price.id, price.unit_amount ?? amountJpy, ctx.user.id);
@@ -187,8 +188,8 @@ export async function createPlanPrice(
 export async function syncPlanPrice(plan: string): Promise<ActionResult<PlanPrice>> {
   try {
     const ctx = await platformAdmin();
-    if (!isPlanId(plan) || plan === "free") {
-      return { ok: false, error: "有料プランを選択してください。" };
+    if (!isPlanId(plan)) {
+      return { ok: false, error: "プランを選択してください。" };
     }
     if (!isStripeConfigured()) {
       return { ok: false, error: "決済が設定されていません（STRIPE_SECRET_KEY）。" };

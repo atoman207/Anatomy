@@ -37,6 +37,7 @@ import {
 import { listFigures, saveFigure, type FigureSummary } from "@/lib/analyze/actions";
 import { svgToDataUri } from "@/lib/plots/svg";
 import type { NotebookTemplateRow } from "@/lib/supabase/types";
+import { SubmissionFilesManager } from "@/components/notebook/SubmissionFilesManager";
 import { SelectionSummary } from "../SelectionSummary";
 
 type Phase = "capture" | "review" | "media";
@@ -124,7 +125,7 @@ export const NotebookStep = forwardRef<NotebookStepHandle>(
         const json = (await res.json()) as { ok: boolean; error?: string };
         if (!json.ok) {
           toast(
-            json.error ?? "AI機能はフリープランではご利用いただけません。「料金・支払い」からアップグレードしてください。",
+            json.error ?? "AI機能は有料プランのご契約が必要です。「料金・支払い」から個人研究者プラン以上をお選びください。",
             { tone: "danger", title: "エラー" },
           );
           router.push("/billing");
@@ -489,7 +490,7 @@ export const NotebookStep = forwardRef<NotebookStepHandle>(
                   onClick={() => void selectEngine("openai")}
                   title="従量課金 — AIによる高精度文字起こし"
                   badge={<Badge tone="neutral">従量課金</Badge>}
-                  detail="録音した音声をAIが後から文字起こしします。専門用語や雑音にも比較的強く、認識精度が高めです。研究室がプロプラン以上を契約している必要があります。"
+                  detail="録音した音声をAIが後から文字起こしします。専門用語や雑音にも比較的強く、認識精度が高めです。研究室が有料プランを契約している必要があります。"
                 />
               </div>
 
@@ -723,6 +724,8 @@ export const NotebookStep = forwardRef<NotebookStepHandle>(
             </div>
           </Card>
         )}
+
+        {ws.experimentId && <SubmissionFilesManager labId={ws.labId} experimentId={ws.experimentId} />}
 
         {ws.experimentId && (
           <Card

@@ -1,5 +1,5 @@
--- ============================================================================
--- chondro — full database schema
+﻿-- ============================================================================
+-- chondro ? full database schema
 --
 -- Single source of truth for every migration. Apply with `npm run db:push`
 -- or paste this file into the Supabase SQL Editor.
@@ -15,7 +15,7 @@
 -- ============================================================================
 
 -- ============================================================================
--- chondro — research data management schema
+-- chondro ? research data management schema
 --
 -- Everything is scoped to a laboratory. Access is granted through
 -- lab_members, and every table enforces it with row-level security so a
@@ -520,7 +520,7 @@ create policy audit_insert on public.audit_logs
 -- ---------------------------------------------------------------------------
 -- Voice provenance
 --
--- Every stage of the voice → notebook pipeline is kept as its own column
+-- Every stage of the voice ? notebook pipeline is kept as its own column
 -- with its own timestamp, rather than only the final text: that is what
 -- lets a researcher show what was actually said, what the AI produced, what
 -- they themselves edited, and when they signed off on it, as distinct facts.
@@ -559,7 +559,7 @@ language plpgsql
 as $$
 begin
   if old.confirmed_at is not null then
-    raise exception 'この音声ノートは確定済みのため変更できません。';
+    raise exception '???????????????????????';
   end if;
   return new;
 end;
@@ -671,7 +671,7 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- Platform roles — "Administrator" and "User"
+-- Platform roles ? "Administrator" and "User"
 --
 -- Until now platform-admin rights came only from PLATFORM_ADMIN_EMAILS, a
 -- server-only environment variable. That is safe but not administrable: an
@@ -679,7 +679,7 @@ end $$;
 -- nothing to seed.
 --
 -- This migration moves the role into the database while keeping the property
--- that made the env var safe — a user cannot grant it to themselves. The
+-- that made the env var safe ? a user cannot grant it to themselves. The
 -- column is writable only by the service role (see the trigger below), so the
 -- ordinary `profiles_update` policy, which lets a user edit their own row,
 -- cannot be turned into a privilege-escalation path.
@@ -707,7 +707,7 @@ begin
   if new.platform_role is distinct from old.platform_role
      and current_user not in ('postgres', 'service_role', 'supabase_admin')
   then
-    raise exception '権限（platform_role）は変更できません。';
+    raise exception '???platform_role??????????';
   end if;
   return new;
 end;
@@ -797,7 +797,7 @@ create trigger on_auth_user_created
 -- ============================================================================
 
 -- ============================================================================
--- chondro — Stripe billing
+-- chondro ? Stripe billing
 --
 -- A subscription belongs to a *laboratory*, not to a user: every table in
 -- 0001_init (core schema) is lab_id-scoped and access is granted through lab_members,
@@ -841,18 +841,36 @@ exception when duplicate_object then null; end $$;
 -- without restating them in TypeScript. `null` means unlimited.
 create table if not exists public.plan_limits (
   plan            public.billing_plan primary key,
+  max_labs        integer,
   max_members     integer,
   max_experiments integer,
   max_datasets    integer,
   ai_enabled      boolean not null default false
 );
 
-insert into public.plan_limits (plan, max_members, max_experiments, max_datasets, ai_enabled)
+-- Existing DBs: CREATE TABLE IF NOT EXISTS does not add new columns.
+do $$
+begin
+  if to_regclass('public.plan_limits') is not null
+     and not exists (
+       select 1
+       from information_schema.columns
+       where table_schema = 'public'
+         and table_name = 'plan_limits'
+         and column_name = 'max_labs'
+     )
+  then
+    alter table public.plan_limits add column max_labs integer;
+  end if;
+end $$;
+
+insert into public.plan_limits (plan, max_labs, max_members, max_experiments, max_datasets, ai_enabled)
 values
-  ('free', 3,    20,   20,   false),
-  ('pro',  10,   200,  200,  true),
-  ('team', null, null, null, true)
+  ('free', 1,    5,    10,   null, true),
+  ('pro',  10,   100,  200,  null, true),
+  ('team', null, null, null, null, true)
 on conflict (plan) do update set
+  max_labs        = excluded.max_labs,
   max_members     = excluded.max_members,
   max_experiments = excluded.max_experiments,
   max_datasets    = excluded.max_datasets,
@@ -1002,7 +1020,7 @@ begin
 
   if used >= allowed then
     raise exception
-      '現在のプラン（%）では%は%件までです。プランをアップグレードしてください。',
+      'plan %: % limit reached (%). Upgrade the plan to add more.',
       current_plan, noun, allowed
       using errcode = 'check_violation';
   end if;
@@ -1014,17 +1032,17 @@ $$;
 drop trigger if exists quota_lab_members on public.lab_members;
 create trigger quota_lab_members
   before insert on public.lab_members
-  for each row execute function public.enforce_lab_quota('max_members', 'メンバー');
+  for each row execute function public.enforce_lab_quota('max_members', '????');
 
 drop trigger if exists quota_experiments on public.experiments;
 create trigger quota_experiments
   before insert on public.experiments
-  for each row execute function public.enforce_lab_quota('max_experiments', '実験');
+  for each row execute function public.enforce_lab_quota('max_experiments', '??');
 
 drop trigger if exists quota_datasets on public.datasets;
 create trigger quota_datasets
   before insert on public.datasets
-  for each row execute function public.enforce_lab_quota('max_datasets', 'データセット');
+  for each row execute function public.enforce_lab_quota('max_datasets', '??????');
 
 -- ---------------------------------------------------------------------------
 -- Row-level security
@@ -1057,13 +1075,13 @@ create policy lab_subscriptions_select on public.lab_subscriptions
 -- ============================================================================
 
 -- ============================================================================
--- chondro — AI Peer Review
+-- chondro ? AI Peer Review
 --
 -- Three independent AI reviewers (methods/statistics, novelty/significance,
 -- structure/logic) evaluate an uploaded paper the same way a journal's
 -- reviewer panel would: each produces its own scores, concerns and
 -- recommendations, and the report is the three of them side by side rather
--- than one blended opinion. The three-way split is deliberate — a single
+-- than one blended opinion. The three-way split is deliberate ? a single
 -- "evaluate this paper" prompt collapses distinct kinds of judgment into one
 -- undifferentiated score, which is far less useful for revision than knowing
 -- specifically that the statistics reviewer is unconvinced while the novelty
@@ -1150,7 +1168,7 @@ create policy peer_reviews_delete on public.peer_reviews
 -- ============================================================================
 
 -- ============================================================================
--- chondro — AI Peer Review reviewer profiles
+-- chondro ? AI Peer Review reviewer profiles
 --
 -- The three reviewers in the peer review section above (methods,
 -- novelty, structure) are a fixed, platform-wide set - not something each
@@ -1183,9 +1201,9 @@ create table if not exists public.reviewer_profiles (
 );
 
 insert into public.reviewer_profiles (role, name, rubric_notes) values
-  ('methods',   '高橋 誠', ''),
-  ('novelty',   '藤井 彩', ''),
-  ('structure', '中村 学', '')
+  ('methods',   '?? ?', ''),
+  ('novelty',   '?? ?', ''),
+  ('structure', '?? ?', '')
 on conflict (role) do nothing;
 
 do $$
@@ -1259,8 +1277,8 @@ begin
   end if;
 end $$;
 
--- One row per paid plan, created empty. The free plan has no Stripe price.
-insert into public.plan_prices (plan) values ('pro'), ('team')
+-- One row per plan (including individual researcher). Empty until Stripe setup.
+insert into public.plan_prices (plan) values ('free'), ('pro'), ('team')
 on conflict (plan) do nothing;
 
 do $$
@@ -1294,7 +1312,7 @@ create policy plan_prices_update on public.plan_prices
 -- AI Peer Review credits
 --
 -- Pay-per-use, on top of a small free allowance, replaces the lab-Pro-plan
--- gate for AI査読: entitlement is now a personal balance on the account that
+-- gate for AI??: entitlement is now a personal balance on the account that
 -- ran the review, not something a laboratory's subscription decides. A review
 -- is therefore no longer tied to a laboratory or an experiment - the two
 -- columns that used to require one are relaxed to nullable below rather than
@@ -1465,7 +1483,7 @@ $$;
 -- as plan_prices: held in the database so a price change is an operational
 -- step (re-run the setup script), not a code change or a redeploy.
 create table if not exists public.peer_review_credit_prices (
-  pack_id         text primary key check (pack_id in ('single', 'ten', 'hundred')),
+  pack_id         text primary key,
   credits         integer not null,
   amount_jpy      integer not null check (amount_jpy >= 0),
   stripe_price_id text,
@@ -1473,13 +1491,31 @@ create table if not exists public.peer_review_credit_prices (
   updated_at      timestamptz not null default now()
 );
 
+-- Existing DBs may still have ten/hundred rows and an old check constraint.
+-- Drop the check, remove obsolete packs, then re-apply the current catalogue.
+alter table public.peer_review_credit_prices
+  drop constraint if exists peer_review_credit_prices_pack_id_check;
+
+delete from public.peer_review_credit_prices
+ where pack_id not in ('single', 'thirty', 'monthly');
+
+alter table public.peer_review_credit_prices
+  add constraint peer_review_credit_prices_pack_id_check
+  check (pack_id in ('single', 'thirty', 'monthly'));
+
 insert into public.peer_review_credit_prices (pack_id, credits, amount_jpy) values
-  ('single',  1,   50),
-  ('ten',     10,  100),
-  ('hundred', 100, 150)
+  ('single',  1,     100),
+  ('thirty',  30,    2000),
+  ('monthly', 10000, 5000)
 on conflict (pack_id) do update
   set credits = excluded.credits,
-      amount_jpy = excluded.amount_jpy;
+      amount_jpy = excluded.amount_jpy,
+      stripe_price_id = case
+        when public.peer_review_credit_prices.amount_jpy is distinct from excluded.amount_jpy
+          or public.peer_review_credit_prices.credits is distinct from excluded.credits
+        then null
+        else public.peer_review_credit_prices.stripe_price_id
+      end;
 
 do $$
 declare
@@ -1494,7 +1530,7 @@ begin
   end loop;
 end $$;
 
--- Readable by anyone: the AI査読 page shows these prices to every visitor.
+-- Readable by anyone: the AI?? page shows these prices to every visitor.
 -- Writable only by a platform administrator (via the setup script's
 -- service-role key, which bypasses RLS, or from a future admin editor).
 alter table public.peer_review_credit_prices enable row level security;
@@ -1526,7 +1562,7 @@ create index if not exists billing_events_user_idx
   on public.billing_events (user_id, received_at desc);
 
 -- New accounts get a peer_review_credits row the same moment they get a
--- profiles row, so a brand-new user's first AI査読 never has to distinguish
+-- profiles row, so a brand-new user's first AI?? never has to distinguish
 -- "no row yet" from "row at the default allowance" either.
 create or replace function public.handle_new_user()
 returns trigger
@@ -1614,7 +1650,7 @@ create policy lab_invites_select on public.lab_invites
 -- comment: "always an insert, never an update"), which meant fixing a typo
 -- required a whole new dated version. The actual integrity requirement was
 -- narrower than that: a lab report should be editable while it is still
--- "today's" entry, and permanently fixed once that day has passed — not
+-- "today's" entry, and permanently fixed once that day has passed ? not
 -- fixed from the instant it is saved.
 --
 -- The boundary is JST (Asia/Tokyo), not the database's session timezone,
@@ -1640,7 +1676,7 @@ begin
   if (old.created_at at time zone 'Asia/Tokyo')::date
      <> (now() at time zone 'Asia/Tokyo')::date
   then
-    raise exception 'この記録は作成日を過ぎているため編集できません。';
+    raise exception '????????????????????????';
   end if;
   return new;
 end;
@@ -1654,7 +1690,7 @@ create trigger lock_stale_notebook_entry
 -- ============================================================================
 -- Report PDFs
 --
--- The five 記録 tools (実験選択・試薬/Lot・音声メモ・実験ノート・論文検索) are now one
+-- The five ?? tools (???????/Lot????????????????) are now one
 -- guided flow that ends by producing a PDF - a preview on request, and a final
 -- version when the researcher finishes. Both get stored, not just downloaded,
 -- so "what did we hand off for this experiment" has an answer later.
@@ -1734,10 +1770,10 @@ create policy lab_reports_delete on storage.objects
 -- ============================================================================
 -- AI-generated figures
 --
--- The notebook step's "AIで画像を生成" action used to only queue the image as a
+-- The notebook step's "AI??????" action used to only queue the image as a
 -- workspace clip - fine for the current report, but nothing survived past the
 -- browser session: no durable row, no created_by, nothing to pick again from
--- "保存済みの図から選ぶ" the way a chart from /analyze can be. Adding one enum
+-- "??????????" the way a chart from /analyze can be. Adding one enum
 -- value lets it go through the exact same `figures` insert every other figure
 -- kind already uses (see saveFigure), stored as a small SVG wrapper around the
 -- PNG so the existing `svg text` column and clip-insertion code need no change.
@@ -1746,3 +1782,221 @@ create policy lab_reports_delete on storage.objects
 -- ============================================================================
 
 alter type public.figure_kind add value if not exists 'ai_image';
+
+-- ============================================================================
+-- Contact messages
+--
+-- The public /contact form is reachable without a session, like the landing
+-- page itself. It writes through a server action using the service-role
+-- client (see submitContactMessage in src/lib/contact/actions.ts), the same
+-- way billing_events is written only by the Stripe webhook handler - so this
+-- table gets no client-facing policy at all. RLS is enabled with zero
+-- policies, which denies every direct read/write from an anon or
+-- authenticated client outright; only the service role (which bypasses RLS)
+-- can touch it.
+--
+-- Safe to re-run: every statement is guarded.
+-- ============================================================================
+
+create table if not exists public.contact_messages (
+  id           uuid primary key default gen_random_uuid(),
+  name         text not null,
+  email        text not null,
+  phone        text,
+  message      text not null,
+  submitted_by uuid references auth.users (id) on delete set null,
+  created_at   timestamptz not null default now()
+);
+
+create index if not exists contact_messages_created_idx on public.contact_messages (created_at desc);
+
+alter table public.contact_messages enable row level security;
+
+-- ============================================================================
+-- Reviewer names: generic labels instead of personal names
+--
+-- Customer feedback: a real-sounding name (?? ? / ?? ? / ?? ?) reads as
+-- more authoritative than an AI reviewer's opinion should. Renamed to the
+-- generic "Researcher N" labels a journal's own decision letter uses
+-- ("Reviewer 1", "Reviewer 2", ...), matching DEFAULT_REVIEWER_NAMES in
+-- src/lib/ai/reviewerProfiles.ts.
+--
+-- Only rewrites rows still holding one of the original seed names, so an
+-- administrator who already renamed a reviewer at /admin/peer-review is left
+-- alone - same guard shape as the platform_role admin seed above.
+--
+-- Safe to re-run: the WHERE clause makes this a no-op once applied.
+-- ============================================================================
+
+update public.reviewer_profiles
+   set name = case role
+     when 'methods'   then 'Researcher 1'
+     when 'novelty'   then 'Researcher 2'
+     when 'structure' then 'Researcher 3'
+   end
+ where name in ('?? ?', '?? ?', '?? ?');
+
+-- ============================================================================
+-- Peer-review credit packs (idempotent refresh)
+-- Same catalogue as the seed above; safe if that block already ran.
+-- ============================================================================
+
+alter table public.peer_review_credit_prices
+  drop constraint if exists peer_review_credit_prices_pack_id_check;
+
+delete from public.peer_review_credit_prices
+ where pack_id not in ('single', 'thirty', 'monthly');
+
+alter table public.peer_review_credit_prices
+  add constraint peer_review_credit_prices_pack_id_check
+  check (pack_id in ('single', 'thirty', 'monthly'));
+
+insert into public.peer_review_credit_prices (pack_id, credits, amount_jpy) values
+  ('single',  1,     100),
+  ('thirty',  30,    2000),
+  ('monthly', 10000, 5000)
+on conflict (pack_id) do update
+  set credits = excluded.credits,
+      amount_jpy = excluded.amount_jpy,
+      stripe_price_id = case
+        when public.peer_review_credit_prices.amount_jpy is distinct from excluded.amount_jpy
+          or public.peer_review_credit_prices.credits is distinct from excluded.credits
+        then null
+        else public.peer_review_credit_prices.stripe_price_id
+      end;
+
+-- ============================================================================
+-- Submission files: Figure / Table / Video / Article
+--
+-- Most journals require figures, tables, video, and the manuscript text to be
+-- uploaded as separate files at submission time, not embedded in one document
+-- - customer feedback asked for exactly that separation. These are kept
+-- distinct from the notebook's inline images (`figures`, and `raw_files` rows
+-- of kind 'report_preview'/'report_final'): those illustrate or constitute
+-- today's lab report itself, while a submission file belongs to the
+-- experiment as a whole and is never inserted into the report body.
+--
+-- Reuses `raw_files` (already generic, and already the same "just another
+-- file that belongs to an experiment" table 'report_preview'/'report_final'
+-- use) rather than a new table - widening the kind check is all that's
+-- needed. A separate bucket (`submission-files`, not `lab-reports`) keeps
+-- these organizationally distinct from generated report PDFs, with the exact
+-- same storage-policy shape.
+--
+-- Safe to re-run: every statement is guarded.
+-- ============================================================================
+
+do $$
+begin
+  if exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.raw_files'::regclass
+      and conname = 'raw_files_kind_check'
+  ) then
+    alter table public.raw_files drop constraint raw_files_kind_check;
+  end if;
+  alter table public.raw_files
+    add constraint raw_files_kind_check
+    check (kind in (
+      'raw', 'report_preview', 'report_final',
+      'figure', 'table', 'video', 'article'
+    ));
+end $$;
+
+insert into storage.buckets (id, name, public)
+values ('submission-files', 'submission-files', false)
+on conflict (id) do nothing;
+
+-- Same folder convention and the same is_lab_member/can_write_lab policy
+-- shape as lab-reports above.
+drop policy if exists submission_files_select on storage.objects;
+create policy submission_files_select on storage.objects
+  for select using (
+    bucket_id = 'submission-files'
+    and public.is_lab_member(((storage.foldername(name))[1])::uuid)
+  );
+
+drop policy if exists submission_files_insert on storage.objects;
+create policy submission_files_insert on storage.objects
+  for insert with check (
+    bucket_id = 'submission-files'
+    and public.can_write_lab(((storage.foldername(name))[1])::uuid)
+  );
+
+drop policy if exists submission_files_update on storage.objects;
+create policy submission_files_update on storage.objects
+  for update using (
+    bucket_id = 'submission-files'
+    and public.can_write_lab(((storage.foldername(name))[1])::uuid)
+  ) with check (
+    bucket_id = 'submission-files'
+    and public.can_write_lab(((storage.foldername(name))[1])::uuid)
+  );
+
+drop policy if exists submission_files_delete on storage.objects;
+create policy submission_files_delete on storage.objects
+  for delete using (
+    bucket_id = 'submission-files'
+    and public.can_write_lab(((storage.foldername(name))[1])::uuid)
+  );
+
+
+-- ============================================================================
+-- Subscription plan overhaul (2026): max_labs + list prices
+-- Safe to re-run. Prefer running THIS block alone if the full file fails.
+-- ============================================================================
+
+do $$
+begin
+  if to_regclass('public.plan_limits') is not null
+     and not exists (
+       select 1
+       from information_schema.columns
+       where table_schema = 'public'
+         and table_name = 'plan_limits'
+         and column_name = 'max_labs'
+     )
+  then
+    alter table public.plan_limits add column max_labs integer;
+  end if;
+end $$;
+
+insert into public.plan_limits (plan, max_labs, max_members, max_experiments, max_datasets, ai_enabled)
+values
+  ('free', 1,    5,    10,   null, true),
+  ('pro',  10,   100,  200,  null, true),
+  ('team', null, null, null, null, true)
+on conflict (plan) do update set
+  max_labs        = excluded.max_labs,
+  max_members     = excluded.max_members,
+  max_experiments = excluded.max_experiments,
+  max_datasets    = excluded.max_datasets,
+  ai_enabled      = excluded.ai_enabled;
+
+insert into public.plan_prices (plan) values ('free'), ('pro'), ('team')
+on conflict (plan) do nothing;
+
+-- Reset list prices to the new catalogue. Clear Stripe price ids only when
+-- the cached yen amount still differs, so re-running after stripe:setup does
+-- not wipe freshly created prices.
+update public.plan_prices
+set
+  stripe_price_id = case
+    when amount_jpy is distinct from (case plan
+      when 'free' then 30000
+      when 'pro'  then 50000
+      when 'team' then 50000
+    end) then null
+    else stripe_price_id
+  end,
+  amount_jpy = case plan
+    when 'free' then 30000
+    when 'pro'  then 50000
+    when 'team' then 50000
+  end,
+  updated_at = now()
+where plan in ('free', 'pro', 'team');
+
+-- Reloads PostgREST so new columns (e.g. reagents.experiment_id) are visible
+-- to the API immediately after this migration runs.
+notify pgrst, 'reload schema';

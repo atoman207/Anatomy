@@ -1,9 +1,8 @@
 import { redirect } from "next/navigation";
 import { Card } from "@/components/ui";
 import { requireUser } from "@/lib/auth/guards";
-import { isPlanId, formatJpy, PLANS } from "@/lib/billing/plans";
+import { isPlanId, formatJpy, formatBillingPeriod, planAmountFor, PLANS, type BillingInterval } from "@/lib/billing/plans";
 import { isMockCheckoutAllowed } from "@/lib/billing/stripe";
-import { getPlanPrices } from "@/lib/billing/priceStore";
 import { MockPayButton } from "@/components/billing/MockPayButton";
 
 export const dynamic = "force-dynamic";
@@ -30,19 +29,20 @@ export default async function MockCheckoutPage(props: PageProps<"/billing/checko
 
   const labId = typeof search.lab === "string" ? search.lab : "";
   const planParam = typeof search.plan === "string" ? search.plan : "";
+  const intervalParam = typeof search.interval === "string" ? search.interval : "";
 
   const membership = ctx.memberships.find((m) => m.labId === labId);
   const canPay = Boolean(membership && (membership.role === "owner" || ctx.isPlatformAdmin));
-  if (!labId || !canPay || !isPlanId(planParam) || planParam === "free") {
+  if (!labId || !canPay || !isPlanId(planParam)) {
     redirect("/billing");
   }
 
   const plan = PLANS[planParam];
-
-  // The figure shown here has to be the one `/billing` advertised. That page
-  // reads `plan_prices`, so this one does too - a price set at /admin/billing
-  // before the Stripe keys were removed would otherwise quote two amounts.
-  const amountJpy = (await getPlanPrices())[planParam]?.amountJpy ?? plan.amountJpy;
+  const interval: BillingInterval =
+    intervalParam === "month" || intervalParam === "year"
+      ? intervalParam
+      : plan.billingInterval;
+  const amountJpy = planAmountFor(plan, interval);
 
   return (
     <div className="mx-auto flex w-full max-w-[480px] flex-col gap-5 py-4">
@@ -59,7 +59,9 @@ export default async function MockCheckoutPage(props: PageProps<"/billing/checko
             </div>
             <p className="font-serif text-2xl font-semibold text-ink">
               {formatJpy(amountJpy)}
-              <span className="text-[13px] font-normal text-ink-3"> / 月</span>
+              <span className="text-[13px] font-normal text-ink-3">
+                {" "}/ {formatBillingPeriod(interval)}
+              </span>
             </p>
           </div>
 

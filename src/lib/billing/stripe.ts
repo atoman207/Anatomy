@@ -43,6 +43,7 @@ export function stripeWebhookSecret(): string | null {
  */
 export function stripePriceIds(): Partial<Record<PlanId, string>> {
   return {
+    free: process.env.STRIPE_PRICE_FREE || undefined,
     pro: process.env.STRIPE_PRICE_PRO || undefined,
     team: process.env.STRIPE_PRICE_TEAM || undefined,
   };

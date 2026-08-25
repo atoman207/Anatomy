@@ -17,11 +17,21 @@ export interface ReviewerProfile {
   rubricNotes: string;
 }
 
-/** Seeded by supabase/migrations/all.sql; used again here as the fallback before that migration has run. */
+/**
+ * Seeded by supabase/migrations/all.sql; used again here as the fallback
+ * before that migration has run.
+ *
+ * Deliberately generic ("Researcher 1/2/3") rather than a real-sounding
+ * personal name, per customer feedback: a named persona reads as more
+ * authoritative than an AI reviewer's opinion should, whereas a plain
+ * numbered label matches how a journal itself refers to "Reviewer 1" /
+ * "Reviewer 2" in a real decision letter. Still admin-editable per role at
+ * /admin/peer-review for anyone who prefers named personas.
+ */
 export const DEFAULT_REVIEWER_NAMES: Record<ReviewerRole, string> = {
-  methods: "高橋 誠",
-  novelty: "藤井 彩",
-  structure: "中村 学",
+  methods: "Researcher 1",
+  novelty: "Researcher 2",
+  structure: "Researcher 3",
 };
 
 export function defaultReviewerProfiles(): Record<ReviewerRole, ReviewerProfile> {

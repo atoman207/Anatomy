@@ -66,6 +66,7 @@ export default async function BillingPage(props: PageProps<"/billing">) {
 
   const limits = entitlement.plan.limits;
   const rows: { label: string; used: number; limit: number | null }[] = [
+    { label: "研究室（オーナー）", used: owned.length, limit: limits.maxLabs },
     { label: "メンバー", used: usage.members, limit: limits.maxMembers },
     { label: "実験", used: usage.experiments, limit: limits.maxExperiments },
     { label: "データセット", used: usage.datasets, limit: limits.maxDatasets },
@@ -118,7 +119,7 @@ export default async function BillingPage(props: PageProps<"/billing">) {
           {entitlement.aiEnabled ? (
             <span className="text-good">利用できます</span>
           ) : (
-            <span className="text-warn">プロプラン以上で利用できます</span>
+            <span className="text-warn">有料プランのご契約が必要です</span>
           )}
         </p>
       </Card>

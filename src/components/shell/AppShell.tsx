@@ -27,12 +27,12 @@ import type { TodayResponse } from "@/app/api/notebook/today/route";
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   /*
-   * The landing page at `/` is the public front door. It carries its own
-   * header and footer, is full-bleed rather than capped at the content
-   * width, and is mostly seen by visitors with no session at all - so the
-   * signed-in chrome is skipped entirely rather than rendered empty.
+   * Public marketing pages carry their own SiteHeader / SiteFooter and are
+   * full-bleed rather than capped at the content width. They are mostly seen
+   * by visitors with no session - so the signed-in chrome is skipped entirely
+   * rather than rendered empty (or nested around the public chrome).
    */
-  const isLanding = pathname === "/";
+  const isPublicSite = isPublicSitePath(pathname);
   const { toast } = useToast();
   const [me, setMe] = useState<MeResponse | null>(null);
   const [notifications, setNotifications] = useState<NotificationsResponse | null>(null);
@@ -55,9 +55,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   // Identity and notifications, refreshed on navigation and on auth changes.
   useEffect(() => {
-    // Nothing on the landing page consumes either, and most of its traffic is
-    // signed out, so it should not cost two authenticated round trips.
-    if (isLanding) return;
+    // Nothing on public marketing pages consumes either, and most of their
+    // traffic is signed out, so they should not cost two authenticated round trips.
+    if (isPublicSite) return;
     let cancelled = false;
 
     const read = async () => {
@@ -113,7 +113,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       cancelled = true;
       unsubscribe?.();
     };
-  }, [pathname, toast, isLanding]);
+  }, [pathname, toast, isPublicSite]);
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -132,7 +132,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [collapsed]);
 
   // Declared after every hook above, so the hook order never changes.
-  if (isLanding) return <>{children}</>;
+  if (isPublicSite) return <>{children}</>;
 
   return (
     <div className="flex min-h-dvh bg-surface-0">
@@ -202,9 +202,16 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="mx-auto w-full max-w-[1280px]">{children}</div>
         </main>
         <footer className="border-t border-line px-4 py-3 text-center text-[12px] text-ink-3 sm:px-6">
-          保存するまで、データは外部へ送信されません。
+          © 2026 LABNOTE.
         </footer>
       </div>
     </div>
   );
+}
+
+/** Landing-site routes that own their own chrome (no sidebar / app header). */
+function isPublicSitePath(pathname: string): boolean {
+  if (pathname === "/") return true;
+  const publicRoots = ["/contact", "/help", "/terms", "/link-to-us", "/login", "/auth"];
+  return publicRoots.some((root) => pathname === root || pathname.startsWith(`${root}/`));
 }

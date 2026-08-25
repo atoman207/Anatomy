@@ -131,7 +131,7 @@ export type RawFileRow = {
   inferred_batch: string | null;
   inferred_order: number | null;
   issues: Json;
-  kind: "raw" | "report_preview" | "report_final";
+  kind: "raw" | "report_preview" | "report_final" | "figure" | "table" | "video" | "article";
   storage_path: string | null;
   mime_type: string | null;
   created_by: string | null;
@@ -364,7 +364,7 @@ export type PeerReviewCreditsRow = {
   updated_at: string;
 }
 
-export type PeerReviewCreditPackId = "single" | "ten" | "hundred";
+export type PeerReviewCreditPackId = "single" | "thirty" | "monthly";
 
 export type PeerReviewCreditPriceRow = {
   pack_id: PeerReviewCreditPackId;
@@ -373,6 +373,18 @@ export type PeerReviewCreditPriceRow = {
   stripe_price_id: string | null;
   updated_by: string | null;
   updated_at: string;
+}
+
+/* Public contact form - see supabase/migrations/all.sql (contact messages section). */
+
+export type ContactMessageRow = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  message: string;
+  submitted_by: string | null;
+  created_at: string;
 }
 
 /**
@@ -434,6 +446,7 @@ export type Database = {
       plan_prices: TableDef<PlanPriceRow, Insert<PlanPriceRow>>;
       peer_review_credits: TableDef<PeerReviewCreditsRow, Insert<PeerReviewCreditsRow>>;
       peer_review_credit_prices: TableDef<PeerReviewCreditPriceRow, Insert<PeerReviewCreditPriceRow>>;
+      contact_messages: TableDef<ContactMessageRow, Insert<ContactMessageRow>>;
     };
     Views: Record<string, never>;
     Functions: {

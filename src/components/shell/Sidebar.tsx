@@ -48,11 +48,14 @@ export function Sidebar({
   return (
     <div className="flex h-full flex-col bg-[var(--shell-bg)]">
       {/* Brand */}
-      <div
+      <Link
+        href="/"
+        onClick={onNavigate}
         className={cx(
-          "flex h-[var(--header-height)] shrink-0 items-center gap-2.5 border-b border-[var(--shell-border)]",
+          "flex h-[var(--header-height)] shrink-0 items-center gap-2.5 border-b border-[var(--shell-border)] transition-opacity hover:opacity-90",
           collapsed ? "justify-center px-2" : "px-4",
         )}
+        aria-label="ホームへ"
       >
         <Image
           src="/LOGO.png"
@@ -63,11 +66,11 @@ export function Sidebar({
           priority
         />
         {!collapsed && (
-          <p className="truncate text-[13px] font-semibold leading-tight text-[var(--shell-text)]">
-            研究データ管理
+          <p className="truncate text-[13px] font-semibold tracking-wide leading-tight text-[var(--shell-text)]">
+            LABNOTE.
           </p>
         )}
-      </div>
+      </Link>
 
       {/* Navigation */}
       <nav className="shell-scroll flex-1 overflow-y-auto px-2 py-3" aria-label="メインナビゲーション">
