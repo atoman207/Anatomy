@@ -39,6 +39,10 @@ export function ExperimentPicker({
   const [labs, setLabs] = useState<{ id: string; name: string }[]>([]);
   const [busy, setBusy] = useState(false);
 
+  function message(e: unknown): string {
+    return e instanceof Error ? e.message : "実験を作成できませんでした。";
+  }
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -163,7 +167,7 @@ export function ExperimentPicker({
       setCreating(false);
       toast("実験を作成しました。", { tone: "good" });
     } catch (e) {
-      toast(e instanceof Error ? e.message : "実験を作成できませんでした。", { tone: "danger" });
+      toast(message(e), { tone: "danger" });
     } finally {
       setBusy(false);
     }
@@ -246,6 +250,9 @@ export function ExperimentPicker({
             <Button type="button" size="sm" variant="ghost" onClick={() => setCreating(false)}>
               取消
             </Button>
+            <p className="basis-full text-[11px] text-ink-3">
+              研究室の作成者は複数作成できます。招待されたユーザーは研究室ごとに1件までです。
+            </p>
           </form>
         )}
 

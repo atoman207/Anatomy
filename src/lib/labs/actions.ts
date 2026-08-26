@@ -3,11 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import {
-  assertCanManageLab, assertIsLabOwner, getSessionContext, logAudit,
+  assertCanManageLab, assertCanWriteLab, assertIsLabOwner, getSessionContext, logAudit,
 } from "@/lib/auth/guards";
 import { getOwnerMaxLabs } from "@/lib/billing/subscription";
 import { formatUsage } from "@/lib/billing/plans";
-import { LAB_ROLES, LAB_ROLE_LABELS } from "@/lib/auth/roles";
+import { LAB_ROLES, LAB_ROLE_LABELS, canManageMembers } from "@/lib/auth/roles";
+import { ensureGeneralChannel } from "@/lib/chat/queries";
 import type { LabRole } from "@/lib/supabase/types";
 
 /**
@@ -120,6 +121,7 @@ export async function createLabAction(
       labId: lab.id, userId: ctx.user.id, action: "lab.created",
       entity: "laboratory", entityId: lab.id, detail: { name },
     });
+    await ensureGeneralChannel(lab.id, ctx.user.id);
 
     refreshLabsPages();
     return done(`研究室「${name}」を作成しました。あなたがオーナーです。`);
@@ -217,13 +219,15 @@ async function countLabContents(labId: string): Promise<Record<string, number>> 
 /* ------------------------------------------------------------------ */
 
 /**
- * Invites someone into a laboratory the caller owns or administers.
+ * Invites someone into a laboratory the caller is a member of.
  *
- * An email with an existing account is added directly. One with no account
- * gets a pending row in `lab_invites` plus a Supabase invitation email; the
- * pending row is what lets the auth callback finish the job automatically
- * the moment that person confirms their account, instead of requiring the
- * inviter to come back and add them a second time.
+ * Any non-viewer member may invite - not just the owner/admin - so a
+ * research team can grow itself without waiting on whoever happens to
+ * administer the lab. An email with an existing account is added directly.
+ * One with no account gets a pending row in `lab_invites` plus a Supabase
+ * invitation email; the pending row is what lets the auth callback finish
+ * the job automatically the moment that person confirms their account,
+ * instead of requiring the inviter to come back and add them a second time.
  */
 export async function inviteLabMemberAction(
   _prev: ActionResult | null,
@@ -240,7 +244,16 @@ export async function inviteLabMemberAction(
     if (role === "owner") {
       return fail("オーナー権限は譲渡でのみ付与できます。「オーナーの譲渡」を使用してください。");
     }
-    await assertCanManageLab(ctx, labId);
+    await assertCanWriteLab(ctx, labId);
+    // A plain member may invite, but only as member/viewer - granting admin
+    // outright would let a non-admin mint a peer admin, sidestepping the
+    // admin-only bar that changeLabMemberRoleAction enforces everywhere else.
+    if (role === "admin" && !ctx.isPlatformAdmin) {
+      const membership = ctx.memberships.find((m) => m.labId === labId);
+      if (!canManageMembers(membership?.role)) {
+        return fail("管理者として招待できるのは、研究室のオーナーまたは管理者のみです。");
+      }
+    }
 
     const admin = createAdminSupabase();
     const existing = await findUserByEmail(email);

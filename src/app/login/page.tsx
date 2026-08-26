@@ -76,8 +76,12 @@ function LoginForm() {
   const rawNext = params.get("next");
   const next =
     rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/dashboard";
+  const invite = params.get("invite") === "1";
+  const requestedMode = params.get("mode");
+  const initialMode: Mode =
+    requestedMode === "signup" || requestedMode === "forgot" ? requestedMode : "signin";
 
-  const [mode, setMode] = useState<Mode>("signin");
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [email, setEmail] = useState(params.get("email") ?? "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -119,7 +123,14 @@ function LoginForm() {
     if (shown.current) return;
     shown.current = true;
     if (signedOut) toast("ログアウトしました。", { tone: "good" });
-    if (registered) toast("アカウントを作成しました。ログイン後、料金・支払いから個人研究者プランをお選びください。", { tone: "good" });
+    if (registered) {
+      toast(
+        invite
+          ? "アカウントを作成しました。ログインすると招待された研究室に参加できます。"
+          : "アカウントを作成しました。ログイン後、料金・支払いから個人研究者プランをお選びください。",
+        { tone: "good" },
+      );
+    }
     if (linkError) toast(friendlyLinkError(linkError), { tone: "danger", title: "リンクを処理できません" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -172,7 +183,11 @@ function LoginForm() {
         setPassword("");
         setConfirmPassword("");
         setMode("signin");
-        router.replace(`/login?registered=1&email=${encodeURIComponent(email)}&next=${encodeURIComponent("/billing")}`);
+        const nextAfterSignup = invite ? next : "/billing";
+        const inviteFlag = invite ? "&invite=1" : "";
+        router.replace(
+          `/login?registered=1&email=${encodeURIComponent(email)}&next=${encodeURIComponent(nextAfterSignup)}${inviteFlag}`,
+        );
         return;
       }
 
@@ -210,8 +225,9 @@ function LoginForm() {
           <h1 className="font-serif text-2xl font-semibold text-ink">{heading}</h1>
           {mode === "signup" && (
             <p className="mt-2 text-[14px] leading-relaxed text-ink-2">
-              個人研究者プラン（年額約 ¥30,000）でのご利用を想定しています。
-              登録後、「料金・支払い」からお手続きください。
+              {invite
+                ? "招待された研究室に参加するためのアカウントを作成します。登録後にログインすると、自動的に研究室へ追加されます。"
+                : "個人研究者プラン（年額約 ¥30,000）でのご利用を想定しています。登録後、「料金・支払い」からお手続きください。"}
             </p>
           )}
         </header>

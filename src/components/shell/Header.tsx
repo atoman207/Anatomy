@@ -15,9 +15,12 @@ import {
   getClientNoticesServer,
   getReadIds,
   getReadIdsServer,
+  getDismissedIds,
+  getDismissedIdsServer,
   mergeNotices,
   countUnread,
   markNoticesRead,
+  dismissNotice,
 } from "./notificationStore";
 import type { MeResponse } from "@/app/api/me/route";
 import type { NotificationsResponse, Notice } from "@/app/api/notifications/route";
@@ -201,16 +204,20 @@ function NotificationBell({ notifications }: { notifications: NotificationsRespo
     getReadIds,
     getReadIdsServer,
   );
+  const dismissedIds = useSyncExternalStore(
+    subscribeNotifications,
+    getDismissedIds,
+    getDismissedIdsServer,
+  );
 
-  const notices = mergeNotices(notifications?.notices ?? [], clientNotices);
+  const notices = mergeNotices(notifications?.notices ?? [], clientNotices)
+    .filter((n) => !dismissedIds.has(n.id));
   const unread = countUnread(notices, readIds);
 
-  const close = () => {
-    // Closing the panel counts as reading everything currently listed, so the
-    // red badge clears after the user has had a chance to see the items.
-    markNoticesRead(notices.map((n) => n.id));
-    setOpen(false);
-  };
+  // Opening/closing the panel no longer touches read state - each notice is
+  // marked read individually when selected, so the badge counts down one at
+  // a time instead of the whole inbox clearing the moment the panel closes.
+  const close = () => setOpen(false);
 
   useEffect(() => {
     if (!open) return;
@@ -224,9 +231,7 @@ function NotificationBell({ notifications }: { notifications: NotificationsRespo
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
     };
-    // close closes over the current notice ids; re-bind when the list changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, notices]);
+  }, [open]);
 
   const toggleOpen = () => {
     if (open) close();
@@ -282,7 +287,9 @@ function NotificationBell({ notifications }: { notifications: NotificationsRespo
                     key={n.id}
                     notice={n}
                     unread={!readIds.has(n.id)}
+                    onSelect={() => markNoticesRead([n.id])}
                     onNavigate={close}
+                    onDismiss={() => dismissNotice(n.id)}
                   />
                 ))}
               </ul>
@@ -295,11 +302,14 @@ function NotificationBell({ notifications }: { notifications: NotificationsRespo
 }
 
 function NoticeRow({
-  notice, unread, onNavigate,
+  notice, unread, onSelect, onNavigate, onDismiss,
 }: {
   notice: Notice;
   unread: boolean;
+  /** Marks just this notice read - the badge counts down by one, not to zero. */
+  onSelect: () => void;
   onNavigate: () => void;
+  onDismiss: () => void;
 }) {
   const tone = {
     info: { dot: "bg-[var(--shell-text-faint)]", label: "情報" },
@@ -310,12 +320,15 @@ function NoticeRow({
 
   const inner = (
     <>
-      <span aria-hidden className={cx("mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full", tone.dot)} />
+      <span
+        aria-hidden
+        className={cx("mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full", unread ? "bg-[var(--danger)]" : tone.dot)}
+      />
       <span className="min-w-0 flex-1">
-        <span className="sr-only">{tone.label}: </span>
+        <span className="sr-only">{unread ? "未読" : tone.label}: </span>
         <span className={cx(
-          "block text-[12px] text-[var(--shell-text)]",
-          unread ? "font-semibold" : "font-medium",
+          "block text-[12px]",
+          unread ? "font-semibold text-[var(--danger)]" : "font-medium text-[var(--shell-text)]",
         )}>
           {notice.title}
         </span>
@@ -331,22 +344,49 @@ function NoticeRow({
     </>
   );
 
+  const deleteButton = (
+    <button
+      type="button"
+      aria-label="この通知を削除"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onDismiss();
+      }}
+      className="shrink-0 self-start rounded p-1 text-[var(--shell-text-faint)] transition-colors hover:bg-[var(--shell-hover)] hover:text-[var(--danger)]"
+    >
+      <Icon name="x" className="h-3.5 w-3.5" />
+    </button>
+  );
+
   return (
     <li className={cx(
       "border-b border-[var(--shell-border)] last:border-0",
-      unread && "bg-[var(--shell-hover)]/40",
+      unread && "bg-[var(--danger)]/5",
     )}>
-      {notice.href ? (
-        <Link
-          href={notice.href}
-          onClick={onNavigate}
-          className="flex gap-2.5 px-3 py-2.5 transition-colors hover:bg-[var(--shell-hover)]"
-        >
-          {inner}
-        </Link>
-      ) : (
-        <div className="flex gap-2.5 px-3 py-2.5">{inner}</div>
-      )}
+      <div className="flex items-start">
+        {notice.href ? (
+          <Link
+            href={notice.href}
+            onClick={() => {
+              onSelect();
+              onNavigate();
+            }}
+            className="flex flex-1 gap-2.5 px-3 py-2.5 transition-colors hover:bg-[var(--shell-hover)]"
+          >
+            {inner}
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={onSelect}
+            className="flex flex-1 gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-[var(--shell-hover)]"
+          >
+            {inner}
+          </button>
+        )}
+        <div className="flex items-center pr-2 pt-2.5">{deleteButton}</div>
+      </div>
     </li>
   );
 }
@@ -383,32 +423,15 @@ function UserButton({ me }: { me: MeResponse | null }) {
     );
   }
 
-  const initial = (me.displayName ?? me.email ?? "?").trim().charAt(0).toUpperCase();
-
   return (
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex items-center gap-2 rounded-lg py-1 pl-1 pr-2 transition-colors hover:bg-[var(--shell-hover)]"
+        className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-[var(--shell-hover)]"
       >
-        {me.avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- avatar sources are arbitrary user uploads, not app assets next/image can optimise
-          <img
-            src={me.avatarUrl}
-            alt=""
-            className="h-8 w-8 shrink-0 rounded-lg object-cover"
-          />
-        ) : (
-          <span
-            aria-hidden
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--shell-active-bg)] text-[13px] font-semibold text-[var(--shell-active-text)]"
-          >
-            {initial}
-          </span>
-        )}
-        <span className="hidden max-w-[9rem] truncate text-[13px] text-[var(--shell-text)] sm:block">
+        <span className="max-w-[9rem] truncate text-[13px] text-[var(--shell-text)]">
           {me.displayName}
         </span>
         <svg viewBox="0 0 24 24" aria-hidden className="h-3.5 w-3.5 text-[var(--shell-text-faint)]" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">

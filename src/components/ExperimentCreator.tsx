@@ -31,6 +31,10 @@ export function ExperimentCreator({ labs }: { labs: LabOption[] }) {
   const [operator, setOperator] = useState("");
   const [labId, setLabId] = useState(labs[0]?.id ?? "");
 
+  function message(e: unknown): string {
+    return e instanceof Error ? e.message : "実験を作成できませんでした。";
+  }
+
   async function createExperiment(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -52,7 +56,7 @@ export function ExperimentCreator({ labs }: { labs: LabOption[] }) {
       toast("実験を作成しました。", { tone: "good" });
       router.refresh();
     } catch (e) {
-      toast(e instanceof Error ? e.message : "実験を作成できませんでした。", { tone: "danger" });
+      toast(message(e), { tone: "danger" });
     } finally {
       setBusy(false);
     }
@@ -65,7 +69,7 @@ export function ExperimentCreator({ labs }: { labs: LabOption[] }) {
           研究室の作成はシステム管理者のみが行えます。管理者に依頼して研究室に追加してもらってください。
         </EmptyState>
       ) : (
-        <Card title="実験を作成">
+        <Card title="実験を作成" subtitle="研究室の作成者は複数作成できます。招待されたユーザーは研究室ごとに1件までです。">
           <form onSubmit={createExperiment} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 lg:items-end">
             <Field label="研究室">
               <Select value={labId} onChange={(e) => setLabId(e.target.value)}>

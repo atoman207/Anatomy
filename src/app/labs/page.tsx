@@ -7,9 +7,10 @@ import { LabSelector } from "@/components/labs/LabSelector";
 import { ExperimentCreator, type LabOption } from "@/components/ExperimentCreator";
 import { requireUser } from "@/lib/auth/guards";
 import { createAdminSupabase, createServerSupabase } from "@/lib/supabase/server";
-import { LAB_ROLE_LABELS, canManageMembers } from "@/lib/auth/roles";
+import { LAB_ROLE_LABELS, canManageMembers, canWrite } from "@/lib/auth/roles";
 import type { ExperimentStatus, LabRole } from "@/lib/supabase/types";
 import { ActionForm, InlineActionForm } from "@/components/admin/ActionForm";
+import { InviteEmailInput } from "@/components/admin/InviteEmailInput";
 import {
   cancelLabInviteAction,
   changeLabMemberRoleAction,
@@ -167,6 +168,7 @@ export default async function LabsPage(props: PageProps<"/labs">) {
 
   const inProgress = experiments.filter((e) => e.status === "in_progress");
   const canManage = selected ? canManageMembers(selected.role) : false;
+  const canInvite = selected ? canWrite(selected.role) : false;
   const labForCreator: LabOption[] = selected
     ? [{ id: selected.labId, name: selected.labName, description: selected.labDescription, role: selected.role }]
     : [];
@@ -204,6 +206,7 @@ export default async function LabsPage(props: PageProps<"/labs">) {
                 id: s.labId,
                 name: s.labName,
                 experimentCount: s.experimentCount,
+                isOwner: s.role === "owner",
               }))}
               current={selected!.labId}
             />
@@ -311,13 +314,13 @@ export default async function LabsPage(props: PageProps<"/labs">) {
                 />
               </Card>
 
-              {canManage && (
+              {canInvite && (
                 <Card
-                  title="管理"
-                  subtitle="メンバーの招待・権限・研究室の設定を行います。"
+                  title="メンバーを招待"
+                  subtitle="この研究室のメンバーなら誰でも、新しい仲間を招待できます。"
                 >
                   <div className="flex flex-col gap-6">
-                    {invites.length > 0 && (
+                    {canManage && invites.length > 0 && (
                       <div>
                         <h3 className="mb-2 text-xs font-semibold text-ink-2">招待中（{invites.length} 件）</h3>
                         <DataTable
@@ -339,7 +342,6 @@ export default async function LabsPage(props: PageProps<"/labs">) {
                     )}
 
                     <div>
-                      <h3 className="mb-2 text-xs font-semibold text-ink-2">メンバーを招待</h3>
                       <ActionForm
                         action={inviteLabMemberAction}
                         hidden={{ lab_id: selected.labId }}
@@ -348,11 +350,11 @@ export default async function LabsPage(props: PageProps<"/labs">) {
                       >
                         <div className="grid gap-3 sm:grid-cols-2">
                           <Field label="メールアドレス" hint="アカウントがない場合は招待メールを送ります。">
-                            <TextInput name="email" type="email" required />
+                            <InviteEmailInput name="email" />
                           </Field>
                           <Field label="権限" hint="実験・データセット・ノートブックの作成・編集。">
                             <Select name="role" defaultValue="member">
-                              {(["admin", "member", "viewer"] as LabRole[]).map((r) => (
+                              {(canManage ? (["admin", "member", "viewer"] as LabRole[]) : (["member", "viewer"] as LabRole[])).map((r) => (
                                 <option key={r} value={r}>{LAB_ROLE_LABELS[r].ja}</option>
                               ))}
                             </Select>
@@ -360,7 +362,16 @@ export default async function LabsPage(props: PageProps<"/labs">) {
                         </div>
                       </ActionForm>
                     </div>
+                  </div>
+                </Card>
+              )}
 
+              {canManage && (
+                <Card
+                  title="管理"
+                  subtitle="権限・研究室の設定を行います。"
+                >
+                  <div className="flex flex-col gap-6">
                     <div>
                       <h3 className="mb-2 text-xs font-semibold text-ink-2">研究室の設定</h3>
                       <ActionForm

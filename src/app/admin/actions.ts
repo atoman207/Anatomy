@@ -6,6 +6,7 @@ import {
   assertCanManageLab, assertIsLabOwner, getSessionContext, logAudit,
 } from "@/lib/auth/guards";
 import { LAB_ROLES, LAB_ROLE_LABELS, PLATFORM_ROLES, PLATFORM_ROLE_LABELS } from "@/lib/auth/roles";
+import { sendMail } from "@/lib/email/smtp";
 import type { LabRole, PlatformRole } from "@/lib/supabase/types";
 
 export interface ActionResult {
@@ -39,6 +40,20 @@ function parseRole(value: FormDataEntryValue | null): LabRole | null {
 
 function normalizeEmail(value: FormDataEntryValue | null): string {
   return String(value ?? "").trim().toLowerCase();
+}
+
+function siteOrigin(): string {
+  return process.env.NEXT_PUBLIC_SITE_URL ?? "";
+}
+
+function invitedSignupPath(email: string): string {
+  const params = new URLSearchParams({
+    mode: "signup",
+    invite: "1",
+    email,
+    next: "/labs",
+  });
+  return `/login?${params.toString()}`;
 }
 
 /** Finds an auth user by email, paging until found. */
@@ -82,17 +97,47 @@ export async function addMemberAction(
     const existing = await findUserByEmail(email);
 
     if (!existing) {
-      // No account yet: send a Supabase invitation so the person can set a
-      // password, then add them once they accept. Storing a pending row here
-      // would need a schema change; an invite email is the honest alternative.
-      const site = process.env.NEXT_PUBLIC_SITE_URL ?? "";
-      const { error } = await admin.auth.admin.inviteUserByEmail(email, {
-        redirectTo: site ? `${site}/auth/callback?next=/experiments` : undefined,
+      // No account yet: keep a pending invite so creating an account from the
+      // emailed sign-up link can immediately attach the new user to the lab.
+      const { data: pending } = await admin
+        .from("lab_invites")
+        .select("id")
+        .eq("lab_id", labId)
+        .eq("email", email)
+        .is("accepted_at", null)
+        .maybeSingle();
+
+      if (pending) {
+        const { error: updateError } = await admin
+          .from("lab_invites")
+          .update({ role, invited_by: ctx.user.id })
+          .eq("id", pending.id);
+        if (updateError) return fail(updateError.message);
+      } else {
+        const { error: insertError } = await admin
+          .from("lab_invites")
+          .insert({ lab_id: labId, email, role, invited_by: ctx.user.id });
+        if (insertError) return fail(insertError.message);
+      }
+
+      const site = siteOrigin();
+      const signupUrl = site ? `${site}${invitedSignupPath(email)}` : "";
+      const emailResult = await sendMail({
+        to: email,
+        subject: "研究室への招待が届いています",
+        text: [
+          "研究室へ招待されました。",
+          "",
+          "以下のリンクからアカウントを作成してください。",
+          signupUrl || "サイトURLが未設定のため、管理者にお問い合わせください。",
+          "",
+          "登録が完了すると、招待された研究室に自動的に参加します。",
+        ].join("\n"),
       });
-      if (error) {
+      if (!emailResult.ok) {
         return fail(
-          `${email} のアカウントは存在せず、招待メールも送信できませんでした: ${error.message}。` +
-            "先にサインアップしてもらい、ここから追加してください。",
+          `${email} 宛の招待は保存しましたが、招待メールを送信できませんでした: ${emailResult.error}。` +
+            "SMTP設定を確認してください。登録が完了すれば研究室には自動追加されます。",
         );
       }
       await logAudit({
@@ -100,7 +145,7 @@ export async function addMemberAction(
         entity: "lab_member", detail: { email, role },
       });
       return done(
-        `${email} に招待メールを送信しました。サインアップ後、研究室に追加してください。`,
+        `${email} に招待メールを送信しました。登録が完了すると自動的に研究室へ追加されます。`,
       );
     }
 

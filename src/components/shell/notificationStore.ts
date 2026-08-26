@@ -5,13 +5,16 @@
  * Every toast is also recorded here so the bell dropdown is a complete history
  * of what the user was told — not only what the API knows about.
  *
- * Read state is local: opening the panel marks the current set as seen.
+ * Read and dismissed state are both local (localStorage) and both per-item:
+ * selecting one notice marks only that one read, and deleting one notice
+ * only removes that one - there is no "mark all read" or "clear all".
  */
 
 import type { Notice, NoticeTone } from "@/app/api/notifications/route";
 
 const NOTICES_KEY = "chondro.notifications";
 const READ_KEY = "chondro.notifications.read";
+const DISMISSED_KEY = "chondro.notifications.dismissed";
 const MAX_STORED = 50;
 
 export type ToastNoticeInput = {
@@ -23,6 +26,7 @@ export type ToastNoticeInput = {
 
 let clientNotices: Notice[] = [];
 let readIds = new Set<string>();
+let dismissedIds = new Set<string>();
 let hydrated = false;
 const listeners = new Set<() => void>();
 
@@ -49,6 +53,14 @@ function persistRead(): void {
   }
 }
 
+function persistDismissed(): void {
+  try {
+    localStorage.setItem(DISMISSED_KEY, JSON.stringify([...dismissedIds]));
+  } catch {
+    // Same as above.
+  }
+}
+
 function hydrate(): void {
   if (hydrated || typeof window === "undefined") return;
   hydrated = true;
@@ -69,6 +81,15 @@ function hydrate(): void {
     }
   } catch {
     readIds = new Set();
+  }
+  try {
+    const raw = localStorage.getItem(DISMISSED_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as string[];
+      if (Array.isArray(parsed)) dismissedIds = new Set(parsed);
+    }
+  } catch {
+    dismissedIds = new Set();
   }
 }
 
@@ -95,6 +116,15 @@ export function getReadIds(): ReadonlySet<string> {
 }
 
 export function getReadIdsServer(): ReadonlySet<string> {
+  return EMPTY_READ;
+}
+
+export function getDismissedIds(): ReadonlySet<string> {
+  hydrate();
+  return dismissedIds;
+}
+
+export function getDismissedIdsServer(): ReadonlySet<string> {
   return EMPTY_READ;
 }
 
@@ -134,7 +164,13 @@ export function countUnread(notices: Notice[], read: ReadonlySet<string>): numbe
   return notices.filter((n) => !read.has(n.id)).length;
 }
 
-/** Mark every currently listed notice as read (typical "opened the panel" UX). */
+/**
+ * Marks the given notice ids as read.
+ *
+ * Called with a single id when the user selects one notice - the unread
+ * badge counts down one at a time as items are individually opened, rather
+ * than the whole inbox clearing at once when the panel closes.
+ */
 export function markNoticesRead(ids: string[]): void {
   hydrate();
   let changed = false;
@@ -155,5 +191,22 @@ export function clearClientNotices(): void {
   hydrate();
   clientNotices = [];
   persistNotices();
+  emit();
+}
+
+/**
+ * Removes one notice, permanently, from this account's inbox.
+ *
+ * There is no bulk "clear all" - notices (including server-derived ones
+ * like audit-log entries, which cannot be deleted from the browser) are
+ * dismissed one at a time, each remembered by id so it does not reappear
+ * on the next /api/notifications poll as long as the underlying event's id
+ * stays the same.
+ */
+export function dismissNotice(id: string): void {
+  hydrate();
+  if (dismissedIds.has(id)) return;
+  dismissedIds = new Set(dismissedIds).add(id);
+  persistDismissed();
   emit();
 }

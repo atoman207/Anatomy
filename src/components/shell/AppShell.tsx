@@ -33,6 +33,9 @@ export function AppShell({ children }: { children: ReactNode }) {
    * rather than rendered empty (or nested around the public chrome).
    */
   const isPublicSite = isPublicSitePath(pathname);
+  // Chat used to render its own full-bleed frame outside this chrome; it
+  // now lives inside the normal header/sidebar like every other page, so
+  // there is no separate chromeless branch for it any more.
   const { toast } = useToast();
   const [me, setMe] = useState<MeResponse | null>(null);
   const [notifications, setNotifications] = useState<NotificationsResponse | null>(null);

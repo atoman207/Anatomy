@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase, isSupabaseConfigured } from "@/lib/supabase/server";
+import { acceptPendingLabInvites } from "@/lib/labs/actions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -79,6 +80,10 @@ export async function POST(request: Request) {
       // save experiments or notes - give them a personal workspace immediately.
       const { ensurePersonalLab } = await import("@/lib/labs/personalLab");
       await ensurePersonalLab(userId, displayName);
+
+      // If this address was invited into one or more laboratories before the
+      // account existed, join them immediately after registration.
+      await acceptPendingLabInvites(userId, email);
     }
 
     return NextResponse.json({ ok: true });

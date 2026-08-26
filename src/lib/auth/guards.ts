@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { createServerSupabase, createAdminSupabase, isSupabaseConfigured } from "@/lib/supabase/server";
 import type { LabRole, PlatformRole } from "@/lib/supabase/types";
-import { canManageMembers, resolvePlatformRole } from "./roles";
+import { canManageMembers, canWrite, resolvePlatformRole } from "./roles";
 
 export interface LabMembership {
   labId: string;
@@ -182,6 +182,25 @@ export async function assertCanManageLab(
   const membership = ctx.memberships.find((m) => m.labId === labId);
   if (!canManageMembers(membership?.role)) {
     throw new Error("この研究室を管理する権限がありません。");
+  }
+}
+
+/**
+ * Authoritative check that a user may write to a specific laboratory - any
+ * member (owner/admin/member), just not a read-only viewer. Platform admins
+ * pass for any lab. Used for actions that any regular member should be able
+ * to do, like inviting a colleague or posting a chat message, as opposed to
+ * `assertCanManageLab`'s admin-or-above bar for actually administering the
+ * lab's membership and settings.
+ */
+export async function assertCanWriteLab(
+  ctx: SessionContext,
+  labId: string,
+): Promise<void> {
+  if (ctx.isPlatformAdmin) return;
+  const membership = ctx.memberships.find((m) => m.labId === labId);
+  if (!canWrite(membership?.role)) {
+    throw new Error("この研究室に書き込む権限がありません。");
   }
 }
 

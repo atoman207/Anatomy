@@ -109,6 +109,137 @@ export async function GET() {
     });
   }
 
+  // --- this account itself was added to (or accepted an invite into) a lab ---
+  //
+  // Distinct from the admin-activity block below: that one only runs for
+  // users who administer a lab, so a plain member/viewer who was just
+  // invited somewhere would otherwise never be told about it at all. This
+  // runs for every signed-in user and looks for audit rows where *this*
+  // account is the one that got added (entity_id = ctx.user.id), not rows
+  // about labs it happens to administer.
+  try {
+    const admin = createAdminSupabase();
+    const { data: joinLogs } = await admin
+      .from("audit_logs")
+      .select("id, action, created_at, lab_id, user_id")
+      .eq("entity", "lab_member")
+      .eq("entity_id", ctx.user.id)
+      .in("action", ["member.added", "member.invite_accepted"])
+      .order("created_at", { ascending: false })
+      .limit(5);
+
+    const actorIds = [
+      ...new Set(
+        (joinLogs ?? [])
+          .map((l) => l.user_id)
+          .filter((id): id is string => !!id && id !== ctx.user.id),
+      ),
+    ];
+    const { data: actorProfiles } = actorIds.length
+      ? await admin.from("profiles").select("id, display_name, email").in("id", actorIds)
+      : { data: [] as { id: string; display_name: string | null; email: string | null }[] };
+    const actorNameById = new Map(
+      (actorProfiles ?? []).map((p) => [p.id, p.display_name || p.email || "不明"]),
+    );
+    // ctx.memberships already carries the name of every lab this account is
+    // currently in - since a join notice implies current membership, this
+    // covers it without a second query.
+    const labNameById = new Map(ctx.memberships.map((m) => [m.labId, m.labName]));
+
+    for (const log of joinLogs ?? []) {
+      if (!log.lab_id) continue;
+      const labName = labNameById.get(log.lab_id) ?? "研究室";
+      const invitedBySomeoneElse = !!log.user_id && log.user_id !== ctx.user.id;
+      notices.push({
+        id: `joined-${log.id}`,
+        tone: "good",
+        title: `「${labName}」に招待されました`,
+        detail: invitedBySomeoneElse
+          ? `${actorNameById.get(log.user_id!) ?? "不明"} さんが追加しました`
+          : "メンバーとして参加しました",
+        at: log.created_at,
+        href: `/labs?lab=${log.lab_id}`,
+      });
+    }
+  } catch {
+    // Notifications are supplementary; never fail the shell over them.
+  }
+
+  // --- recent chat messages sent to this account (channels/DMs it's part of) ---
+  try {
+    const admin = createAdminSupabase();
+    const labIds = ctx.memberships.map((m) => m.labId);
+
+    const [{ data: myChannels }, { data: myDms }] = await Promise.all([
+      labIds.length
+        ? admin.from("channels").select("id, name, lab_id").in("lab_id", labIds)
+        : Promise.resolve({ data: [] as { id: string; name: string; lab_id: string }[] }),
+      admin
+        .from("dm_conversations")
+        .select("id, lab_id, user_a, user_b")
+        .or(`user_a.eq.${ctx.user.id},user_b.eq.${ctx.user.id}`),
+    ]);
+
+    const channelIds = (myChannels ?? []).map((c) => c.id);
+    const dmIds = (myDms ?? []).map((d) => d.id);
+    const orParts: string[] = [];
+    if (channelIds.length) orParts.push(`channel_id.in.(${channelIds.join(",")})`);
+    if (dmIds.length) orParts.push(`dm_conversation_id.in.(${dmIds.join(",")})`);
+
+    if (orParts.length > 0) {
+      const { data: msgs } = await admin
+        .from("messages")
+        .select("id, channel_id, dm_conversation_id, sender_id, body, created_at")
+        .neq("sender_id", ctx.user.id)
+        .is("deleted_at", null)
+        .or(orParts.join(","))
+        .order("created_at", { ascending: false })
+        .limit(8);
+
+      const senderIds = [
+        ...new Set((msgs ?? []).map((m) => m.sender_id).filter((id): id is string => !!id)),
+      ];
+      const { data: senderProfiles } = senderIds.length
+        ? await admin.from("profiles").select("id, display_name, email").in("id", senderIds)
+        : { data: [] as { id: string; display_name: string | null; email: string | null }[] };
+      const senderNameById = new Map(
+        (senderProfiles ?? []).map((p) => [p.id, p.display_name || p.email || "不明"]),
+      );
+      const channelById = new Map((myChannels ?? []).map((c) => [c.id, c]));
+      const dmById = new Map((myDms ?? []).map((d) => [d.id, d]));
+
+      for (const m of msgs ?? []) {
+        const senderName = m.sender_id ? senderNameById.get(m.sender_id) ?? "不明" : "不明";
+        const preview = (m.body ?? "").trim().slice(0, 60) || "（添付ファイル）";
+
+        let title: string;
+        let href: string;
+        if (m.channel_id) {
+          const channel = channelById.get(m.channel_id);
+          title = `# ${channel?.name ?? "チャンネル"} に新着メッセージ`;
+          href = channel ? `/chat/${channel.lab_id}/c/${m.channel_id}` : "/chat";
+        } else if (m.dm_conversation_id) {
+          const dm = dmById.get(m.dm_conversation_id);
+          title = `${senderName} さんからメッセージ`;
+          href = dm && m.sender_id ? `/chat/${dm.lab_id}/dm/${m.sender_id}` : "/chat";
+        } else {
+          continue;
+        }
+
+        notices.push({
+          id: `message-${m.id}`,
+          tone: "info",
+          title,
+          detail: `${senderName}: ${preview}`,
+          at: m.created_at,
+          href,
+        });
+      }
+    }
+  } catch {
+    // Notifications are supplementary; never fail the shell over them.
+  }
+
   // --- recent administrative activity in labs this user administers ---
   if (ctx.canAccessAdmin) {
     try {

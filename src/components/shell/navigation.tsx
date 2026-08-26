@@ -64,6 +64,11 @@ const icons = {
       <path d="M17 20a6 6 0 0 0-2-4.5" />
     </Icon>
   ),
+  chat: (
+    <Icon>
+      <path d="M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-4.3 3.6A.5.5 0 0 1 4 19.2z" />
+    </Icon>
+  ),
   dashboard: (
     <Icon>
       <rect x="3" y="3" width="7" height="7" rx="1.5" />
@@ -202,6 +207,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/dashboard", label: "ダッシュボード", icon: icons.dashboard, exact: true },
       { href: "/labs", label: "研究室", icon: icons.team, authOnly: true },
+      { href: "/chat", label: "チャット", icon: icons.chat, authOnly: true },
     ],
   },
   {

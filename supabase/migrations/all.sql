@@ -2030,3 +2030,801 @@ grant execute on function public.admin_active_session_user_ids() to service_role
 -- Reloads PostgREST so the new function is callable via RPC immediately.
 notify pgrst, 'reload schema';
 
+-- ============================================================================
+-- Lab chat: channels, DMs, messages, calls
+-- Safe to re-run.
+--
+-- Channels are public within their lab (any member can see/post, matching
+-- how every other lab-scoped table already works) - there is no separate
+-- channel_members table. Only the lab owner may create a channel. DMs are a
+-- private pair scoped to one lab, since the whole feature nests under
+-- "labs" rather than being a cross-lab global inbox.
+-- ============================================================================
+
+create table if not exists public.channels (
+  id          uuid primary key default gen_random_uuid(),
+  lab_id      uuid not null references public.laboratories (id) on delete cascade,
+  name        text not null,
+  topic       text,
+  created_by  uuid references auth.users (id) on delete set null,
+  archived_at timestamptz,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  unique (lab_id, name)
+);
+create index if not exists channels_lab_idx on public.channels (lab_id);
+
+create table if not exists public.dm_conversations (
+  id         uuid primary key default gen_random_uuid(),
+  lab_id     uuid not null references public.laboratories (id) on delete cascade,
+  user_a     uuid not null references auth.users (id) on delete cascade,
+  user_b     uuid not null references auth.users (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  check (user_a < user_b),
+  unique (lab_id, user_a, user_b)
+);
+create index if not exists dm_conversations_lab_idx on public.dm_conversations (lab_id);
+
+create table if not exists public.messages (
+  id                 uuid primary key default gen_random_uuid(),
+  -- Denormalized from channel/dm_conversation so RLS and indexes on this,
+  -- the highest-volume table in the feature, never need a join.
+  lab_id             uuid not null references public.laboratories (id) on delete cascade,
+  channel_id         uuid references public.channels (id) on delete cascade,
+  dm_conversation_id uuid references public.dm_conversations (id) on delete cascade,
+  sender_id          uuid references auth.users (id) on delete set null,
+  body               text,
+  attachment_path    text,
+  attachment_name    text,
+  attachment_mime    text,
+  edited_at          timestamptz,
+  -- Soft delete: keep the row, blank the body, so a deleted message renders
+  -- as a "message deleted" placeholder the way Slack's does rather than
+  -- leaving a gap in the thread.
+  deleted_at         timestamptz,
+  created_at         timestamptz not null default now(),
+  check (
+    (channel_id is not null and dm_conversation_id is null) or
+    (channel_id is null and dm_conversation_id is not null)
+  ),
+  check (body is not null or attachment_path is not null)
+);
+create index if not exists messages_channel_idx on public.messages (channel_id, created_at);
+create index if not exists messages_dm_idx on public.messages (dm_conversation_id, created_at);
+
+create table if not exists public.calls (
+  id                 uuid primary key default gen_random_uuid(),
+  lab_id             uuid not null references public.laboratories (id) on delete cascade,
+  channel_id         uuid references public.channels (id) on delete cascade,
+  dm_conversation_id uuid references public.dm_conversations (id) on delete cascade,
+  kind               text not null check (kind in ('audio', 'video')),
+  started_by         uuid references auth.users (id) on delete set null,
+  started_at         timestamptz not null default now(),
+  ended_at           timestamptz,
+  check (
+    (channel_id is not null and dm_conversation_id is null) or
+    (channel_id is null and dm_conversation_id is not null)
+  )
+);
+create index if not exists calls_channel_active_idx on public.calls (channel_id) where ended_at is null;
+create index if not exists calls_dm_active_idx on public.calls (dm_conversation_id) where ended_at is null;
+
+create table if not exists public.call_participants (
+  call_id   uuid not null references public.calls (id) on delete cascade,
+  user_id   uuid not null references auth.users (id) on delete cascade,
+  joined_at timestamptz not null default now(),
+  left_at   timestamptz,
+  primary key (call_id, user_id)
+);
+
+-- touch_updated_at() already exists (see the Identity section near the top
+-- of this file) - channels is the only new table with an updated_at column.
+drop trigger if exists channels_touch_updated_at on public.channels;
+create trigger channels_touch_updated_at
+  before update on public.channels
+  for each row execute function public.touch_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- RLS helper functions - same shape as is_lab_member/can_write_lab/
+-- is_lab_admin above (language sql stable security definer).
+-- ---------------------------------------------------------------------------
+
+create or replace function public.is_lab_owner(target_lab uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.lab_members m
+    where m.lab_id = target_lab and m.user_id = auth.uid() and m.role = 'owner'
+  );
+$$;
+
+create or replace function public.is_dm_participant(target_dm uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.dm_conversations d
+    where d.id = target_dm and auth.uid() in (d.user_a, d.user_b)
+  );
+$$;
+
+-- Thin wrappers so the storage policy below (keyed on a channel/dm id, not a
+-- lab id directly) can compose with is_lab_member/can_write_lab.
+create or replace function public.is_channel_member(target_channel uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.channels c
+    where c.id = target_channel and public.is_lab_member(c.lab_id)
+  );
+$$;
+
+create or replace function public.can_write_channel(target_channel uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.channels c
+    where c.id = target_channel and public.can_write_lab(c.lab_id)
+  );
+$$;
+
+-- ---------------------------------------------------------------------------
+-- RLS
+-- ---------------------------------------------------------------------------
+
+alter table public.channels enable row level security;
+drop policy if exists channels_select on public.channels;
+create policy channels_select on public.channels
+  for select using (public.is_lab_member(lab_id));
+drop policy if exists channels_insert on public.channels;
+create policy channels_insert on public.channels
+  for insert with check (public.is_lab_owner(lab_id));
+drop policy if exists channels_update on public.channels;
+create policy channels_update on public.channels
+  for update using (public.is_lab_admin(lab_id));
+drop policy if exists channels_delete on public.channels;
+create policy channels_delete on public.channels
+  for delete using (public.is_lab_admin(lab_id));
+
+alter table public.dm_conversations enable row level security;
+drop policy if exists dm_conversations_select on public.dm_conversations;
+create policy dm_conversations_select on public.dm_conversations
+  for select using (auth.uid() in (user_a, user_b));
+drop policy if exists dm_conversations_insert on public.dm_conversations;
+create policy dm_conversations_insert on public.dm_conversations
+  for insert with check (
+    auth.uid() in (user_a, user_b)
+    and public.is_lab_member(lab_id)
+    and exists (
+      select 1 from public.lab_members m
+      where m.lab_id = dm_conversations.lab_id
+        and m.user_id = case when user_a = auth.uid() then user_b else user_a end
+    )
+  );
+-- No update/delete policy - a DM conversation is permanent once created,
+-- same posture as lab_invites' append-only rows.
+
+alter table public.messages enable row level security;
+drop policy if exists messages_select on public.messages;
+create policy messages_select on public.messages
+  for select using (
+    (channel_id is not null and public.is_lab_member(lab_id))
+    or (dm_conversation_id is not null and public.is_dm_participant(dm_conversation_id))
+  );
+drop policy if exists messages_insert on public.messages;
+create policy messages_insert on public.messages
+  for insert with check (
+    sender_id = auth.uid()
+    and (
+      (channel_id is not null and public.can_write_lab(lab_id))
+      or (dm_conversation_id is not null and public.is_dm_participant(dm_conversation_id))
+    )
+  );
+drop policy if exists messages_update on public.messages;
+create policy messages_update on public.messages
+  for update using (sender_id = auth.uid());
+drop policy if exists messages_delete on public.messages;
+create policy messages_delete on public.messages
+  for delete using (sender_id = auth.uid());
+
+alter table public.calls enable row level security;
+drop policy if exists calls_select on public.calls;
+create policy calls_select on public.calls
+  for select using (
+    (channel_id is not null and public.is_lab_member(lab_id))
+    or (dm_conversation_id is not null and public.is_dm_participant(dm_conversation_id))
+  );
+drop policy if exists calls_insert on public.calls;
+create policy calls_insert on public.calls
+  for insert with check (
+    started_by = auth.uid()
+    and (
+      (channel_id is not null and public.can_write_lab(lab_id))
+      or (dm_conversation_id is not null and public.is_dm_participant(dm_conversation_id))
+    )
+  );
+drop policy if exists calls_update on public.calls;
+create policy calls_update on public.calls
+  for update using (
+    started_by = auth.uid()
+    or exists (
+      select 1 from public.call_participants cp
+      where cp.call_id = calls.id and cp.user_id = auth.uid()
+    )
+  );
+
+alter table public.call_participants enable row level security;
+drop policy if exists call_participants_select on public.call_participants;
+create policy call_participants_select on public.call_participants
+  for select using (
+    exists (
+      select 1 from public.calls c
+      where c.id = call_id
+        and (
+          (c.channel_id is not null and public.is_lab_member(c.lab_id))
+          or (c.dm_conversation_id is not null and public.is_dm_participant(c.dm_conversation_id))
+        )
+    )
+  );
+drop policy if exists call_participants_insert on public.call_participants;
+create policy call_participants_insert on public.call_participants
+  for insert with check (
+    user_id = auth.uid()
+    and exists (
+      select 1 from public.calls c
+      where c.id = call_id
+        and (
+          (c.channel_id is not null and public.is_lab_member(c.lab_id))
+          or (c.dm_conversation_id is not null and public.is_dm_participant(c.dm_conversation_id))
+        )
+    )
+  );
+drop policy if exists call_participants_update on public.call_participants;
+create policy call_participants_update on public.call_participants
+  for update using (user_id = auth.uid());
+
+-- Durable message delivery goes over Postgres Changes; call state is
+-- ephemeral (Broadcast/Presence only) and deliberately left off this
+-- publication. Enabling Realtime on a table needs BOTH publication
+-- membership (this line) AND a select policy Realtime's authorizer can
+-- evaluate (messages_select above already provides it).
+-- `alter publication ... add table` errors if the table is already a
+-- member, so this checks pg_publication_tables first to stay re-runnable.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'messages'
+  ) then
+    alter publication supabase_realtime add table public.messages;
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- Default "general" channel for every lab, existing and future. New labs
+-- get one from createLabAction/ensurePersonalLab at creation time; this
+-- backfills labs that already exist.
+-- ---------------------------------------------------------------------------
+
+insert into public.channels (lab_id, name, created_by)
+select l.id, 'general', l.owner_id
+from public.laboratories l
+where not exists (select 1 from public.channels c where c.lab_id = l.id)
+on conflict (lab_id, name) do nothing;
+
+-- ---------------------------------------------------------------------------
+-- chat-attachments storage bucket
+--
+-- Path convention: {lab_id}/{channel_id_or_dm_conversation_id}/{filename},
+-- same shape as the submission-files bucket. Unlike that bucket, the policy
+-- here checks BOTH path segments, not just the lab-id one: a DM's messages
+-- row is correctly locked to its two participants via is_dm_participant,
+-- but if the storage policy only checked the lab segment, any lab member
+-- could read another pair's DM attachments by guessing the conversation-id
+-- folder. Checking the second segment against either "is a channel of this
+-- lab" or "is a DM I'm part of" keeps the file layer as private as the row
+-- layer.
+-- ---------------------------------------------------------------------------
+
+insert into storage.buckets (id, name, public)
+values ('chat-attachments', 'chat-attachments', false)
+on conflict (id) do nothing;
+
+drop policy if exists chat_attachments_select on storage.objects;
+create policy chat_attachments_select on storage.objects for select using (
+  bucket_id = 'chat-attachments'
+  and public.is_lab_member(((storage.foldername(name))[1])::uuid)
+  and (
+    public.is_channel_member(((storage.foldername(name))[2])::uuid)
+    or public.is_dm_participant(((storage.foldername(name))[2])::uuid)
+  )
+);
+drop policy if exists chat_attachments_insert on storage.objects;
+create policy chat_attachments_insert on storage.objects for insert with check (
+  bucket_id = 'chat-attachments'
+  and public.can_write_lab(((storage.foldername(name))[1])::uuid)
+  and (
+    public.can_write_channel(((storage.foldername(name))[2])::uuid)
+    or public.is_dm_participant(((storage.foldername(name))[2])::uuid)
+  )
+);
+drop policy if exists chat_attachments_delete on storage.objects;
+create policy chat_attachments_delete on storage.objects for delete using (
+  bucket_id = 'chat-attachments'
+  and public.can_write_lab(((storage.foldername(name))[1])::uuid)
+  and (
+    public.can_write_channel(((storage.foldername(name))[2])::uuid)
+    or public.is_dm_participant(((storage.foldername(name))[2])::uuid)
+  )
+);
+
+-- ============================================================================
+-- Experiment ownership + invited-user limit
+-- ============================================================================
+--
+-- The laboratory creator/owner may open as many experiments as needed.
+-- Everyone else invited into that laboratory may create at most one
+-- experiment there, and ordinary client-side deletes are limited to the
+-- experiment's creator. Admin pages still use the service role and therefore
+-- remain an explicit override path.
+-- ============================================================================
+
+create or replace function public.enforce_experiment_creator_rules()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_user uuid := auth.uid();
+  lab_owner uuid;
+  existing_count bigint;
+begin
+  -- Service-role writes bypass ordinary browser rules intentionally.
+  if current_user is null then
+    return new;
+  end if;
+
+  if tg_op = 'UPDATE' then
+    new.created_by := old.created_by;
+    return new;
+  end if;
+
+  new.created_by := current_user;
+
+  select l.owner_id
+    into lab_owner
+    from public.laboratories l
+   where l.id = new.lab_id;
+
+  if lab_owner = current_user then
+    return new;
+  end if;
+
+  select count(*)
+    into existing_count
+    from public.experiments e
+   where e.lab_id = new.lab_id
+     and e.created_by = current_user;
+
+  if existing_count > 0 then
+    raise exception '招待されたユーザーは、同じ研究室で作成できる実験は1件までです。'
+      using errcode = 'check_violation';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists enforce_experiment_creator_rules on public.experiments;
+create trigger enforce_experiment_creator_rules
+  before insert or update on public.experiments
+  for each row execute function public.enforce_experiment_creator_rules();
+
+drop policy if exists experiments_insert on public.experiments;
+create policy experiments_insert on public.experiments
+  for insert with check (public.can_write_lab(lab_id));
+
+drop policy if exists experiments_update on public.experiments;
+create policy experiments_update on public.experiments
+  for update using (public.can_write_lab(lab_id)) with check (public.can_write_lab(lab_id));
+
+drop policy if exists experiments_delete on public.experiments;
+create policy experiments_delete on public.experiments
+  for delete using (
+    created_by = auth.uid()
+    and public.can_write_lab(lab_id)
+  );
+
+-- Reloads PostgREST so the new tables/functions are visible to the API
+-- immediately after this migration runs.
+notify pgrst, 'reload schema';
+
+-- ============================================================================
+-- Fix: personal-workspace auto-provisioning race
+--
+-- getSessionContext() is called from several places on the same page load
+-- (the layout, the page, /api/me, /api/notifications, /api/notebook/today),
+-- and each one independently ran "does this user have a lab? no -> create
+-- one" with no locking between them. A brand-new account's first page load
+-- could fire several of those checks before the first insert committed, so
+-- every one of them saw zero labs and created its own - confirmed in
+-- production: one real account ended up owning 5 duplicate "workspace"
+-- labs. This wraps the check-and-create in a single function that takes a
+-- Postgres advisory transaction lock keyed on the user id, so concurrent
+-- callers serialize and only the first one actually creates anything.
+-- Safe to re-run.
+-- ============================================================================
+
+create or replace function public.ensure_personal_lab(target_user uuid, workspace_name text)
+returns table (lab_id uuid, lab_name text, created boolean)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  existing record;
+  new_lab record;
+begin
+  perform pg_advisory_xact_lock(hashtext(target_user::text));
+
+  select l.id, l.name into existing
+    from public.lab_members m
+    join public.laboratories l on l.id = m.lab_id
+   where m.user_id = target_user
+   order by m.joined_at asc
+   limit 1;
+
+  if found then
+    lab_id := existing.id;
+    lab_name := existing.name;
+    created := false;
+    return next;
+    return;
+  end if;
+
+  insert into public.laboratories (name, description, owner_id)
+  values (
+    workspace_name,
+    '個人用に自動作成されたワークスペースです。チームで共有する場合は管理者に研究室へ招待してもらってください。',
+    target_user
+  )
+  returning id, name into new_lab;
+
+  insert into public.lab_members (lab_id, user_id, role)
+  values (new_lab.id, target_user, 'owner');
+
+  lab_id := new_lab.id;
+  lab_name := new_lab.name;
+  created := true;
+  return next;
+end;
+$$;
+
+revoke all on function public.ensure_personal_lab(uuid, text) from public;
+grant execute on function public.ensure_personal_lab(uuid, text) to service_role;
+
+-- Reloads PostgREST so the new function is callable via RPC immediately.
+notify pgrst, 'reload schema';
+
+
+-- ============================================================================
+-- Chat conversation read cursors (delivery / read checkmarks)
+-- Safe to re-run.
+--
+-- One row per viewer per conversation. When a viewer opens a channel or DM,
+-- their `last_read_at` advances to now; senders then show a second checkmark
+-- on any of their messages created at-or-before that cursor.
+-- ============================================================================
+
+create table if not exists public.chat_conversation_reads (
+  id                 uuid primary key default gen_random_uuid(),
+  lab_id             uuid not null references public.laboratories (id) on delete cascade,
+  user_id            uuid not null references auth.users (id) on delete cascade,
+  channel_id         uuid references public.channels (id) on delete cascade,
+  dm_conversation_id uuid references public.dm_conversations (id) on delete cascade,
+  last_read_at       timestamptz not null default now(),
+  updated_at         timestamptz not null default now(),
+  check (
+    (channel_id is not null and dm_conversation_id is null)
+    or (channel_id is null and dm_conversation_id is not null)
+  )
+);
+
+create unique index if not exists chat_conversation_reads_channel_user_uidx
+  on public.chat_conversation_reads (channel_id, user_id)
+  where channel_id is not null;
+
+create unique index if not exists chat_conversation_reads_dm_user_uidx
+  on public.chat_conversation_reads (dm_conversation_id, user_id)
+  where dm_conversation_id is not null;
+
+create index if not exists chat_conversation_reads_channel_idx
+  on public.chat_conversation_reads (channel_id, last_read_at desc)
+  where channel_id is not null;
+
+create index if not exists chat_conversation_reads_dm_idx
+  on public.chat_conversation_reads (dm_conversation_id, last_read_at desc)
+  where dm_conversation_id is not null;
+
+alter table public.chat_conversation_reads enable row level security;
+
+drop policy if exists chat_conversation_reads_select on public.chat_conversation_reads;
+create policy chat_conversation_reads_select on public.chat_conversation_reads
+  for select using (
+    (channel_id is not null and public.is_lab_member(lab_id))
+    or (dm_conversation_id is not null and public.is_dm_participant(dm_conversation_id))
+  );
+
+drop policy if exists chat_conversation_reads_insert on public.chat_conversation_reads;
+create policy chat_conversation_reads_insert on public.chat_conversation_reads
+  for insert with check (
+    user_id = auth.uid()
+    and (
+      (channel_id is not null and public.is_lab_member(lab_id))
+      or (dm_conversation_id is not null and public.is_dm_participant(dm_conversation_id))
+    )
+  );
+
+drop policy if exists chat_conversation_reads_update on public.chat_conversation_reads;
+create policy chat_conversation_reads_update on public.chat_conversation_reads
+  for update using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'chat_conversation_reads'
+  ) then
+    alter publication supabase_realtime add table public.chat_conversation_reads;
+  end if;
+exception when undefined_object then
+  null;
+end;
+$$;
+
+notify pgrst, 'reload schema';
+
+-- ============================================================================
+-- Private channels
+-- Safe to re-run.
+--
+-- A channel is public by default (every lab member can see and post in it,
+-- as before). Setting `is_private` scopes visibility to an explicit
+-- `channel_members` roster instead - matching Slack's public/private
+-- distinction. Only a lab owner or admin may create a channel (loosened
+-- from owner-only); the creator and lab admins may invite/remove people
+-- from a private channel's roster, and any member may leave one themselves.
+-- ============================================================================
+
+alter table public.channels add column if not exists is_private boolean not null default false;
+
+create table if not exists public.channel_members (
+  channel_id uuid not null references public.channels (id) on delete cascade,
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  added_by   uuid references auth.users (id) on delete set null,
+  added_at   timestamptz not null default now(),
+  primary key (channel_id, user_id)
+);
+create index if not exists channel_members_user_idx on public.channel_members (user_id);
+
+-- ---------------------------------------------------------------------------
+-- Helpers
+-- ---------------------------------------------------------------------------
+
+create or replace function public.is_private_channel_member(target_channel uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.channel_members cm
+    where cm.channel_id = target_channel and cm.user_id = auth.uid()
+  );
+$$;
+
+-- Redefines the two helpers introduced with the original chat migration
+-- (previously "is a member of the channel's lab", used only by the
+-- chat-attachments storage policy) to also account for a channel being
+-- private. Every caller of these two functions - the storage policies
+-- below (unchanged, since the function they call is what changed) plus the
+-- channel/message/call/read-cursor policies further down - inherits correct
+-- private-channel behavior without needing its own SQL rewritten.
+create or replace function public.is_channel_member(target_channel uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.channels c
+    where c.id = target_channel
+      and (
+        (not c.is_private and public.is_lab_member(c.lab_id))
+        or public.is_private_channel_member(c.id)
+      )
+  );
+$$;
+
+create or replace function public.can_write_channel(target_channel uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.channels c
+    where c.id = target_channel
+      and (
+        (not c.is_private and public.can_write_lab(c.lab_id))
+        or (public.is_private_channel_member(c.id) and public.can_write_lab(c.lab_id))
+      )
+  );
+$$;
+
+-- ---------------------------------------------------------------------------
+-- channels: select respects privacy; insert loosened from owner-only to
+-- owner-or-admin ("lab administrator"); update/delete unchanged (still
+-- owner-or-admin, i.e. is_lab_admin).
+-- ---------------------------------------------------------------------------
+
+drop policy if exists channels_select on public.channels;
+create policy channels_select on public.channels
+  for select using (
+    (not is_private and public.is_lab_member(lab_id))
+    or public.is_private_channel_member(id)
+    or created_by = auth.uid()
+  );
+
+drop policy if exists channels_insert on public.channels;
+create policy channels_insert on public.channels
+  for insert with check (public.is_lab_admin(lab_id));
+
+-- ---------------------------------------------------------------------------
+-- channel_members: a member (or the channel's creator, or a lab admin) may
+-- read the roster; only the creator or a lab admin may add/remove someone
+-- else; anyone may remove their own row (leaving the channel).
+-- ---------------------------------------------------------------------------
+
+alter table public.channel_members enable row level security;
+
+drop policy if exists channel_members_select on public.channel_members;
+create policy channel_members_select on public.channel_members
+  for select using (
+    user_id = auth.uid()
+    or exists (
+      select 1 from public.channels c
+      where c.id = channel_id and (c.created_by = auth.uid() or public.is_lab_admin(c.lab_id))
+    )
+  );
+
+drop policy if exists channel_members_insert on public.channel_members;
+create policy channel_members_insert on public.channel_members
+  for insert with check (
+    exists (
+      select 1 from public.channels c
+      where c.id = channel_id and (c.created_by = auth.uid() or public.is_lab_admin(c.lab_id))
+    )
+  );
+
+drop policy if exists channel_members_delete on public.channel_members;
+create policy channel_members_delete on public.channel_members
+  for delete using (
+    user_id = auth.uid()
+    or exists (
+      select 1 from public.channels c
+      where c.id = channel_id and (c.created_by = auth.uid() or public.is_lab_admin(c.lab_id))
+    )
+  );
+
+-- ---------------------------------------------------------------------------
+-- messages / calls / call_participants / chat_conversation_reads: the
+-- channel branch of each policy now goes through is_channel_member /
+-- can_write_channel instead of is_lab_member(lab_id) / can_write_lab(lab_id)
+-- directly, so a private channel's messages, calls, and read cursors are
+-- exactly as private as the channel itself. The DM branch of every policy
+-- is untouched.
+-- ---------------------------------------------------------------------------
+
+drop policy if exists messages_select on public.messages;
+create policy messages_select on public.messages
+  for select using (
+    (channel_id is not null and public.is_channel_member(channel_id))
+    or (dm_conversation_id is not null and public.is_dm_participant(dm_conversation_id))
+  );
+
+drop policy if exists messages_insert on public.messages;
+create policy messages_insert on public.messages
+  for insert with check (
+    sender_id = auth.uid()
+    and (
+      (channel_id is not null and public.can_write_channel(channel_id))
+      or (dm_conversation_id is not null and public.is_dm_participant(dm_conversation_id))
+    )
+  );
+
+drop policy if exists calls_select on public.calls;
+create policy calls_select on public.calls
+  for select using (
+    (channel_id is not null and public.is_channel_member(channel_id))
+    or (dm_conversation_id is not null and public.is_dm_participant(dm_conversation_id))
+  );
+
+drop policy if exists calls_insert on public.calls;
+create policy calls_insert on public.calls
+  for insert with check (
+    started_by = auth.uid()
+    and (
+      (channel_id is not null and public.can_write_channel(channel_id))
+      or (dm_conversation_id is not null and public.is_dm_participant(dm_conversation_id))
+    )
+  );
+
+drop policy if exists call_participants_select on public.call_participants;
+create policy call_participants_select on public.call_participants
+  for select using (
+    exists (
+      select 1 from public.calls c
+      where c.id = call_id
+        and (
+          (c.channel_id is not null and public.is_channel_member(c.channel_id))
+          or (c.dm_conversation_id is not null and public.is_dm_participant(c.dm_conversation_id))
+        )
+    )
+  );
+
+drop policy if exists call_participants_insert on public.call_participants;
+create policy call_participants_insert on public.call_participants
+  for insert with check (
+    user_id = auth.uid()
+    and exists (
+      select 1 from public.calls c
+      where c.id = call_id
+        and (
+          (c.channel_id is not null and public.can_write_channel(c.channel_id))
+          or (c.dm_conversation_id is not null and public.is_dm_participant(c.dm_conversation_id))
+        )
+    )
+  );
+
+drop policy if exists chat_conversation_reads_select on public.chat_conversation_reads;
+create policy chat_conversation_reads_select on public.chat_conversation_reads
+  for select using (
+    (channel_id is not null and public.is_channel_member(channel_id))
+    or (dm_conversation_id is not null and public.is_dm_participant(dm_conversation_id))
+  );
+
+drop policy if exists chat_conversation_reads_insert on public.chat_conversation_reads;
+create policy chat_conversation_reads_insert on public.chat_conversation_reads
+  for insert with check (
+    user_id = auth.uid()
+    and (
+      (channel_id is not null and public.is_channel_member(channel_id))
+      or (dm_conversation_id is not null and public.is_dm_participant(dm_conversation_id))
+    )
+  );
+
+notify pgrst, 'reload schema';

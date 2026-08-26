@@ -75,6 +75,8 @@ function getTransporter(cfg: SmtpConfig): Transporter {
 }
 
 export interface SendMailInput {
+  /** Destination address - defaults to the configured inbox. */
+  to?: string;
   subject: string;
   text: string;
   /** Set to the form submitter's address so a reply goes straight to them. */
@@ -91,7 +93,7 @@ export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
     const transporter = getTransporter(cfg);
     await transporter.sendMail({
       from: cfg.from,
-      to: cfg.to,
+      to: input.to || cfg.to,
       replyTo: input.replyTo,
       subject: input.subject,
       text: input.text,

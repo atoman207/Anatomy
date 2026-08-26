@@ -35,7 +35,19 @@ export type IconName =
   | "reagents"
   | "beaker"
   | "edit"
-  | "team";
+  | "team"
+  | "phone"
+  | "video"
+  | "videoOff"
+  | "screenShare"
+  | "attach"
+  | "send"
+  | "micOff"
+  | "hash"
+  | "phoneOff"
+  | "maximize"
+  | "minimize"
+  | "closedCaptions";
 
 const PATHS: Record<IconName, ReactNode> = {
   upload: <><path d="M12 16V4" /><path d="M7 9l5-5 5 5" /><path d="M4 20h16" /></>,
@@ -113,6 +125,84 @@ const PATHS: Record<IconName, ReactNode> = {
       <path d="M2 20a6 6 0 0 1 12 0" />
       <path d="M15 5.2a3.2 3.2 0 0 1 0 5.6" />
       <path d="M17 20a6 6 0 0 0-2-4.5" />
+    </>
+  ),
+  phone: (
+    <path d="M5 4h3l2 5-2.5 1.5a11 11 0 0 0 5 5L14 13l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z" />
+  ),
+  phoneOff: (
+    <>
+      <path d="M5 4h3l2 5-2.5 1.5a11 11 0 0 0 5 5L14 13l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z" />
+      <path d="M3 3l18 18" />
+    </>
+  ),
+  video: (
+    <>
+      <rect x="3" y="6" width="12" height="12" rx="2" />
+      <path d="M15 10l6-3.5v11L15 14" />
+    </>
+  ),
+  videoOff: (
+    <>
+      <rect x="3" y="6" width="12" height="12" rx="2" />
+      <path d="M15 10l6-3.5v11L15 14" />
+      <path d="M3 3l18 18" />
+    </>
+  ),
+  screenShare: (
+    <>
+      <rect x="3" y="4" width="18" height="13" rx="2" />
+      <path d="M8 21h8" />
+      <path d="M12 17v4" />
+      <path d="M9 12l3-3 3 3" />
+      <path d="M12 9v5" />
+    </>
+  ),
+  attach: (
+    <path d="M17 7l-7.5 7.5a3 3 0 0 0 4.2 4.2L21 11.4a5 5 0 0 0-7.1-7.1L6.5 11.7a7 7 0 0 0 9.9 9.9" />
+  ),
+  send: <><path d="M4 12L20 4l-6 16-3-7-7-3z" /></>,
+  micOff: (
+    <>
+      <path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-.4 1.5" />
+      <path d="M9.6 9.6V6a3 3 0 0 1 5-2.2" />
+      <path d="M5 11a7 7 0 0 0 10.4 6.1" />
+      <path d="M19 11a7 7 0 0 1-1 3.6" />
+      <path d="M12 18v3" />
+      <path d="M3 3l18 18" />
+    </>
+  ),
+  hash: (
+    <>
+      <path d="M9 3L7 21" />
+      <path d="M17 3l-2 18" />
+      <path d="M4 9h16" />
+      <path d="M3 15h16" />
+    </>
+  ),
+  maximize: (
+    <>
+      <path d="M9 3H3v6" />
+      <path d="M15 3h6v6" />
+      <path d="M9 21H3v-6" />
+      <path d="M15 21h6v-6" />
+    </>
+  ),
+  minimize: (
+    <>
+      <path d="M9 9H3V3" />
+      <path d="M15 9h6V3" />
+      <path d="M9 15H3v6" />
+      <path d="M15 15h6v6" />
+    </>
+  ),
+  closedCaptions: (
+    <>
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <path d="M7 15v-4a2 2 0 0 1 4 0v4" />
+      <path d="M7 12h4" />
+      <path d="M13 15v-4a2 2 0 0 1 4 0v4" />
+      <path d="M13 12h4" />
     </>
   ),
 };

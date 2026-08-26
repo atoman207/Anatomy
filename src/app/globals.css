@@ -206,6 +206,109 @@ h3 {
   animation: fadeIn var(--duration-normal) var(--ease-out) both;
 }
 
+/* Chat speech bubbles + Slack-style typing dots */
+.chat-bubble {
+  border-radius: 12px;
+  padding: 0.45rem 0.7rem 0.35rem;
+  box-shadow: 0 1px 0 rgb(0 0 0 / 0.04);
+}
+
+.chat-bubble-own {
+  background: #dcf8c6;
+  border-top-right-radius: 4px;
+}
+
+.chat-bubble-own::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: -6px;
+  width: 10px;
+  height: 12px;
+  background: #dcf8c6;
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+
+.chat-bubble-other {
+  background: var(--surface-1, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--border, #d0d7de) 70%, transparent);
+  border-top-left-radius: 4px;
+}
+
+.chat-bubble-other::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -7px;
+  width: 10px;
+  height: 12px;
+  background: var(--surface-1, #ffffff);
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+}
+
+.chat-typing-bubble {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 18px;
+  padding: 4px 2px;
+}
+
+.chat-typing-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #616061;
+  opacity: 0.35;
+  animation: chat-typing-bounce 1.4s ease-in-out infinite;
+}
+
+.chat-typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.chat-typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes chat-typing-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+.chat-mention {
+  display: inline;
+  margin: 0 1px;
+  border-radius: 3px;
+  padding: 0 3px;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.chat-mention:hover {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  text-decoration: underline;
+}
+
+.chat-mention-self {
+  background: color-mix(in srgb, var(--highlight, #fef08a) 70%, transparent);
+  color: var(--text-primary, #1a365d);
+}
+
+.chat-mention-self:hover {
+  background: color-mix(in srgb, var(--highlight, #fef08a) 90%, transparent);
+}
+
 .animate-delay-1 {
   animation-delay: 100ms;
 }

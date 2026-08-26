@@ -387,6 +387,76 @@ export type ContactMessageRow = {
   created_at: string;
 }
 
+export type ChannelRow = {
+  id: string;
+  lab_id: string;
+  name: string;
+  topic: string | null;
+  created_by: string | null;
+  archived_at: string | null;
+  is_private: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ChannelMemberRow = {
+  channel_id: string;
+  user_id: string;
+  added_by: string | null;
+  added_at: string;
+}
+
+export type DmConversationRow = {
+  id: string;
+  lab_id: string;
+  user_a: string;
+  user_b: string;
+  created_at: string;
+}
+
+export type MessageRow = {
+  id: string;
+  lab_id: string;
+  channel_id: string | null;
+  dm_conversation_id: string | null;
+  sender_id: string | null;
+  body: string | null;
+  attachment_path: string | null;
+  attachment_name: string | null;
+  attachment_mime: string | null;
+  edited_at: string | null;
+  deleted_at: string | null;
+  created_at: string;
+}
+
+export type ChatConversationReadRow = {
+  id: string;
+  lab_id: string;
+  user_id: string;
+  channel_id: string | null;
+  dm_conversation_id: string | null;
+  last_read_at: string;
+  updated_at: string;
+}
+
+export type CallRow = {
+  id: string;
+  lab_id: string;
+  channel_id: string | null;
+  dm_conversation_id: string | null;
+  kind: "audio" | "video";
+  started_by: string | null;
+  started_at: string;
+  ended_at: string | null;
+}
+
+export type CallParticipantRow = {
+  call_id: string;
+  user_id: string;
+  joined_at: string;
+  left_at: string | null;
+}
+
 /**
  * Insert shapes: server-generated columns are optional, and so is any column
  * that is nullable in the database (a caller may simply omit it and let it
@@ -447,6 +517,16 @@ export type Database = {
       peer_review_credits: TableDef<PeerReviewCreditsRow, Insert<PeerReviewCreditsRow>>;
       peer_review_credit_prices: TableDef<PeerReviewCreditPriceRow, Insert<PeerReviewCreditPriceRow>>;
       contact_messages: TableDef<ContactMessageRow, Insert<ContactMessageRow>>;
+      channels: TableDef<ChannelRow, Insert<ChannelRow, "is_private">>;
+      channel_members: TableDef<ChannelMemberRow, Insert<ChannelMemberRow, "added_at">>;
+      dm_conversations: TableDef<DmConversationRow>;
+      messages: TableDef<MessageRow>;
+      chat_conversation_reads: TableDef<
+        ChatConversationReadRow,
+        Insert<ChatConversationReadRow, "last_read_at" | "updated_at">
+      >;
+      calls: TableDef<CallRow, Insert<CallRow, "started_at">>;
+      call_participants: TableDef<CallParticipantRow, Insert<CallParticipantRow, "joined_at">>;
     };
     Views: Record<string, never>;
     Functions: {
@@ -462,6 +542,10 @@ export type Database = {
       consume_peer_review_credit: { Args: Record<string, never>; Returns: boolean };
       grant_peer_review_credits: { Args: { target_user: string; amount: number }; Returns: undefined };
       admin_active_session_user_ids: { Args: Record<string, never>; Returns: string[] };
+      ensure_personal_lab: {
+        Args: { target_user: string; workspace_name: string };
+        Returns: { lab_id: string; lab_name: string; created: boolean }[];
+      };
     };
     Enums: {
       lab_role: LabRole;

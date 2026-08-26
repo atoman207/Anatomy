@@ -5,6 +5,7 @@ import { createAdminSupabase } from "@/lib/supabase/server";
 import { LAB_ROLE_LABELS } from "@/lib/auth/roles";
 import type { LabRole } from "@/lib/supabase/types";
 import { ActionForm, InlineActionForm } from "@/components/admin/ActionForm";
+import { InviteEmailInput } from "@/components/admin/InviteEmailInput";
 import {
   addMemberAction, changeMemberRoleAction, removeMemberAction, transferOwnershipAction,
 } from "../actions";
@@ -188,7 +189,7 @@ export default async function MembersPage(props: PageProps<"/admin/members">) {
         <ActionForm action={addMemberAction} hidden={{ lab_id: labId }} submitLabel="追加" icon="plus">
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="メールアドレス" htmlFor="member-email">
-              <TextInput id="member-email" name="email" type="email" required />
+              <InviteEmailInput id="member-email" name="email" />
             </Field>
             <Field label="権限" hint="実験・データセット・ノートブックの作成・編集。">
               <Select name="role" defaultValue="member">
