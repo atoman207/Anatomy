@@ -222,6 +222,45 @@ h3 {
   animation-delay: 400ms;
 }
 
+@keyframes see-more-nudge {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(3px);
+  }
+}
+
+@keyframes see-more-soft-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 28%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 0%, transparent);
+  }
+}
+
+.btn-see-more {
+  position: relative;
+  color: var(--accent);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  animation: see-more-soft-pulse 2.4s ease-in-out infinite;
+}
+
+.btn-see-more:hover {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+
+.btn-see-more-arrow {
+  display: inline-block;
+  animation: see-more-nudge 1.4s ease-in-out infinite;
+}
+
 /* Primary actions: solid fill, no overlay. */
 .btn-hatme {
   background: var(--accent);
@@ -314,7 +353,9 @@ textarea::placeholder {
   }
 
   .animate-fade-in-up,
-  .animate-fade-in {
+  .animate-fade-in,
+  .btn-see-more,
+  .btn-see-more-arrow {
     animation: none;
   }
 

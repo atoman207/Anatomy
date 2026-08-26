@@ -2,46 +2,24 @@
 
 import Link from "next/link";
 import { useEffect, useId, useMemo, useState } from "react";
-import { Button, cx } from "@/components/ui";
-import { formatJpy } from "@/lib/billing/plans";
+import { Button, EmptyState, cx } from "@/components/ui";
 
-export interface MemberPaymentUser {
-  id: string;
-  name: string;
-  email: string;
-  isAdmin: boolean;
-  /** Net paid to date in yen (refunds subtracted). */
-  paidTotalJpy: number;
-  /** ISO timestamp. */
-  signedUpAt: string;
+export interface RecentAuditRow {
+  id: string | number;
+  action: string;
+  created_at: string;
+  lab_id: string | null;
 }
 
 const PREVIEW = 5;
 
-function formatSignedUp(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString("ja-JP", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  } catch {
-    return "—";
-  }
-}
-
-/** Newest sign-ups first. */
-function byMostRecent(a: MemberPaymentUser, b: MemberPaymentUser): number {
-  return a.signedUpAt < b.signedUpAt ? 1 : a.signedUpAt > b.signedUpAt ? -1 : 0;
-}
-
-function UsersTable({ users }: { users: MemberPaymentUser[] }) {
+function AuditTable({ rows }: { rows: RecentAuditRow[] }) {
   return (
     <div className="scroll-x rounded-lg border border-line">
       <table className="w-full border-collapse text-xs">
         <thead className="bg-surface-2">
           <tr>
-            {["名前", "メール", "登録日", "累計支払い"].map((h) => (
+            {["操作", "日時"].map((h) => (
               <th
                 key={h}
                 className="whitespace-nowrap border-b border-line px-2.5 py-2 text-left font-semibold text-ink-2"
@@ -52,19 +30,13 @@ function UsersTable({ users }: { users: MemberPaymentUser[] }) {
           </tr>
         </thead>
         <tbody>
-          {users.map((user) => (
-            <tr key={user.id} className="even:bg-surface-2/40">
-              <td className="max-w-[9rem] border-b border-line px-2.5 py-2">
-                <p className="truncate font-medium text-ink" title={user.name}>{user.name}</p>
-              </td>
-              <td className="max-w-[16rem] border-b border-line px-2.5 py-2">
-                <p className="truncate font-mono text-ink-2" title={user.email}>{user.email}</p>
+          {rows.map((row) => (
+            <tr key={row.id} className="even:bg-surface-2/40">
+              <td className="border-b border-line px-2.5 py-2">
+                <span className="font-mono text-ink" title={row.action}>{row.action}</span>
               </td>
               <td className="border-b border-line px-2.5 py-2 whitespace-nowrap text-ink-3">
-                {formatSignedUp(user.signedUpAt)}
-              </td>
-              <td className="border-b border-line px-2.5 py-2 text-right font-semibold tabular-nums text-ink">
-                {formatJpy(user.paidTotalJpy)}
+                {new Date(row.created_at).toLocaleString("ja-JP")}
               </td>
             </tr>
           ))}
@@ -75,19 +47,18 @@ function UsersTable({ users }: { users: MemberPaymentUser[] }) {
 }
 
 /**
- * Shows the 5 most recently signed-up members (platform administrators
- * excluded), styled like /admin/users. もっと見る opens the full roster.
+ * Preview of the 5 newest audit rows (same source as /admin/audit).
+ * もっと見る opens the loaded set; the modal links to the full audit tab.
  */
-export function MemberUsersPanel({ users }: { users: MemberPaymentUser[] }) {
+export function RecentAuditPanel({ rows }: { rows: RecentAuditRow[] }) {
   const [open, setOpen] = useState(false);
   const titleId = useId();
 
-  const members = useMemo(
-    () => users.filter((u) => !u.isAdmin).sort(byMostRecent),
-    [users],
+  const sorted = useMemo(
+    () => [...rows].sort((a, b) => (a.created_at < b.created_at ? 1 : -1)),
+    [rows],
   );
-
-  const preview = useMemo(() => members.slice(0, PREVIEW), [members]);
+  const preview = useMemo(() => sorted.slice(0, PREVIEW), [sorted]);
 
   useEffect(() => {
     if (!open) return;
@@ -107,7 +78,7 @@ export function MemberUsersPanel({ users }: { users: MemberPaymentUser[] }) {
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-3">
         <p className="text-[12px] font-medium text-ink-3">
-          一般ユーザー {members.length} 名 · 直近{PREVIEW}名を表示
+          直近{PREVIEW}件を表示
         </p>
         <Button
           size="sm"
@@ -123,9 +94,9 @@ export function MemberUsersPanel({ users }: { users: MemberPaymentUser[] }) {
       </div>
 
       {preview.length === 0 ? (
-        <p className="py-6 text-center text-[13px] text-ink-3">登録会員はまだいません。</p>
+        <EmptyState title="まだ操作は記録されていません" />
       ) : (
-        <UsersTable users={preview} />
+        <AuditTable rows={preview} />
       )}
 
       {open && (
@@ -139,7 +110,7 @@ export function MemberUsersPanel({ users }: { users: MemberPaymentUser[] }) {
             aria-modal="true"
             aria-labelledby={titleId}
             className={cx(
-              "flex max-h-[min(85vh,720px)] w-full max-w-5xl flex-col overflow-hidden",
+              "flex max-h-[min(85vh,720px)] w-full max-w-3xl flex-col overflow-hidden",
               "rounded-lg border border-line bg-surface-1 shadow-[var(--shadow-md)]",
             )}
             onClick={(e) => e.stopPropagation()}
@@ -147,18 +118,18 @@ export function MemberUsersPanel({ users }: { users: MemberPaymentUser[] }) {
             <header className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
               <div className="min-w-0">
                 <h2 id={titleId} className="font-serif text-base font-semibold text-ink">
-                  ユーザー
+                  監査ログ
                 </h2>
                 <p className="mt-0.5 text-[12px] text-ink-3">
-                  一般ユーザー {members.length} 名 · 累計支払いは返金差引後
+                  直近 {sorted.length} 件 · 自動追記 · 編集・削除不可
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <Link
-                  href="/admin/users"
+                  href="/admin/audit"
                   className="text-[13px] font-medium text-accent underline underline-offset-2"
                 >
-                  ユーザータブを開く
+                  監査ログタブを開く
                 </Link>
                 <Button size="sm" variant="ghost" onClick={() => setOpen(false)} aria-label="閉じる">
                   閉じる
@@ -166,10 +137,10 @@ export function MemberUsersPanel({ users }: { users: MemberPaymentUser[] }) {
               </div>
             </header>
             <div className="shell-scroll flex-1 overflow-auto px-5 py-4">
-              {members.length === 0 ? (
-                <p className="py-8 text-center text-[13px] text-ink-3">登録会員はまだいません。</p>
+              {sorted.length === 0 ? (
+                <EmptyState title="まだ操作は記録されていません" />
               ) : (
-                <UsersTable users={members} />
+                <AuditTable rows={sorted} />
               )}
             </div>
           </div>
