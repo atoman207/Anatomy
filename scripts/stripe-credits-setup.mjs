@@ -134,7 +134,12 @@ for (const pack of CREDIT_PACKS) {
   const product = await findOrCreateProduct(pack);
   const price = await findOrCreatePrice(product, pack);
   console.log(`${pack.id.padEnd(7)} ¥${String(pack.amountJpy).padStart(5)}  ${price.id}  (product ${product.id})`);
-  created.push({ packId: pack.id, priceId: price.id, amountJpy: price.unit_amount ?? pack.amountJpy });
+  created.push({
+    packId: pack.id,
+    priceId: price.id,
+    amountJpy: price.unit_amount ?? pack.amountJpy,
+    credits: pack.credits,
+  });
 }
 
 /*
@@ -152,7 +157,12 @@ if (supabaseUrl && serviceKey) {
     auth: { autoRefreshToken: false, persistSession: false },
   });
   const { error } = await admin.from("peer_review_credit_prices").upsert(
-    created.map((c) => ({ pack_id: c.packId, stripe_price_id: c.priceId, amount_jpy: c.amountJpy })),
+    created.map((c) => ({
+      pack_id: c.packId,
+      stripe_price_id: c.priceId,
+      amount_jpy: c.amountJpy,
+      credits: c.credits,
+    })),
     { onConflict: "pack_id" },
   );
   if (error) {
