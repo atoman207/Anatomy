@@ -11,12 +11,13 @@
  */
 
 /** Which calendar period one point on the chart covers. */
-export type Granularity = "day" | "month" | "year";
+export type Granularity = "day" | "week" | "month" | "year";
 
-export const GRANULARITIES: Granularity[] = ["day", "month", "year"];
+export const GRANULARITIES: Granularity[] = ["day", "week", "month", "year"];
 
 export const GRANULARITY_LABELS: Record<Granularity, string> = {
   day: "日別",
+  week: "週別",
   month: "月別",
   year: "年別",
 };
@@ -153,7 +154,21 @@ function keyOf({ y, m, d }: CalendarDate, granularity: Granularity): string {
   const dd = String(d).padStart(2, "0");
   if (granularity === "year") return yy;
   if (granularity === "month") return yy + "-" + mm;
+  // Day and week both key by a calendar date; weeks use the Monday of that week.
   return yy + "-" + mm + "-" + dd;
+}
+
+/** Monday (ISO) of the week containing `date`, as a calendar triple. */
+function startOfWeek(date: CalendarDate): CalendarDate {
+  const utc = new Date(Date.UTC(date.y, date.m - 1, date.d));
+  const day = utc.getUTCDay(); // 0 = Sun … 6 = Sat
+  const offset = day === 0 ? -6 : 1 - day;
+  const monday = new Date(Date.UTC(date.y, date.m - 1, date.d + offset));
+  return {
+    y: monday.getUTCFullYear(),
+    m: monday.getUTCMonth() + 1,
+    d: monday.getUTCDate(),
+  };
 }
 
 /** The bucket an instant belongs to. */
@@ -162,7 +177,9 @@ export function bucketKey(
   granularity: Granularity,
   timeZone = REPORTING_TIME_ZONE,
 ): string {
-  return keyOf(calendarDate(ms, timeZone), granularity);
+  const date = calendarDate(ms, timeZone);
+  if (granularity === "week") return keyOf(startOfWeek(date), "week");
+  return keyOf(date, granularity);
 }
 
 /**
@@ -177,9 +194,9 @@ function nextPeriod({ y, m, d }: CalendarDate, granularity: Granularity): Calend
   if (granularity === "month") {
     return m === 12 ? { y: y + 1, m: 1, d: 1 } : { y, m: m + 1, d: 1 };
   }
-  // `Date.UTC` is calendar arithmetic here, not a conversion - the triple
-  // never leaves the calendar, so no instant is being reinterpreted.
-  const next = new Date(Date.UTC(y, m - 1, d + 1));
+  // Day and week: calendar arithmetic via UTC so DST never shifts the date.
+  const step = granularity === "week" ? 7 : 1;
+  const next = new Date(Date.UTC(y, m - 1, d + step));
   return { y: next.getUTCFullYear(), m: next.getUTCMonth() + 1, d: next.getUTCDate() };
 }
 
@@ -191,19 +208,20 @@ export function bucketKeysBetween(
   timeZone = REPORTING_TIME_ZONE,
 ): string[] {
   if (!(fromMs <= toMs)) return [];
-  const end = keyOf(calendarDate(toMs, timeZone), granularity);
+  const end = bucketKey(toMs, granularity, timeZone);
   const keys: string[] = [];
 
   let cursor = calendarDate(fromMs, timeZone);
   // Snap to the first instant of the period, so stepping a month from the
   // 31st does not skip the months that have no 31st.
-  if (granularity !== "day") cursor = { ...cursor, d: 1 };
-  if (granularity === "year") cursor = { ...cursor, m: 1, d: 1 };
+  if (granularity === "week") cursor = startOfWeek(cursor);
+  else if (granularity === "month") cursor = { ...cursor, d: 1 };
+  else if (granularity === "year") cursor = { ...cursor, m: 1, d: 1 };
 
   // A ceiling generous enough for five years of daily buckets. Guards a bad
   // range into a truncated chart rather than a hung request.
   for (let i = 0; i < 2000; i += 1) {
-    const key = keyOf(cursor, granularity);
+    const key = keyOf(cursor, granularity === "week" ? "day" : granularity);
     keys.push(key);
     if (key >= end) break;
     cursor = nextPeriod(cursor, granularity);
@@ -226,6 +244,13 @@ function labelsFor(key: string, granularity: Granularity): { label: string; long
   if (granularity === "month") {
     const name = JA_MONTHS[Number(m) - 1] ?? m;
     return { label: name, longLabel: y + "年" + name };
+  }
+  if (granularity === "week") {
+    const short = Number(m) + "/" + Number(d);
+    return {
+      label: short,
+      longLabel: y + "年" + Number(m) + "月" + Number(d) + "日週",
+    };
   }
   return {
     label: Number(m) + "/" + Number(d),
@@ -410,7 +435,36 @@ export function isRangeDays(value: unknown): value is RangeDays {
 }
 
 export function isGranularity(value: unknown): value is Granularity {
-  return value === "day" || value === "month" || value === "year";
+  return value === "day" || value === "week" || value === "month" || value === "year";
+}
+
+/**
+ * CoinMarketCap-style range tabs on the revenue chart.
+ *
+ * Each tab picks both the look-back window and the grain that keeps the
+ * series readable at that length.
+ */
+export const CHART_RANGE_TABS = [
+  { id: "1D", label: "1D", days: 7, granularity: "day" },
+  { id: "1W", label: "1W", days: 90, granularity: "week" },
+  { id: "1M", label: "1M", days: 365, granularity: "month" },
+  { id: "1Y", label: "1Y", days: 1095, granularity: "year" },
+] as const;
+
+export type ChartRangeId = (typeof CHART_RANGE_TABS)[number]["id"];
+
+export function chartTabFor(
+  days: number,
+  granularity: Granularity,
+): ChartRangeId {
+  const exact = CHART_RANGE_TABS.find(
+    (t) => t.days === days && t.granularity === granularity,
+  );
+  if (exact) return exact.id;
+  if (granularity === "year") return "1Y";
+  if (granularity === "month") return "1M";
+  if (granularity === "week") return "1W";
+  return "1D";
 }
 
 /**
@@ -421,7 +475,8 @@ export function isGranularity(value: unknown): value is Granularity {
  * leaves a readable number of points; the administrator can still override it.
  */
 export function defaultGranularityFor(days: number): Granularity {
-  if (days <= 90) return "day";
+  if (days <= 14) return "day";
+  if (days <= 90) return "week";
   if (days <= 1095) return "month";
   return "year";
 }

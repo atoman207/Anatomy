@@ -2000,3 +2000,33 @@ where plan in ('free', 'pro', 'team');
 -- Reloads PostgREST so new columns (e.g. reagents.experiment_id) are visible
 -- to the API immediately after this migration runs.
 notify pgrst, 'reload schema';
+
+-- ============================================================================
+-- Admin users page: "currently logged in" status
+-- Safe to re-run.
+-- ============================================================================
+
+-- `auth.sessions` is not exposed over PostgREST, so the admin users page has
+-- no way to tell which accounts have a live (unexpired) session. This reads
+-- it under SECURITY DEFINER and hands back only the set of user ids with at
+-- least one session where `not_after` is still in the future. Execute is
+-- granted to `service_role` only - the admin page already calls this through
+-- the service-role client, and no other role should be able to enumerate who
+-- is currently online.
+create or replace function public.admin_active_session_user_ids()
+returns setof uuid
+language sql
+security definer
+set search_path = public, auth
+as $$
+  select distinct user_id
+  from auth.sessions
+  where not_after is null or not_after > now();
+$$;
+
+revoke all on function public.admin_active_session_user_ids() from public;
+grant execute on function public.admin_active_session_user_ids() to service_role;
+
+-- Reloads PostgREST so the new function is callable via RPC immediately.
+notify pgrst, 'reload schema';
+

@@ -461,6 +461,7 @@ export type Database = {
       lab_ai_enabled: { Args: { target_lab: string }; Returns: boolean };
       consume_peer_review_credit: { Args: Record<string, never>; Returns: boolean };
       grant_peer_review_credits: { Args: { target_user: string; amount: number }; Returns: undefined };
+      admin_active_session_user_ids: { Args: Record<string, never>; Returns: string[] };
     };
     Enums: {
       lab_role: LabRole;

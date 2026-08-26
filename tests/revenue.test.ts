@@ -293,8 +293,22 @@ test("the default granularity keeps the point count readable", () => {
   // 365 daily points on a card-width chart is a solid block of ink; three
   // yearly points is a chart with nothing to say.
   assert.equal(defaultGranularityFor(7), "day");
-  assert.equal(defaultGranularityFor(90), "day");
+  assert.equal(defaultGranularityFor(90), "week");
   assert.equal(defaultGranularityFor(365), "month");
   assert.equal(defaultGranularityFor(1095), "month");
   assert.equal(defaultGranularityFor(3650), "year");
+});
+
+test("week buckets snap to Monday and step by seven days", () => {
+  // Thursday 2026-08-20 (Tokyo) belongs to the week starting Monday 8/17.
+  const thu = Date.parse("2026-08-20T03:00:00Z");
+  assert.equal(bucketKey(thu, "week", TZ), "2026-08-17");
+
+  const keys = bucketKeysBetween(
+    Date.parse("2026-08-16T15:00:00Z"), // Monday 8/17 00:00 JST
+    Date.parse("2026-08-30T15:00:00Z"), // Monday 8/31 00:00 JST
+    "week",
+    TZ,
+  );
+  assert.deepEqual(keys, ["2026-08-17", "2026-08-24", "2026-08-31"]);
 });

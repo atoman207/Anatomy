@@ -139,7 +139,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* Desktop rail */}
       <aside
         className={cx(
-          "fixed inset-y-0 left-0 z-40 hidden shrink-0 border-r border-[var(--shell-border)] lg:block",
+          "fixed inset-y-0 left-0 z-40 hidden shrink-0 lg:block",
           "transition-[width] duration-200",
         )}
         style={{ width: collapsed ? "var(--sidebar-width-collapsed)" : "var(--sidebar-width)" }}
@@ -161,7 +161,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             onClick={() => setDrawerOpen(false)}
             className="fixed inset-0 z-40 bg-black/60 lg:hidden"
           />
-          <aside className="fixed inset-y-0 left-0 z-50 w-[var(--sidebar-width)] border-r border-[var(--shell-border)] lg:hidden">
+          <aside className="fixed inset-y-0 left-0 z-50 w-[var(--sidebar-width)] lg:hidden">
             <Suspense fallback={null}>
               <Sidebar me={me} collapsed={false} onNavigate={() => setDrawerOpen(false)} />
             </Suspense>
@@ -198,10 +198,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             sidebarCollapsed={collapsed}
           />
         </Suspense>
-        <main className="flex-1 px-4 py-5 sm:px-6 sm:py-6">
-          <div className="mx-auto w-full max-w-[1280px]">{children}</div>
+        <main className="flex-1 px-3 py-5 sm:px-4 sm:py-6">
+          <div className="w-full">{children}</div>
         </main>
-        <footer className="border-t border-line px-4 py-3 text-center text-[12px] text-ink-3 sm:px-6">
+        <footer className="border-t border-line px-3 py-3 text-center text-[12px] text-ink-3 sm:px-4">
           © 2026 LABNOTE.
         </footer>
       </div>

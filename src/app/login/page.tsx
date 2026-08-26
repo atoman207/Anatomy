@@ -199,180 +199,182 @@ function LoginForm() {
   const submitLabel =
     mode === "signin" ? "ログイン" : mode === "signup" ? "アカウントを作成" : "再設定リンクを送信";
 
-  return (
-    <div className="mx-auto flex w-full max-w-[480px] flex-col gap-6 py-4">
-      <header>
-        <h1 className="font-serif text-2xl font-semibold text-ink">{heading}</h1>
-        {mode === "signup" && (
-          <p className="mt-2 text-[14px] leading-relaxed text-ink-2">
-            個人研究者プラン（年額約 ¥30,000）でのご利用を想定しています。
-            登録後、「料金・支払い」からお手続きください。
-          </p>
-        )}
-      </header>
-
-      <Card className="border-t-[3px] border-t-accent">
-        <form onSubmit={submit} className="flex flex-col gap-5">
-          {mode === "signup" && (
-            <>
-              <Field label="アバター画像（任意）">
-                <div className="flex justify-center">
-                  <button
-                    type="button"
-                    onClick={() => avatarInput.current?.click()}
-                    aria-label="アバター画像を選択"
-                    className="grid h-24 w-24 place-items-center overflow-hidden rounded-full border border-line bg-surface-2 text-ink-3 transition-colors hover:border-accent hover:text-accent"
-                  >
-                    {avatarPreview ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- local preview of a not-yet-uploaded file, not an app asset
-                      <img src={avatarPreview} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                      <Icon name="user" className="h-10 w-10" />
-                    )}
-                  </button>
-                </div>
-                <input
-                  ref={avatarInput}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    void onAvatarSelected(e.target.files?.[0]);
-                    e.target.value = "";
-                  }}
-                />
-              </Field>
-
-              <Field label="表示名" htmlFor="name">
-                <TextInput
-                  id="name" value={displayName} autoComplete="name"
-                  onChange={(e) => setDisplayName(e.target.value)}
-                />
-              </Field>
-
-              <div className="grid gap-5 sm:grid-cols-2">
-                <Field label="生年月日（任意）" htmlFor="dob">
-                  <TextInput
-                    id="dob" type="date" autoComplete="bday"
-                    value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)}
-                  />
-                </Field>
-                <Field label="電話番号（任意）" htmlFor="phone">
-                  <div className="flex">
-                    <span className="inline-flex items-center rounded-l-md border border-r-0 border-line bg-surface-2 px-3 text-[15px] text-ink-2">
-                      {JP_DIAL}
-                    </span>
-                    <TextInput
-                      id="phone"
-                      type="tel"
-                      inputMode="tel"
-                      autoComplete="tel-national"
-                      value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(e.target.value)}
-                      className="rounded-l-none"
-                      placeholder="90-1234-5678"
-                    />
-                  </div>
-                </Field>
-              </div>
-
-              <Field label="専攻（任意）" htmlFor="major">
-                <TextInput
-                  id="major" value={major}
-                  onChange={(e) => setMajor(e.target.value)}
-                />
-              </Field>
-            </>
-          )}
-
-          <Field label="メール" htmlFor="email">
-            <TextInput
-              id="email" type="email" required autoComplete="email"
-              value={email} onChange={(e) => setEmail(e.target.value)}
-            />
-          </Field>
-
-          {mode !== "forgot" && (
-            <Field
-              label="パスワード"
-              htmlFor="password"
-              hint={mode === "signup" ? "8文字以上" : undefined}
-            >
-              <PasswordInput
-                id="password"
-                required
-                minLength={mode === "signup" ? 8 : undefined}
-                autoComplete={mode === "signup" ? "new-password" : "current-password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </Field>
-          )}
-
-          {mode === "signup" && (
-            <Field label="パスワード確認" htmlFor="confirm-password">
-              <PasswordInput
-                id="confirm-password"
-                required
-                minLength={8}
-                autoComplete="new-password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-              />
-            </Field>
-          )}
-
-          <Button
-            type="submit"
-            variant="primary"
-            disabled={busy}
-            icon={mode === "signin" ? "login" : mode === "signup" ? "plus" : "mail"}
-            className="mt-1 w-full"
-          >
-            {busy ? "…" : submitLabel}
-          </Button>
-        </form>
-      </Card>
-
-      <div className="flex flex-col gap-2 text-center text-[14px] text-ink-2">
-        {mode === "signin" && (
-          <>
-            <p>
-              アカウントがない場合{" "}
-              <button
-                className="font-medium text-accent underline decoration-accent/30 underline-offset-2 hover:decoration-accent"
-                onClick={() => switchTo("signup")}
-              >
-                作成する
-              </button>
-            </p>
-            <p>
-              <button
-                className="font-medium text-accent underline decoration-accent/30 underline-offset-2 hover:decoration-accent"
-                onClick={() => switchTo("forgot")}
-              >
-                パスワードを忘れた
-              </button>
-            </p>
-          </>
-        )}
-        {mode !== "signin" && (
-          <p>
-            <button
-              className="font-medium text-accent underline decoration-accent/30 underline-offset-2 hover:decoration-accent"
-              onClick={() => switchTo("signin")}
-            >
-              ログインに戻る
-            </button>
-          </p>
-        )}
-      </div>
-    </div>
-  );
-
   function switchTo(m: Mode) {
     setMode(m);
   }
+
+  return (
+    <div className="flex min-h-dvh w-full items-center justify-center px-4 py-10">
+      <div className="flex w-full max-w-[480px] flex-col gap-6">
+        <header>
+          <h1 className="font-serif text-2xl font-semibold text-ink">{heading}</h1>
+          {mode === "signup" && (
+            <p className="mt-2 text-[14px] leading-relaxed text-ink-2">
+              個人研究者プラン（年額約 ¥30,000）でのご利用を想定しています。
+              登録後、「料金・支払い」からお手続きください。
+            </p>
+          )}
+        </header>
+
+        <Card className="border-t-[3px] border-t-accent">
+          <form onSubmit={submit} className="flex flex-col gap-5">
+            {mode === "signup" && (
+              <>
+                <Field label="アバター画像（任意）">
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => avatarInput.current?.click()}
+                      aria-label="アバター画像を選択"
+                      className="grid h-24 w-24 place-items-center overflow-hidden rounded-full border border-line bg-surface-2 text-ink-3 transition-colors hover:border-accent hover:text-accent"
+                    >
+                      {avatarPreview ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- local preview of a not-yet-uploaded file, not an app asset
+                        <img src={avatarPreview} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <Icon name="user" className="h-10 w-10" />
+                      )}
+                    </button>
+                  </div>
+                  <input
+                    ref={avatarInput}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      void onAvatarSelected(e.target.files?.[0]);
+                      e.target.value = "";
+                    }}
+                  />
+                </Field>
+
+                <Field label="表示名" htmlFor="name">
+                  <TextInput
+                    id="name" value={displayName} autoComplete="name"
+                    onChange={(e) => setDisplayName(e.target.value)}
+                  />
+                </Field>
+
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <Field label="生年月日（任意）" htmlFor="dob">
+                    <TextInput
+                      id="dob" type="date" autoComplete="bday"
+                      value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)}
+                    />
+                  </Field>
+                  <Field label="電話番号（任意）" htmlFor="phone">
+                    <div className="flex">
+                      <span className="inline-flex items-center rounded-l-md border border-r-0 border-line bg-surface-2 px-3 text-[15px] text-ink-2">
+                        {JP_DIAL}
+                      </span>
+                      <TextInput
+                        id="phone"
+                        type="tel"
+                        inputMode="tel"
+                        autoComplete="tel-national"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value)}
+                        className="rounded-l-none"
+                        placeholder="90-1234-5678"
+                      />
+                    </div>
+                  </Field>
+                </div>
+
+                <Field label="専攻（任意）" htmlFor="major">
+                  <TextInput
+                    id="major" value={major}
+                    onChange={(e) => setMajor(e.target.value)}
+                  />
+                </Field>
+              </>
+            )}
+
+            <Field label="メール" htmlFor="email">
+              <TextInput
+                id="email" type="email" required autoComplete="email"
+                value={email} onChange={(e) => setEmail(e.target.value)}
+              />
+            </Field>
+
+            {mode !== "forgot" && (
+              <Field
+                label="パスワード"
+                htmlFor="password"
+                hint={mode === "signup" ? "8文字以上" : undefined}
+              >
+                <PasswordInput
+                  id="password"
+                  required
+                  minLength={mode === "signup" ? 8 : undefined}
+                  autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </Field>
+            )}
+
+            {mode === "signup" && (
+              <Field label="パスワード確認" htmlFor="confirm-password">
+                <PasswordInput
+                  id="confirm-password"
+                  required
+                  minLength={8}
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                />
+              </Field>
+            )}
+
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={busy}
+              icon={mode === "signin" ? "login" : mode === "signup" ? "plus" : "mail"}
+              className="mt-1 w-full"
+            >
+              {busy ? "…" : submitLabel}
+            </Button>
+          </form>
+        </Card>
+
+        <div className="flex flex-col gap-2 text-center text-[14px] text-ink-2">
+          {mode === "signin" && (
+            <>
+              <p>
+                アカウントがない場合{" "}
+                <button
+                  className="font-medium text-accent underline decoration-accent/30 underline-offset-2 hover:decoration-accent"
+                  onClick={() => switchTo("signup")}
+                >
+                  作成する
+                </button>
+              </p>
+              <p>
+                <button
+                  className="font-medium text-accent underline decoration-accent/30 underline-offset-2 hover:decoration-accent"
+                  onClick={() => switchTo("forgot")}
+                >
+                  パスワードを忘れた
+                </button>
+              </p>
+            </>
+          )}
+          {mode !== "signin" && (
+            <p>
+              <button
+                className="font-medium text-accent underline decoration-accent/30 underline-offset-2 hover:decoration-accent"
+                onClick={() => switchTo("signin")}
+              >
+                ログインに戻る
+              </button>
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function friendlyLinkError(raw: string): string {

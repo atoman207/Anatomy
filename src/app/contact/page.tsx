@@ -3,12 +3,14 @@ import { getSessionContext } from "@/lib/auth/guards";
 import { SiteHeader } from "@/components/landing/SiteHeader";
 import { SiteFooter } from "@/components/landing/SiteFooter";
 import { ContactForm } from "@/components/landing/ContactForm";
+import { SITE_URL } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "お問い合わせ — LABNOTE.",
-  description: "LABNOTE. に関するお問い合わせフォームです。",
+  title: "お問い合わせ",
+  description: "機能に関するご質問、導入のご相談、不具合のご報告など、LABNOTE. へのお問い合わせフォームです。",
+  alternates: { canonical: `${SITE_URL}/contact` },
 };
 
 export default async function ContactPage() {
@@ -16,7 +18,7 @@ export default async function ContactPage() {
   const signedIn = Boolean(ctx);
 
   return (
-    <div className="flex min-h-dvh flex-col bg-surface-0">
+    <div className="flex min-h-dvh flex-col bg-surface-0 [--text-primary:#000] [--text-secondary:#000] [--text-muted:#000]">
       <SiteHeader signedIn={signedIn} />
 
       <main className="mx-auto w-full max-w-[640px] flex-1 px-5 py-16 sm:px-8">

@@ -4,11 +4,14 @@ import { getSessionContext } from "@/lib/auth/guards";
 import { FREE_PEER_REVIEW_CREDITS, PEER_REVIEW_CREDIT_PACKS } from "@/lib/peerReview/creditPacks";
 import { SiteHeader } from "@/components/landing/SiteHeader";
 import { SiteFooter } from "@/components/landing/SiteFooter";
+import { SITE_URL } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "ヘルプ — LABNOTE.",
+  title: "ヘルプ・よくある質問",
+  description: "記録ウィザード、音声入力、AI画像生成、AI査読、投稿用ファイルなど、LABNOTE. の使い方に関するよくある質問。",
+  alternates: { canonical: `${SITE_URL}/help` },
 };
 
 interface Faq {
@@ -48,6 +51,29 @@ export default async function HelpPage() {
         " からご利用いただけます。",
     },
     {
+      q: "AI査読の評価基準や査読者の性格は選べますか？",
+      a: "投稿予定の水準に合わせて「トップジャーナル基準（Nature/Science/Cellクラス相当）」と「一般的な国際誌基準」の" +
+        "2種類から評価の厳しさを選べます。また、方法・統計／研究内容・新規性／論文構成の3名の査読者ごとに、厳格型・建設的型・" +
+        "簡潔型・懐疑的型・丁寧型・温和型といった性格（口調）を指定でき、ランダムに設定することもできます。",
+    },
+    {
+      q: "投稿先ジャーナルへの採択可能性はわかりますか？",
+      a: "投稿予定のジャーナル名を入力すると、想定されるImpact Factorのレンジ、分野に合った推奨ジャーナル、" +
+        "そのジャーナルへの採択可能性（％の目安）を表示します。ジャーナルの投稿要項ページのURLを貼り付ければ、" +
+        "論文の形式が要項と合っているかも確認できます。いずれもAIによる目安であり、実際の査読結果・採否を保証するものではありません。",
+    },
+    {
+      q: "修正前後でスコアの変化を比較できますか？",
+      a: "AI査読を実行する際に「再査読」として以前の査読を選ぶと、以前の版から今回までの総合評価・カテゴリ別評価の推移を" +
+        "グラフと一覧で確認できます。修正のたびに査読を重ねることで、改善の度合いを数値で追えます。",
+    },
+    {
+      q: "論文用のFigure・Table・動画はどこで管理しますか？",
+      a: "多くのジャーナルは、図表・動画・原稿を本文とは別ファイルで提出する形式を求めます。記録ウィザードの" +
+        "「実験ノート」ステップに、Figure（図）・Table（表）・Video（動画）・Article（原稿）を分けて登録できる" +
+        "「投稿用ファイル」の欄があり、実験全体で共有されます。1日あたりのアップロード容量には上限（10MB）があります。",
+    },
+    {
       q: "作成したレポートはどこで確認できますか？",
       a: "ダッシュボードの先頭に「今日のラボレポート」として並びます。その日のうちはヘッダーの「今日の実験記録」ボタンから" +
         "すぐに開いて修正でき、過去の記録は実験ごとにまとめて確認できます。PDFはいつでも開いてダウンロードできます。",
@@ -65,11 +91,11 @@ export default async function HelpPage() {
   ];
 
   return (
-    <div className="flex min-h-dvh flex-col bg-surface-0">
+    <div className="flex min-h-dvh flex-col bg-surface-0 [--text-primary:#000] [--text-secondary:#000] [--text-muted:#000]">
       <SiteHeader signedIn={signedIn} />
 
       <main className="mx-auto w-full max-w-[760px] flex-1 px-5 py-16 sm:px-8">
-        <h1 className="font-serif text-3xl font-semibold text-ink">ヘルプ</h1>
+        <h1 className="font-serif text-3xl font-semibold text-ink">ヘルプ・よくある質問</h1>
         <p className="mt-3 max-w-[60ch] text-[15px] leading-relaxed text-ink-2">
           よくある質問をまとめました。ここに載っていない内容は、
           <Link href={signedIn ? "/dashboard" : "/login"} className="text-accent underline underline-offset-2">

@@ -41,6 +41,7 @@ export function Header({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const title = titleForPath(pathname, searchParams.toString());
+  const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
 
   return (
     <header className="sticky top-0 z-30 flex h-[var(--header-height)] shrink-0 items-center gap-3 border-b border-[var(--shell-border)] bg-[var(--shell-bg-raised)] px-3 sm:px-4">
@@ -60,7 +61,7 @@ export function Header({
         {title}
       </p>
 
-      {me?.signedIn && <TodayLogButton entries={today?.entries ?? null} />}
+      {me?.signedIn && !isAdmin && <TodayLogButton entries={today?.entries ?? null} />}
       <ThemeToggle />
       <NotificationBell notifications={notifications} />
       <UserButton me={me} />

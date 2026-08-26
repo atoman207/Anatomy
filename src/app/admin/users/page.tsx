@@ -21,6 +21,7 @@ interface UserView {
   lastSignIn: string | null;
   labs: { name: string; role: string }[];
   platformRole: PlatformRole;
+  online: boolean;
 }
 
 /**
@@ -54,6 +55,7 @@ export default async function UsersPage() {
         lastSignIn: u.last_sign_in_at ?? null,
         labs: [],
         platformRole: "user",
+        online: false,
       });
     }
     if (data.users.length < 200) break;
@@ -78,9 +80,18 @@ export default async function UsersPage() {
   const roleById = new Map(
     (profiles ?? []).map((p) => [p.id, (p.platform_role ?? "user") as PlatformRole]),
   );
+  // Who has a live (unexpired) session right now. `auth.sessions` isn't
+  // reachable directly over PostgREST, so this goes through a SECURITY
+  // DEFINER RPC (`admin_active_session_user_ids`) instead; if it's missing
+  // (migration not yet applied to this database) everyone just falls back to
+  // "logged out" rather than breaking the page.
+  const { data: activeSessionRows } = await admin.rpc("admin_active_session_user_ids");
+  const onlineIds = new Set(activeSessionRows ?? []);
+
   for (const u of users) {
     u.labs = byUser.get(u.id) ?? [];
     u.platformRole = roleById.get(u.id) ?? "user";
+    u.online = onlineIds.has(u.id);
   }
 
   const unconfirmed = users.filter((u) => !u.confirmed).length;
@@ -112,24 +123,50 @@ export default async function UsersPage() {
             </thead>
             <tbody>
               {users.map((u) => (
-                <tr key={u.id} className="even:bg-surface-2/40 align-top">
-                  <td className="border-b border-line px-2.5 py-2 font-mono text-ink">
-                    {u.email}
+                <tr key={u.id} className="even:bg-surface-2/40">
+                  <td
+                    className="max-w-[14rem] truncate whitespace-nowrap border-b border-line px-2.5 py-2 font-mono text-ink"
+                    title={u.online ? `${u.email}（現在ログイン中）` : u.email}
+                  >
+                    <span className="inline-flex items-center gap-1.5">
+                      <span
+                        aria-hidden
+                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${u.online ? "bg-good" : "bg-ink-3/40"}`}
+                      />
+                      {u.email}
+                    </span>
                   </td>
-                  <td className="border-b border-line px-2.5 py-2 text-ink-2">{u.displayName}</td>
-                  <td className="border-b border-line px-2.5 py-2">
+                  <td
+                    className={`max-w-[10rem] truncate whitespace-nowrap border-b border-line px-2.5 py-2 ${
+                      u.online ? "font-semibold text-ink" : "text-ink-2"
+                    }`}
+                    title={u.displayName ?? undefined}
+                  >
+                    {u.displayName}
+                  </td>
+                  <td className="whitespace-nowrap border-b border-line px-2.5 py-2">
                     <Badge tone={u.platformRole === "admin" ? "accent" : "neutral"}>
                       {PLATFORM_ROLE_LABELS[u.platformRole].ja}
                     </Badge>
                   </td>
-                  <td className="border-b border-line px-2.5 py-2">
+                  <td className="whitespace-nowrap border-b border-line px-2.5 py-2">
                     {u.confirmed ? (
                       <span className="text-good">✓ 確認済み</span>
                     ) : (
                       <span className="text-warn">! 未確認</span>
                     )}
                   </td>
-                  <td className="border-b border-line px-2.5 py-2 text-ink-2">
+                  <td
+                    className="max-w-[16rem] truncate whitespace-nowrap border-b border-line px-2.5 py-2 text-ink-2"
+                    title={
+                      u.labs.length === 0
+                        ? undefined
+                        : u.labs.map((l) => {
+                            const roleJa = LAB_ROLE_LABELS[l.role as LabRole]?.ja ?? l.role;
+                            return `${l.name}（${roleJa}）`;
+                          }).join("、")
+                    }
+                  >
                     {u.labs.length === 0
                       ? <span className="text-ink-3">なし</span>
                       : u.labs.map((l) => {
@@ -137,16 +174,17 @@ export default async function UsersPage() {
                           return `${l.name}（${roleJa}）`;
                         }).join("、")}
                   </td>
-                  <td className="border-b border-line px-2.5 py-2 text-ink-3">
+                  <td className="whitespace-nowrap border-b border-line px-2.5 py-2 text-ink-3">
                     {u.lastSignIn ? new Date(u.lastSignIn).toLocaleString("ja-JP") : "なし"}
                   </td>
-                  <td className="border-b border-line px-2.5 py-2">
-                    <div className="flex flex-col gap-1.5">
+                  <td className="whitespace-nowrap border-b border-line px-2.5 py-2">
+                    <div className="flex flex-nowrap items-center gap-1">
                       {/* Demoting yourself is refused by the action too; hiding
                           it here keeps the last administrator from reaching for
                           a button that cannot work. */}
                       {u.id !== ctx.user.id && (
                         <InlineActionForm
+                          iconOnly
                           action={setPlatformRoleAction}
                           hidden={{
                             user_id: u.id,
@@ -163,6 +201,7 @@ export default async function UsersPage() {
                       )}
                       {!u.confirmed && (
                         <InlineActionForm
+                          iconOnly
                           action={confirmUserAction}
                           hidden={{ user_id: u.id }}
                           submitLabel="確認済にする"
@@ -170,6 +209,7 @@ export default async function UsersPage() {
                         />
                       )}
                       <InlineActionForm
+                        iconOnly
                         action={sendPasswordResetAction}
                         hidden={{ email: u.email }}
                         submitLabel="再設定メール"
@@ -177,19 +217,13 @@ export default async function UsersPage() {
                       />
                       {u.id !== ctx.user.id && (
                         <InlineActionForm
+                          iconOnly
                           action={deleteUserAction}
-                          hidden={{ user_id: u.id }}
+                          hidden={{ user_id: u.id, confirm: u.email }}
                           submitLabel="削除"
                           variant="danger"
                           confirm={`${u.email} を永久に削除しますか？`}
-                        >
-                          <input
-                            name="confirm"
-                            placeholder="メールアドレスを入力"
-                            aria-label={`${u.email} の削除確認`}
-                            className="w-36 rounded-lg border border-line-strong bg-surface-1 px-2 py-1 text-[11px] text-ink"
-                          />
-                        </InlineActionForm>
+                        />
                       )}
                     </div>
                   </td>

@@ -15,47 +15,49 @@ import Image from "next/image";
  * The logo sits alone on the left; the nav links and the sign-in/CTA button
  * are grouped into one cluster pinned to the right (`ml-auto`) rather than
  * spread across the bar with `justify-between`, so the menu reads as a
- * single right-aligned block.
+ * single right-aligned block. Nav links get an animated underline instead of
+ * a flat color swap, and the logo sits in its own soft-edged tile - small
+ * details that read as "designed" rather than a bare row of links.
  */
 export function SiteHeader({ signedIn, overHero = false }: { signedIn: boolean; overHero?: boolean }) {
   return (
     <header
       className={
         overHero
-          ? "fixed inset-x-0 top-0 z-30 border-b border-line/40 bg-surface-1/80 backdrop-blur"
-          : "sticky top-0 z-30 border-b border-line bg-surface-1/90 backdrop-blur"
+          ? "fixed inset-x-0 top-0 z-30 border-b border-black/5 bg-white/75 backdrop-blur-md"
+          : "sticky top-0 z-30 border-b border-black/5 bg-white/90 shadow-[0_1px_0_rgba(0,0,0,0.04)] backdrop-blur-md"
       }
     >
-      <div className="flex w-full items-center gap-4 px-5 py-3.5 sm:px-8">
-        <Link href="/" className="flex shrink-0 items-center gap-2.5">
-          <Image
-            src="/LOGO.png"
-            alt=""
-            width={39}
-            height={39}
-            className="h-[38.4px] w-[38.4px] rounded-md object-contain"
-          />
-          <span className="text-[16px] font-semibold tracking-wide text-ink">LABNOTE.</span>
+      <div className="flex h-[64px] w-full items-center gap-4 px-5 sm:px-8">
+        <Link href="/" className="group flex shrink-0 items-center gap-2.5">
+          <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl bg-white shadow-[0_1px_2px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.06)] transition-transform group-hover:scale-105">
+            <Image src="/LOGO.png" alt="" width={30} height={30} className="h-[30px] w-[30px] object-contain" />
+          </span>
+          <span className="text-[16px] font-bold tracking-wide text-black">LABNOTE.</span>
         </Link>
 
-        <div className="ml-auto flex items-center gap-6">
-          <nav aria-label="サイト" className="hidden items-center gap-6 sm:flex">
+        <div className="ml-auto flex items-center gap-7">
+          <nav aria-label="サイト" className="hidden items-center gap-7 sm:flex">
             {SITE_NAV.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
-                className="text-[14px] text-ink-2 transition-colors hover:text-ink"
+                className="group relative py-1 text-[14px] font-medium text-black/70 transition-colors hover:text-black"
               >
                 {item.label}
+                <span
+                  aria-hidden
+                  className="absolute inset-x-0 -bottom-0.5 h-[2px] origin-left scale-x-0 rounded-full bg-accent transition-transform duration-200 group-hover:scale-x-100"
+                />
               </Link>
             ))}
           </nav>
 
-          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <div className="flex shrink-0 items-center gap-3 sm:gap-4">
             {signedIn ? (
               <Link
                 href="/dashboard"
-                className="rounded-md bg-accent px-4 py-2 text-[14px] font-medium text-accent-contrast transition-opacity hover:opacity-90"
+                className="rounded-full bg-accent px-4 py-2 text-[14px] font-semibold text-accent-contrast shadow-[0_1px_2px_rgba(0,0,0,0.12)] transition-all hover:opacity-90 hover:shadow-[0_2px_8px_rgba(37,99,235,0.35)]"
               >
                 ダッシュボード
               </Link>
@@ -63,13 +65,13 @@ export function SiteHeader({ signedIn, overHero = false }: { signedIn: boolean; 
               <>
                 <Link
                   href="/login"
-                  className="hidden text-[14px] text-ink-2 transition-colors hover:text-ink sm:block"
+                  className="hidden text-[14px] font-medium text-black/70 transition-colors hover:text-black sm:block"
                 >
                   ログイン
                 </Link>
                 <Link
                   href="/login"
-                  className="rounded-md bg-accent px-4 py-2 text-[14px] font-medium text-accent-contrast transition-opacity hover:opacity-90"
+                  className="rounded-full bg-accent px-4 py-2 text-[14px] font-semibold text-accent-contrast shadow-[0_1px_2px_rgba(0,0,0,0.12)] transition-all hover:opacity-90 hover:shadow-[0_2px_8px_rgba(37,99,235,0.35)]"
                 >
                   無料で始める
                 </Link>

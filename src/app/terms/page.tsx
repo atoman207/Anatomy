@@ -2,11 +2,14 @@ import type { Metadata } from "next";
 import { getSessionContext } from "@/lib/auth/guards";
 import { SiteHeader } from "@/components/landing/SiteHeader";
 import { SiteFooter } from "@/components/landing/SiteFooter";
+import { SITE_URL } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "利用規約 — LABNOTE.",
+  title: "利用規約",
+  description: "LABNOTE. の利用規約。アカウント登録、データの取り扱い、AI査読の料金、免責事項について定めています。",
+  alternates: { canonical: `${SITE_URL}/terms` },
 };
 
 const SECTIONS: { title: string; body: string[] }[] = [
@@ -28,10 +31,13 @@ const SECTIONS: { title: string; body: string[] }[] = [
   {
     title: "第3条（データの取り扱い）",
     body: [
-      "利用者が入力した実験記録・試薬情報・画像・論文情報等のデータは、当該データを入力した研究室に帰属し、" +
-        "その研究室のメンバーのみが閲覧・編集できます。",
+      "利用者が入力した実験記録・試薬情報・画像・論文情報・投稿用ファイル（Figure・Table・Video・Article）等のデータは、" +
+        "当該データを入力した研究室に帰属し、その研究室のメンバーのみが閲覧・編集できます。",
       "確定済みの音声ノート、および作成日を過ぎた実験ノートは、データベース側の制御により変更できません。" +
         "これは記録の改ざん防止を目的とした本サービスの中核的な仕様です。",
+      "投稿用ファイルの1日あたりのアップロード容量には上限（10MB）を設けています。",
+      "お問い合わせフォームに入力された氏名・メールアドレス・電話番号・お問い合わせ内容は、" +
+        "お問い合わせへの対応の目的に限り、運営者のメールアドレスへ送信・保存されます。",
     ],
   },
   {
@@ -53,6 +59,8 @@ const SECTIONS: { title: string; body: string[] }[] = [
     body: [
       "本サービスが生成するAIによる査読コメント・画像・要約・類似論文の検索結果は、参考情報であり、" +
         "その正確性・完全性を保証するものではありません。研究上の最終的な判断は利用者自身の責任で行ってください。",
+      "AI査読における想定Impact Factor・推奨ジャーナル・採択可能性（％）は、AIによる目安であり、" +
+        "実際の査読結果・採否を保証するものではありません。",
     ],
   },
   {
@@ -75,7 +83,7 @@ export default async function TermsPage() {
   const signedIn = Boolean(ctx);
 
   return (
-    <div className="flex min-h-dvh flex-col bg-surface-0">
+    <div className="flex min-h-dvh flex-col bg-surface-0 [--text-primary:#000] [--text-secondary:#000] [--text-muted:#000]">
       <SiteHeader signedIn={signedIn} />
 
       <main className="mx-auto w-full max-w-[760px] flex-1 px-5 py-16 sm:px-8">

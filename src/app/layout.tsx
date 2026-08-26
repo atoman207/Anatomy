@@ -4,6 +4,7 @@ import "./globals.css";
 import { AppShell } from "@/components/shell/AppShell";
 import { ToastProvider } from "@/components/shell/Toast";
 import { WorkspaceProvider } from "@/components/workspace";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/seo";
 
 const notoSans = Noto_Sans_JP({
   variable: "--font-noto-sans-jp",
@@ -44,13 +45,34 @@ const roboto = Roboto({
 });
 
 export const metadata: Metadata = {
-  title: "LABNOTE.",
-  description: "研究データの整理、解析、実験ノート。",
-  icons: {
-    icon: "/LOGO.png",
-    shortcut: "/LOGO.png",
-    apple: "/LOGO.png",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: `${SITE_NAME} — 実験ノート・統計解析・AI査読`,
+    // Every page sets its own <title>; this only fills the %s slot.
+    template: `%s — ${SITE_NAME}`,
   },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  // No manual `icons` field: src/app/icon.png, apple-icon.png and
+  // favicon.ico (the Next.js file-based convention) are auto-detected and
+  // generate the right <link rel="icon"> tags on their own - declaring both
+  // would risk two conflicting favicon links.
+  openGraph: {
+    type: "website",
+    locale: "ja_JP",
+    siteName: SITE_NAME,
+    title: `${SITE_NAME} — 実験ノート・統計解析・AI査読`,
+    description: SITE_DESCRIPTION,
+    url: SITE_URL,
+    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: SITE_NAME }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${SITE_NAME} — 実験ノート・統計解析・AI査読`,
+    description: SITE_DESCRIPTION,
+    images: ["/og-image.png"],
+  },
+  robots: { index: true, follow: true },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

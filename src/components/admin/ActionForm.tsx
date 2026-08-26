@@ -51,7 +51,11 @@ export function ActionForm({
           <input key={k} type="hidden" name={k} value={v} />
         ))}
       {children}
-      <SubmitButton variant={variant} icon={icon ?? (variant === "danger" ? "trash" : "check")}>{submitLabel}</SubmitButton>
+      <SubmitButton
+        variant={variant}
+        icon={icon ?? (variant === "danger" ? "trash" : "check")}
+        label={typeof submitLabel === "string" ? submitLabel : "実行"}
+      />
     </form>
   );
 }
@@ -59,22 +63,26 @@ export function ActionForm({
 /** Inline variant for row-level controls, where a full form block is too heavy. */
 export function InlineActionForm({
   action, children, submitLabel, variant = "secondary", hidden, confirm, icon,
+  iconOnly = false,
 }: {
   action: Action;
   children?: ReactNode;
-  submitLabel: ReactNode;
+  submitLabel: string;
   variant?: "primary" | "secondary" | "danger";
   hidden?: Record<string, string>;
   confirm?: string;
   icon?: IconName;
+  /** Render a square icon button; `submitLabel` becomes the tooltip / accessible name. */
+  iconOnly?: boolean;
 }) {
   const [state, formAction] = useActionState<ActionResult | null, FormData>(action, null);
   useResultToast(state);
+  const resolvedIcon = icon ?? (variant === "danger" ? "trash" : "check");
 
   return (
     <form
       action={formAction}
-      className="flex flex-wrap items-center gap-2"
+      className={iconOnly ? "inline-flex shrink-0" : "flex flex-wrap items-center gap-2"}
       onSubmit={(e) => {
         if (confirm && !window.confirm(confirm)) e.preventDefault();
       }}
@@ -84,7 +92,13 @@ export function InlineActionForm({
           <input key={k} type="hidden" name={k} value={v} />
         ))}
       {children}
-      <SubmitButton variant={variant} size="sm" icon={icon ?? (variant === "danger" ? "trash" : "check")}>{submitLabel}</SubmitButton>
+      <SubmitButton
+        variant={variant}
+        size="sm"
+        icon={resolvedIcon}
+        iconOnly={iconOnly}
+        label={submitLabel}
+      />
     </form>
   );
 }
@@ -108,18 +122,30 @@ function useResultToast(state: ActionResult | null) {
 }
 
 function SubmitButton({
-  children, variant, size = "md", icon,
+  variant, size = "md", icon, iconOnly = false, label,
 }: {
-  children: ReactNode;
   variant: "primary" | "secondary" | "danger";
   size?: "sm" | "md";
   icon?: IconName;
+  iconOnly?: boolean;
+  /** Visible label, or tooltip / accessible name when `iconOnly`. */
+  label: string;
 }) {
   // useFormStatus must be read from a child of the form, not the form itself.
   const { pending } = useFormStatus();
+  const text = pending ? "処理中…" : label;
   return (
-    <Button type="submit" variant={variant} size={size} disabled={pending} icon={icon}>
-      {pending ? "処理中…" : children}
+    <Button
+      type="submit"
+      variant={variant}
+      size={size}
+      disabled={pending}
+      icon={icon}
+      iconOnly={iconOnly}
+      title={iconOnly ? text : undefined}
+      aria-label={text}
+    >
+      {iconOnly ? null : text}
     </Button>
   );
 }

@@ -8,7 +8,8 @@ import { StripeCustomersPanel } from "./StripeCustomersPanel";
 import { loadBillingDashboard } from "@/lib/billing/dashboardActions";
 import {
   formatMoney, GRANULARITY_LABELS, GRANULARITIES, RANGE_PRESETS,
-  type Granularity,
+  CHART_RANGE_TABS, chartTabFor,
+  type ChartRangeId, type Granularity,
 } from "@/lib/billing/revenue";
 import type { BillingDashboardData } from "@/lib/billing/dashboardTypes";
 
@@ -201,6 +202,13 @@ export function BillingDashboard({ initial }: { initial: BillingDashboardData })
               : undefined
           }
           stale={busy}
+          activeRangeId={chartTabFor(range, granularity)}
+          onRangeChange={(id: ChartRangeId) => {
+            const tab = CHART_RANGE_TABS.find((t) => t.id === id);
+            if (!tab) return;
+            setRange(tab.days);
+            setGranularity(tab.granularity);
+          }}
         />
       </Card>
 
