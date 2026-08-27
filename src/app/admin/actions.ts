@@ -7,7 +7,7 @@ import {
 } from "@/lib/auth/guards";
 import { LAB_ROLES, LAB_ROLE_LABELS, PLATFORM_ROLES, PLATFORM_ROLE_LABELS } from "@/lib/auth/roles";
 import { sendMail } from "@/lib/email/smtp";
-import { isMockId } from "@/lib/billing/store";
+import { labHasPaymentHistory } from "@/lib/billing/paymentHistory";
 import type { LabRole, PlatformRole } from "@/lib/supabase/types";
 
 export interface ActionResult {
@@ -444,6 +444,14 @@ export async function deleteLabAction(
       return fail(`削除を確認するため、研究室名「${lab.name}」を正確に入力してください。`);
     }
 
+    const payment = await labHasPaymentHistory(labId);
+    if (payment) {
+      return fail(
+        `研究室「${lab.name}」には決済履歴があるため削除できません（${payment}）。` +
+          "決済のない無料の研究室のみ削除できます。",
+      );
+    }
+
     const counts = await countLabContents(labId);
     const { error } = await admin.from("laboratories").delete().eq("id", labId);
     if (error) return fail(error.message);
@@ -687,37 +695,11 @@ async function findUserPaymentHistory(userId: string): Promise<string | null> {
   const labs = ownedLabs ?? [];
   if (labs.length === 0) return null;
 
-  const labIds = labs.map((l) => l.id);
-  const nameById = new Map(labs.map((l) => [l.id, l.name]));
-
-  const { data: subs } = await admin
-    .from("lab_subscriptions")
-    .select("lab_id, stripe_subscription_id")
-    .in("lab_id", labIds);
-
-  for (const sub of subs ?? []) {
-    if (sub.stripe_subscription_id && !isMockId(sub.stripe_subscription_id)) {
-      const labName = nameById.get(sub.lab_id) ?? sub.lab_id;
-      return `研究室「${labName}」の Stripe 購読`;
+  for (const lab of labs) {
+    const reason = await labHasPaymentHistory(lab.id);
+    if (reason) {
+      return `研究室「${lab.name}」: ${reason}`;
     }
-  }
-
-  const { data: events } = await admin
-    .from("billing_events")
-    .select("id, type, lab_id")
-    .in("lab_id", labIds)
-    .in("type", [
-      "checkout.session.completed",
-      "invoice.paid",
-      "invoice.payment_succeeded",
-      "charge.succeeded",
-      "customer.subscription.created",
-      "customer.subscription.updated",
-    ])
-    .limit(1);
-  if (events && events.length > 0) {
-    const labName = nameById.get(events[0].lab_id ?? "") ?? "所有研究室";
-    return `研究室「${labName}」の決済イベント`;
   }
 
   return null;

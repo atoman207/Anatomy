@@ -7,6 +7,7 @@ import {
 } from "@/lib/auth/guards";
 import { getOwnerMaxLabs } from "@/lib/billing/subscription";
 import { formatUsage } from "@/lib/billing/plans";
+import { labHasPaymentHistory } from "@/lib/billing/paymentHistory";
 import { LAB_ROLES, LAB_ROLE_LABELS, canManageMembers } from "@/lib/auth/roles";
 import { ensureGeneralChannel } from "@/lib/chat/queries";
 import type { LabRole } from "@/lib/supabase/types";
@@ -180,6 +181,14 @@ export async function deleteLabAction(
 
     if (confirm !== lab.name) {
       return fail(`削除を確認するため、研究室名「${lab.name}」を正確に入力してください。`);
+    }
+
+    const payment = await labHasPaymentHistory(labId);
+    if (payment) {
+      return fail(
+        `研究室「${lab.name}」には決済履歴があるため削除できません（${payment}）。` +
+          "決済のない無料の研究室のみ削除できます。",
+      );
     }
 
     const counts = await countLabContents(labId);

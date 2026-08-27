@@ -22,6 +22,7 @@ import {
   transferLabOwnershipAction,
   updateLabAction,
 } from "@/lib/labs/actions";
+import { labHasPaymentHistory } from "@/lib/billing/paymentHistory";
 
 export const dynamic = "force-dynamic";
 
@@ -110,6 +111,7 @@ export default async function LabsPage(props: PageProps<"/labs">) {
   let roster: MemberRow[] = [];
   let invites: PendingInvite[] = [];
   let experiments: ExperimentRow[] = [];
+  let paymentBlock: string | null = null;
 
   if (selected) {
     const admin = createAdminSupabase();
@@ -148,6 +150,10 @@ export default async function LabsPage(props: PageProps<"/labs">) {
         role: i.role as LabRole,
         createdAt: i.created_at,
       }));
+    }
+
+    if (selected.ownerId === ctx.user.id) {
+      paymentBlock = await labHasPaymentHistory(selected.labId);
     }
 
     const isLabCreator = selected.ownerId === ctx.user.id;
@@ -198,7 +204,7 @@ export default async function LabsPage(props: PageProps<"/labs">) {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="研究室"
-        description="共同研究のための研究室です。研究室を選ぶと、実験・メンバー・設定をこのページで確認できます。"
+        description="研究室を選ぶと、メンバーの確認・追加・削除ができます。決済のない研究室はオーナーが削除できます。"
       />
 
       <Card title="研究室を作成" subtitle="誰でも作成できます。作成すると、あなたがオーナーになります。">
@@ -227,7 +233,7 @@ export default async function LabsPage(props: PageProps<"/labs">) {
                 id: s.labId,
                 name: s.labName,
                 experimentCount: s.experimentCount,
-                isOwner: s.role === "owner",
+                isOwner: s.ownerId === currentUserId,
               }))}
               current={selected!.labId}
             />
@@ -255,6 +261,125 @@ export default async function LabsPage(props: PageProps<"/labs">) {
                   />
                 </div>
               </Card>
+
+              <Card
+                title={`メンバー（${roster.length} 名）`}
+                subtitle="この研究室に所属しているメンバーです。"
+              >
+                {roster.length === 0 ? (
+                  <EmptyState title="メンバーがいません" />
+                ) : (
+                  <DataTable
+                    headers={["名前", "メール", "役割", "参加日", ...(canManage ? ["操作"] : [])]}
+                    rows={roster.map((m) => [
+                      <span key="n" className="text-ink">
+                        {m.displayName}
+                        {m.userId === ctx.user.id && (
+                          <span className="ml-1.5 text-[10px] text-ink-3">（あなた）</span>
+                        )}
+                      </span>,
+                      <span key="e" className="font-mono text-ink-2">{m.email}</span>,
+                      <Badge
+                        key="r"
+                        tone={m.role === "owner" ? "accent" : m.role === "admin" ? "good" : "neutral"}
+                      >
+                        {LAB_ROLE_LABELS[m.role].ja}
+                      </Badge>,
+                      new Date(m.joinedAt).toLocaleDateString("ja-JP"),
+                      ...(canManage
+                        ? [
+                            m.role === "owner" || m.userId === ctx.user.id ? (
+                              <span key="o" className="text-ink-3">
+                                {m.role === "owner" ? "オーナー — 下で譲渡" : "自分自身"}
+                              </span>
+                            ) : (
+                              <div key="ops" className="flex flex-nowrap items-center gap-2">
+                                <InlineActionForm
+                                  action={changeLabMemberRoleAction}
+                                  hidden={{ lab_id: selected.labId, user_id: m.userId }}
+                                  submitLabel="変更"
+                                  icon="save"
+                                  iconOnly
+                                >
+                                  <select
+                                    name="role"
+                                    defaultValue={m.role}
+                                    aria-label={`${m.email} の役割`}
+                                    className="h-8 w-[6.75rem] rounded-md border border-line-strong bg-surface-1 px-2 text-[12px] leading-none text-ink"
+                                  >
+                                    {(["admin", "member", "viewer"] as LabRole[]).map((r) => (
+                                      <option key={r} value={r}>{LAB_ROLE_LABELS[r].ja}</option>
+                                    ))}
+                                  </select>
+                                </InlineActionForm>
+                                <InlineActionForm
+                                  action={removeLabMemberAction}
+                                  hidden={{ lab_id: selected.labId, user_id: m.userId }}
+                                  submitLabel="削除"
+                                  variant="danger"
+                                  iconOnly
+                                  confirm={`${m.email} を「${selected.labName}」から削除しますか？データは研究室に残ります。`}
+                                />
+                              </div>
+                            ),
+                          ]
+                        : []),
+                    ])}
+                  />
+                )}
+              </Card>
+
+              {canInvite && (
+                <Card
+                  title="メンバーを追加"
+                  subtitle="メールアドレスで招待します。アカウントがない場合は招待メールを送ります。"
+                >
+                  <div className="flex flex-col gap-6">
+                    {canManage && invites.length > 0 && (
+                      <div>
+                        <h3 className="mb-2 text-xs font-semibold text-ink-2">招待中（{invites.length} 件）</h3>
+                        <DataTable
+                          headers={["メール", "役割", "招待日", "操作"]}
+                          rows={invites.map((inv) => [
+                            <span key="e" className="font-mono text-ink-2">{inv.email}</span>,
+                            <Badge key="r" tone="neutral">{LAB_ROLE_LABELS[inv.role].ja}</Badge>,
+                            new Date(inv.createdAt).toLocaleDateString("ja-JP"),
+                            <InlineActionForm
+                              key="c"
+                              action={cancelLabInviteAction}
+                              hidden={{ lab_id: selected.labId, invite_id: inv.id }}
+                              submitLabel="取り消し"
+                              variant="danger"
+                            />,
+                          ])}
+                        />
+                      </div>
+                    )}
+
+                    <div>
+                      <ActionForm
+                        action={inviteLabMemberAction}
+                        hidden={{ lab_id: selected.labId }}
+                        submitLabel="追加"
+                        icon="plus"
+                      >
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Field label="メールアドレス" hint="アカウントがない場合は招待メールを送ります。">
+                            <InviteEmailInput name="email" />
+                          </Field>
+                          <Field label="権限" hint="実験・データセット・ノートブックの作成・編集。">
+                            <Select name="role" defaultValue="member">
+                              {(canManage ? (["admin", "member", "viewer"] as LabRole[]) : (["member", "viewer"] as LabRole[])).map((r) => (
+                                <option key={r} value={r}>{LAB_ROLE_LABELS[r].ja}</option>
+                              ))}
+                            </Select>
+                          </Field>
+                        </div>
+                      </ActionForm>
+                    </div>
+                  </div>
+                </Card>
+              )}
 
               <section className="flex flex-col gap-3">
                 <h2 className="text-sm font-semibold text-ink-2">実験</h2>
@@ -284,118 +409,6 @@ export default async function LabsPage(props: PageProps<"/labs">) {
                   </>
                 )}
               </section>
-
-              <Card title={`メンバー（${roster.length} 名）`}>
-                <DataTable
-                  headers={["名前", "メール", "役割", "参加日", ...(canManage ? ["操作"] : [])]}
-                  rows={roster.map((m) => [
-                    <span key="n" className="text-ink">
-                      {m.displayName}
-                      {m.userId === ctx.user.id && (
-                        <span className="ml-1.5 text-[10px] text-ink-3">（あなた）</span>
-                      )}
-                    </span>,
-                    <span key="e" className="font-mono text-ink-2">{m.email}</span>,
-                    <Badge
-                      key="r"
-                      tone={m.role === "owner" ? "accent" : m.role === "admin" ? "good" : "neutral"}
-                    >
-                      {LAB_ROLE_LABELS[m.role].ja}
-                    </Badge>,
-                    new Date(m.joinedAt).toLocaleDateString("ja-JP"),
-                    ...(canManage
-                      ? [
-                          m.role === "owner" || m.userId === ctx.user.id ? (
-                            <span key="o" className="text-ink-3">
-                              {m.role === "owner" ? "オーナー — 下で譲渡" : "自分自身"}
-                            </span>
-                          ) : (
-                            <div key="ops" className="flex flex-nowrap items-center gap-2">
-                              <InlineActionForm
-                                action={changeLabMemberRoleAction}
-                                hidden={{ lab_id: selected.labId, user_id: m.userId }}
-                                submitLabel="変更"
-                                icon="save"
-                                iconOnly
-                              >
-                                <select
-                                  name="role"
-                                  defaultValue={m.role}
-                                  aria-label={`${m.email} の役割`}
-                                  className="h-8 w-[6.75rem] rounded-md border border-line-strong bg-surface-1 px-2 text-[12px] leading-none text-ink"
-                                >
-                                  {(["admin", "member", "viewer"] as LabRole[]).map((r) => (
-                                    <option key={r} value={r}>{LAB_ROLE_LABELS[r].ja}</option>
-                                  ))}
-                                </select>
-                              </InlineActionForm>
-                              <InlineActionForm
-                                action={removeLabMemberAction}
-                                hidden={{ lab_id: selected.labId, user_id: m.userId }}
-                                submitLabel="削除"
-                                variant="danger"
-                                iconOnly
-                                confirm={`${m.email} を「${selected.labName}」から削除しますか？データは研究室に残ります。`}
-                              />
-                            </div>
-                          ),
-                        ]
-                      : []),
-                  ])}
-                />
-              </Card>
-
-              {canInvite && (
-                <Card
-                  title="メンバーを招待"
-                  subtitle="この研究室のメンバーなら誰でも、新しい仲間を招待できます。"
-                >
-                  <div className="flex flex-col gap-6">
-                    {canManage && invites.length > 0 && (
-                      <div>
-                        <h3 className="mb-2 text-xs font-semibold text-ink-2">招待中（{invites.length} 件）</h3>
-                        <DataTable
-                          headers={["メール", "役割", "招待日", "操作"]}
-                          rows={invites.map((inv) => [
-                            <span key="e" className="font-mono text-ink-2">{inv.email}</span>,
-                            <Badge key="r" tone="neutral">{LAB_ROLE_LABELS[inv.role].ja}</Badge>,
-                            new Date(inv.createdAt).toLocaleDateString("ja-JP"),
-                            <InlineActionForm
-                              key="c"
-                              action={cancelLabInviteAction}
-                              hidden={{ lab_id: selected.labId, invite_id: inv.id }}
-                              submitLabel="取り消し"
-                              variant="danger"
-                            />,
-                          ])}
-                        />
-                      </div>
-                    )}
-
-                    <div>
-                      <ActionForm
-                        action={inviteLabMemberAction}
-                        hidden={{ lab_id: selected.labId }}
-                        submitLabel="招待"
-                        icon="plus"
-                      >
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <Field label="メールアドレス" hint="アカウントがない場合は招待メールを送ります。">
-                            <InviteEmailInput name="email" />
-                          </Field>
-                          <Field label="権限" hint="実験・データセット・ノートブックの作成・編集。">
-                            <Select name="role" defaultValue="member">
-                              {(canManage ? (["admin", "member", "viewer"] as LabRole[]) : (["member", "viewer"] as LabRole[])).map((r) => (
-                                <option key={r} value={r}>{LAB_ROLE_LABELS[r].ja}</option>
-                              ))}
-                            </Select>
-                          </Field>
-                        </div>
-                      </ActionForm>
-                    </div>
-                  </div>
-                </Card>
-              )}
 
               {canManage && (
                 <Card
@@ -454,22 +467,31 @@ export default async function LabsPage(props: PageProps<"/labs">) {
                     {selected.role === "owner" && (
                       <div>
                         <h3 className="mb-2 text-xs font-semibold text-ink-2">研究室の削除</h3>
-                        <Callout tone="danger" title="取り消せません">
-                          研究室を削除するとすべてのデータが永久に失われます。必要なデータは事前にエクスポートしてください。
-                        </Callout>
-                        <div className="mt-3">
-                          <ActionForm
-                            action={deleteLabAction}
-                            hidden={{ lab_id: selected.labId }}
-                            submitLabel="削除"
-                            variant="danger"
-                            confirm={`「${selected.labName}」とすべてのデータを永久に削除しますか？`}
-                          >
-                            <Field label="確認" hint={`名称を正確に入力: ${selected.labName}`}>
-                              <TextInput name="confirm" required placeholder={selected.labName} />
-                            </Field>
-                          </ActionForm>
-                        </div>
+                        {paymentBlock ? (
+                          <Callout tone="warn" title="削除できません">
+                            この研究室には決済履歴があるため削除できません（{paymentBlock}）。
+                            決済のない無料の研究室のみ削除できます。
+                          </Callout>
+                        ) : (
+                          <>
+                            <Callout tone="danger" title="取り消せません">
+                              決済のない研究室のみ削除できます。削除すると実験・ノートなどすべてのデータが永久に失われます。
+                            </Callout>
+                            <div className="mt-3">
+                              <ActionForm
+                                action={deleteLabAction}
+                                hidden={{ lab_id: selected.labId }}
+                                submitLabel="削除"
+                                variant="danger"
+                                confirm={`「${selected.labName}」とすべてのデータを永久に削除しますか？`}
+                              >
+                                <Field label="確認" hint={`名称を正確に入力: ${selected.labName}`}>
+                                  <TextInput name="confirm" required placeholder={selected.labName} />
+                                </Field>
+                              </ActionForm>
+                            </div>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>

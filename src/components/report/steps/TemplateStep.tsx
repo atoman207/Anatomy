@@ -8,8 +8,7 @@ import {
   BUILT_IN_BY_CATEGORY, BUILT_IN_TEMPLATES, templateFromCustomRow,
   type NotebookTemplate,
 } from "@/lib/notebook/templates";
-import { listLabTemplates } from "@/lib/notebook/templateActions";
-import type { NotebookTemplateRow } from "@/lib/supabase/types";
+import { listLabTemplates, type LabTemplateRow } from "@/lib/notebook/templateActions";
 import { SelectionSummary } from "../SelectionSummary";
 
 /**
@@ -22,7 +21,7 @@ import { SelectionSummary } from "../SelectionSummary";
  */
 export function TemplateStep() {
   const ws = useWorkspace();
-  const [customTemplates, setCustomTemplates] = useState<NotebookTemplateRow[]>([]);
+  const [customTemplates, setCustomTemplates] = useState<LabTemplateRow[]>([]);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
 
   function refresh(labId: string) {

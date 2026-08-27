@@ -12,7 +12,7 @@
  */
 
 import { revalidatePath } from "next/cache";
-import { createServerSupabase } from "@/lib/supabase/server";
+import { createAdminSupabase, createServerSupabase } from "@/lib/supabase/server";
 import { getSessionContext, logAudit } from "@/lib/auth/guards";
 import { sanitizeFields, slugify } from "./templateFields";
 import type { Json, NotebookTemplateRow } from "@/lib/supabase/types";
@@ -21,6 +21,27 @@ export interface ActionResult<T = undefined> {
   ok: boolean;
   error?: string;
   data?: T;
+}
+
+export type LabTemplateRow = NotebookTemplateRow & { creator_name: string };
+
+async function creatorNamesById(
+  creatorIds: string[],
+): Promise<Map<string, string>> {
+  if (creatorIds.length === 0) return new Map();
+  // profiles_select only returns the caller's own row, so resolve names with
+  // the service-role client (same pattern as chat sender names).
+  const admin = createAdminSupabase();
+  const { data: profiles } = await admin
+    .from("profiles")
+    .select("id, display_name, email")
+    .in("id", creatorIds);
+  return new Map(
+    (profiles ?? []).map((p) => [
+      p.id,
+      p.display_name?.trim() || p.email || "不明",
+    ]),
+  );
 }
 
 export interface SaveCustomTemplateInput {
@@ -37,7 +58,7 @@ export interface SaveCustomTemplateInput {
 /** Every custom template belonging to one laboratory, newest first. */
 export async function listLabTemplates(
   labId: string,
-): Promise<ActionResult<NotebookTemplateRow[]>> {
+): Promise<ActionResult<LabTemplateRow[]>> {
   const ctx = await getSessionContext();
   if (!ctx) return { ok: false, error: "ログインしていません。" };
   if (!labId) return { ok: true, data: [] };
@@ -50,7 +71,16 @@ export async function listLabTemplates(
     .order("created_at", { ascending: false });
 
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: data ?? [] };
+
+  const creatorIds = [
+    ...new Set((data ?? []).map((row) => row.created_by).filter((id): id is string => !!id)),
+  ];
+  const nameById = await creatorNamesById(creatorIds);
+  const rows: LabTemplateRow[] = (data ?? []).map((row) => ({
+    ...row,
+    creator_name: row.created_by ? nameById.get(row.created_by) ?? "不明" : "不明",
+  }));
+  return { ok: true, data: rows };
 }
 
 /** Creates or updates a custom template. The caller must be able to write to the lab (RLS-enforced). */

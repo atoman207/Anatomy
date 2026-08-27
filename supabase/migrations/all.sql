@@ -3093,3 +3093,4 @@ insert into public.site_news (slug, title, summary, body_md, is_published, publi
 on conflict (slug) do nothing;
 
 notify pgrst, 'reload schema';
+

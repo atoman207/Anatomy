@@ -12,8 +12,8 @@ import {
 import type { TemplateField } from "@/lib/notebook/templates";
 import {
   deleteCustomTemplate, saveCustomTemplate,
+  type LabTemplateRow,
 } from "@/lib/notebook/templateActions";
-import type { NotebookTemplateRow } from "@/lib/supabase/types";
 
 interface FormState {
   templateId?: string;
@@ -28,7 +28,7 @@ function emptyForm(): FormState {
   return { name: "", description: "", category: "", body: "", fields: [emptyDraftField()] };
 }
 
-function formFromRow(row: NotebookTemplateRow): FormState {
+function formFromRow(row: LabTemplateRow): FormState {
   const fields = Array.isArray(row.fields) ? (row.fields as unknown as TemplateField[]) : [];
   return {
     templateId: row.id,
@@ -40,9 +40,23 @@ function formFromRow(row: NotebookTemplateRow): FormState {
   };
 }
 
+function formatCreatedAt(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString("ja-JP", {
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
 interface TemplateManagerProps {
   labId: string | null;
-  templates: NotebookTemplateRow[];
+  templates: LabTemplateRow[];
   onChanged: () => void;
 }
 
@@ -65,7 +79,7 @@ export function TemplateManager({ labId, templates, onChanged }: TemplateManager
     setOpen(true);
   }
 
-  function startEdit(row: NotebookTemplateRow) {
+  function startEdit(row: LabTemplateRow) {
     setForm(formFromRow(row));
     setOpen(true);
   }
@@ -94,7 +108,7 @@ export function TemplateManager({ labId, templates, onChanged }: TemplateManager
     }
   }
 
-  async function remove(row: NotebookTemplateRow) {
+  async function remove(row: LabTemplateRow) {
     if (!confirm(`テンプレート「${row.name}」を削除しますか？この操作は取り消せません。`)) return;
     setDeletingId(row.id);
     try {
@@ -128,17 +142,20 @@ export function TemplateManager({ labId, templates, onChanged }: TemplateManager
         templates.length === 0 ? (
           <EmptyState title="このラボのカスタムテンプレートはまだありません" />
         ) : (
-          <ul className="flex flex-col gap-2">
+          <ul className="flex flex-col">
             {templates.map((t) => (
               <li
                 key={t.id}
-                className="flex items-center justify-between gap-3 rounded-lg border border-line px-3 py-2"
+                className="flex items-center justify-between gap-3 border-b border-line py-3 last:border-b-0"
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-ink">
                     {t.name} {t.category && <Badge tone="neutral">{t.category}</Badge>}
                   </p>
-                  {t.description && <p className="truncate text-xs text-ink-3">{t.description}</p>}
+                  <p className="mt-0.5 truncate text-xs text-ink-3">
+                    作成者: {t.creator_name} · {formatCreatedAt(t.created_at)}
+                    {t.description ? ` · ${t.description}` : ""}
+                  </p>
                 </div>
                 <div className="flex shrink-0 gap-1.5">
                   <Button size="sm" variant="ghost" icon="edit" onClick={() => startEdit(t)}>

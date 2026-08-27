@@ -16,7 +16,7 @@ import {
 } from "@/app/admin/templateActions";
 import type { NotebookTemplateRow } from "@/lib/supabase/types";
 
-export type AdminTemplateRow = NotebookTemplateRow & { lab_name: string };
+export type AdminTemplateRow = NotebookTemplateRow & { lab_name: string; creator_name: string };
 
 export interface AdminTemplateLab {
   id: string;
@@ -266,16 +266,23 @@ export function AdminTemplateManager({
         </Card>
       ) : (
     <Card title="カスタムテンプレート" subtitle={`${rows.length} 件 — すべての研究室`}>
-      <ul className="flex flex-col gap-2">
+      <ul className="flex flex-col">
         {rows.map((row) => (
-          <li key={row.id} className="rounded-lg border border-line p-3">
+          <li key={row.id} className="border-b border-line py-3 last:border-b-0">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-ink">
                   {row.name} {row.category && <Badge tone="neutral">{row.category}</Badge>}
                 </p>
-                <p className="truncate text-xs text-ink-3">
-                  {row.lab_name} · {new Date(row.created_at).toLocaleDateString("ja-JP")}
+                <p className="mt-0.5 truncate text-xs text-ink-3">
+                  {row.lab_name} · 作成者: {row.creator_name} ·{" "}
+                  {new Date(row.created_at).toLocaleString("ja-JP", {
+                    year: "numeric",
+                    month: "numeric",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
                   {row.description ? ` · ${row.description}` : ""}
                 </p>
               </div>

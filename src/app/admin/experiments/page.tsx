@@ -54,7 +54,10 @@ export default async function AdminExperimentsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="実験" description="研究室ごとのすべての実験を作成・編集・削除します。" />
+      <PageHeader
+        title="実験"
+        description="左で研究室を選び、その実験とラボノートを確認・作成・編集・削除します。"
+      />
       {error ? (
         <p className="text-sm text-danger">{error.message}</p>
       ) : (

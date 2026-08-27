@@ -146,3 +146,45 @@ export async function adminDeleteExperiment(experimentId: string): Promise<Actio
   revalidatePath("/admin/experiments");
   return { ok: true };
 }
+
+export interface AdminNotebookEntry {
+  id: string;
+  title: string;
+  template_slug: string | null;
+  created_at: string;
+  created_by: string | null;
+  body_md: string;
+}
+
+/** Lab notes for one experiment — admin client, after manage-lab check. */
+export async function adminListNotebookEntries(
+  experimentId: string,
+): Promise<ActionResult<AdminNotebookEntry[]>> {
+  const ctx = await getSessionContext();
+  if (!ctx) return { ok: false, error: "ログインしていません。" };
+  if (!experimentId) return { ok: true, data: [] };
+
+  const admin = createAdminSupabase();
+  const { data: experiment } = await admin
+    .from("experiments")
+    .select("lab_id")
+    .eq("id", experimentId)
+    .maybeSingle();
+  if (!experiment) return { ok: false, error: "実験が見つかりません。" };
+
+  try {
+    await assertCanManageLab(ctx, experiment.lab_id);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "権限がありません。" };
+  }
+
+  const { data, error } = await admin
+    .from("notebook_entries")
+    .select("id, title, template_slug, created_at, created_by, body_md")
+    .eq("experiment_id", experimentId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: data ?? [] };
+}

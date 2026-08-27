@@ -23,7 +23,7 @@ export interface ActionResult<T = undefined> {
 /** Every custom template across every laboratory this admin may manage. */
 export async function adminListTemplates(
   labIds: string[] | null,
-): Promise<ActionResult<(NotebookTemplateRow & { lab_name: string })[]>> {
+): Promise<ActionResult<(NotebookTemplateRow & { lab_name: string; creator_name: string })[]>> {
   const ctx = await getSessionContext();
   if (!ctx) return { ok: false, error: "ログインしていません。" };
   if (!ctx.canAccessAdmin) return { ok: false, error: "管理権限がありません。" };
@@ -40,6 +40,20 @@ export async function adminListTemplates(
   const { data, error } = await query;
   if (error) return { ok: false, error: error.message };
 
+  // `notebook_templates.created_by` references auth.users, not
+  // public.profiles directly, so PostgREST cannot embed the creator's name
+  // in the query above - fetched separately and joined in memory, same
+  // pattern as sender names in src/lib/chat/queries.ts.
+  const creatorIds = [
+    ...new Set((data ?? []).map((row) => row.created_by).filter((id): id is string => !!id)),
+  ];
+  const { data: profiles } = creatorIds.length
+    ? await admin.from("profiles").select("id, display_name, email").in("id", creatorIds)
+    : { data: [] as { id: string; display_name: string | null; email: string | null }[] };
+  const nameById = new Map(
+    (profiles ?? []).map((p) => [p.id, p.display_name?.trim() || p.email || "unknown"]),
+  );
+
   const rows = (data ?? []).map((row) => {
     const embedded = row.laboratories as unknown;
     const lab = (Array.isArray(embedded) ? embedded[0] : embedded) as { name: string } | null;
@@ -49,7 +63,11 @@ export async function adminListTemplates(
     const { laboratories: _drop, ...rest } = row as NotebookTemplateRow & {
       laboratories: unknown;
     };
-    return { ...rest, lab_name: lab?.name ?? "（不明）" };
+    return {
+      ...rest,
+      lab_name: lab?.name ?? "（不明）",
+      creator_name: rest.created_by ? nameById.get(rest.created_by) ?? "不明" : "不明",
+    };
   });
   return { ok: true, data: rows };
 }
@@ -65,7 +83,7 @@ export interface AdminSaveTemplateInput {
 
 export async function adminUpdateTemplate(
   input: AdminSaveTemplateInput,
-): Promise<ActionResult<NotebookTemplateRow>> {
+): Promise<ActionResult<NotebookTemplateRow & { creator_name?: string }>> {
   const ctx = await getSessionContext();
   if (!ctx) return { ok: false, error: "ログインしていません。" };
 
@@ -166,7 +184,7 @@ export interface AdminCreateTemplateInput {
  */
 export async function adminCreateTemplate(
   input: AdminCreateTemplateInput,
-): Promise<ActionResult<NotebookTemplateRow>> {
+): Promise<ActionResult<NotebookTemplateRow & { creator_name: string }>> {
   const ctx = await getSessionContext();
   if (!ctx) return { ok: false, error: "ログインしていません。" };
   if (!input.labId) return { ok: false, error: "研究室を選択してください。" };
@@ -212,7 +230,7 @@ export async function adminCreateTemplate(
       });
       revalidatePath("/admin/templates");
       revalidatePath("/notebook");
-      return { ok: true, data };
+      return { ok: true, data: { ...data, creator_name: ctx.displayName } };
     }
     if (error.code === "23505") {
       slug = `${slugify(name)}-${attempt + 2}`;

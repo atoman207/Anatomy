@@ -245,6 +245,14 @@ export const STATUS_LABELS: Record<SubscriptionStatus, { ja: string; tone: "good
   paused: { ja: "一時停止", tone: "neutral" },
 };
 
+/** Distinct badge colours per plan so the admin lab list is scannable. */
+export const PLAN_BADGE_TONE: Record<PlanId, "neutral" | "good" | "accent" | "warn"> = {
+  free: "neutral",
+  solo: "good",
+  pro: "accent",
+  team: "warn",
+};
+
 /** `¥3,000`. Zero-decimal, so no fractional part is ever shown. */
 export function formatJpy(amount: number): string {
   return `¥${amount.toLocaleString("ja-JP")}`;

@@ -17,7 +17,7 @@ import {
   BUILT_IN_TEMPLATES, renderTemplate, templateFromCustomRow, validateTemplateValues,
   type NotebookTemplate, type TemplateValues,
 } from "@/lib/notebook/templates";
-import { listLabTemplates } from "@/lib/notebook/templateActions";
+import { listLabTemplates, type LabTemplateRow } from "@/lib/notebook/templateActions";
 import { renderMarkdown, extractMarkdownImageSrc } from "@/lib/notebook/markdown";
 import { buildReport } from "@/lib/notebook/report";
 import {
@@ -38,7 +38,6 @@ import {
 } from "@/lib/notebook/actions";
 import { listFigures, saveFigure, type FigureSummary } from "@/lib/analyze/actions";
 import { svgToDataUri } from "@/lib/plots/svg";
-import type { NotebookTemplateRow } from "@/lib/supabase/types";
 import type { WorkspaceClip } from "@/components/workspace";
 import { SubmissionFilesManager } from "@/components/notebook/SubmissionFilesManager";
 import { SelectionSummary } from "../SelectionSummary";
@@ -93,7 +92,7 @@ export const NotebookStep = forwardRef<NotebookStepHandle>(
     const [structuredWithAi, setStructuredWithAi] = useState(false);
 
     // --- ② review / fields ----------------------------------------------
-    const [customTemplates, setCustomTemplates] = useState<NotebookTemplateRow[]>([]);
+    const [customTemplates, setCustomTemplates] = useState<LabTemplateRow[]>([]);
     const [customLoadedFor, setCustomLoadedFor] = useState<string | null>(null);
     const [values, setValues] = useState<TemplateValues>({});
     const [prefillHint, setPrefillHint] = useState<string | null>(null);

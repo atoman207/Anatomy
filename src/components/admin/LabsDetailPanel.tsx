@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useId, useMemo, useState } from "react";
 import { Badge, Button, EmptyState, cx } from "@/components/ui";
-import { PLANS, STATUS_LABELS, type PlanId } from "@/lib/billing/plans";
+import { PLAN_BADGE_TONE, PLANS, STATUS_LABELS, type PlanId } from "@/lib/billing/plans";
 import type { SubscriptionStatus } from "@/lib/billing/plans";
 
 export interface LabDetailRow {
@@ -35,7 +35,7 @@ function PlanCell({ plan, status }: { plan: PlanId; status: string }) {
   const meta = STATUS_LABELS[status as SubscriptionStatus];
   return (
     <span className="flex flex-nowrap items-center gap-1.5">
-      <Badge tone={planName === "個人研究者" ? "neutral" : "accent"}>{planName}</Badge>
+      <Badge tone={PLAN_BADGE_TONE[plan] ?? "neutral"}>{planName}</Badge>
       {status && status !== "active" && meta && (
         <Badge tone={meta.tone}>{meta.ja}</Badge>
       )}

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { cx } from "@/components/ui";
 import { Icon } from "@/components/icons";
+import { Avatar } from "@/components/chat/Avatar";
 import { signOutAction } from "@/lib/auth/actions";
 import { useWorkspace } from "@/components/workspace";
 import { titleForPath } from "./navigation";
@@ -429,12 +430,14 @@ function UserButton({ me }: { me: MeResponse | null }) {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-[var(--shell-hover)]"
+        aria-label={`${me.displayName}のメニュー`}
+        className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-[var(--shell-hover)] sm:px-2 sm:py-1.5"
       >
-        <span className="max-w-[9rem] truncate text-[13px] text-[var(--shell-text)]">
+        <Avatar name={me.displayName ?? "?"} avatarUrl={me.avatarUrl} size={28} className="rounded-full" />
+        <span className="hidden max-w-[9rem] truncate text-[13px] font-medium text-[var(--shell-text)] sm:inline">
           {me.displayName}
         </span>
-        <svg viewBox="0 0 24 24" aria-hidden className="h-3.5 w-3.5 text-[var(--shell-text-faint)]" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+        <svg viewBox="0 0 24 24" aria-hidden className="hidden h-3.5 w-3.5 text-[var(--shell-text-faint)] sm:block" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
           <path d="m6 9 6 6 6-6" />
         </svg>
       </button>
@@ -444,14 +447,17 @@ function UserButton({ me }: { me: MeResponse | null }) {
           role="menu"
           className="absolute right-0 z-40 mt-2 w-60 overflow-hidden rounded-xl border border-[var(--shell-border)] bg-[var(--shell-bg-raised)] shadow-xl"
         >
-          <div className="border-b border-[var(--shell-border)] px-3 py-2.5">
-            <p className="truncate text-[13px] font-medium text-[var(--shell-text)]">{me.displayName}</p>
-            <p className="truncate text-[11px] text-[var(--shell-text-faint)]">{me.email}</p>
-            {me.isPlatformAdmin && (
-              <span className="mt-1.5 inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium text-[var(--shell-active-text)] ring-1 ring-inset ring-[var(--shell-active-text)]/30">
-                システム管理者
-              </span>
-            )}
+          <div className="flex items-center gap-2.5 border-b border-[var(--shell-border)] px-3 py-2.5">
+            <Avatar name={me.displayName ?? "?"} avatarUrl={me.avatarUrl} size={36} className="rounded-full" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-medium text-[var(--shell-text)]">{me.displayName}</p>
+              <p className="truncate text-[11px] text-[var(--shell-text-faint)]">{me.email}</p>
+              {me.isPlatformAdmin && (
+                <span className="mt-1.5 inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium text-[var(--shell-active-text)] ring-1 ring-inset ring-[var(--shell-active-text)]/30">
+                  システム管理者
+                </span>
+              )}
+            </div>
           </div>
 
           {me.labs.length > 0 && (

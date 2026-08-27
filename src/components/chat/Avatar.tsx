@@ -4,8 +4,7 @@ import { cx } from "@/components/ui";
  * A person's real avatar image when they have one set, used as-is (no
  * cropping beyond a simple cover-fit, no generated/stylized fallback
  * avatar) - only when `avatarUrl` is empty does this fall back to an
- * initial-letter tile, matching the same pattern `Header.tsx`'s own
- * account button already uses.
+ * initial-letter tile.
  */
 export function Avatar({
   name,
