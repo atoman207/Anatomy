@@ -222,7 +222,7 @@ export default async function UsersPage() {
                           hidden={{ user_id: u.id, confirm: u.email }}
                           submitLabel="削除"
                           variant="danger"
-                          confirm={`${u.email} を永久に削除しますか？`}
+                          confirm={`${u.email} を永久に削除しますか？所有する研究室・実験もすべて削除されます。決済履歴がある場合は削除できません。`}
                         />
                       )}
                     </div>

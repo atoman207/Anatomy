@@ -104,7 +104,7 @@ export function LabTabs({
 
   return (
     <div
-      className="flex flex-1 flex-wrap items-center gap-1.5 overflow-x-auto overflow-y-hidden py-0.5"
+      className="flex flex-1 flex-wrap items-center gap-1 overflow-x-auto overflow-y-hidden"
       role="tablist"
       aria-label="研究室"
     >
@@ -119,8 +119,8 @@ export function LabTabs({
             aria-selected={active}
             aria-label={unread > 0 ? `${l.name}、未読 ${unread} 件` : l.name}
             className={cx(
-              "relative shrink-0 rounded-md border px-3 py-1.5 text-[13px] font-medium transition-colors",
-              unread > 0 && "pr-7",
+              "relative shrink-0 rounded-md border px-2.5 py-0.5 text-[12px] font-medium leading-5 transition-colors",
+              unread > 0 && "pr-6",
               active
                 ? "border-accent bg-accent-soft text-accent"
                 : "border-line bg-surface-1 text-ink-2 hover:border-accent hover:text-accent",
@@ -129,7 +129,7 @@ export function LabTabs({
             {l.name}
             {unread > 0 && (
               <span
-                className="absolute bottom-1 right-1 grid min-w-[1.15rem] place-items-center rounded-full bg-danger px-1 py-0.5 text-[10px] font-bold leading-none text-white"
+                className="absolute bottom-0.5 right-0.5 grid min-w-[1rem] place-items-center rounded-full bg-danger px-1 py-px text-[9px] font-bold leading-none text-white"
                 aria-hidden
               >
                 {formatUnread(unread)}

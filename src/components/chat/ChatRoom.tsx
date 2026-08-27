@@ -378,50 +378,52 @@ export function ChatRoom({
   return (
     <div className="relative flex h-full min-w-0">
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex h-12 shrink-0 items-center justify-between border-b border-line px-4">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-2 py-1">
           <div className="min-w-0">
             {isDm ? (
               <button
                 type="button"
                 onClick={() => openProfileForUserId(dmOtherUserId)}
-                className="truncate text-left text-[15px] font-bold text-ink hover:underline"
+                className="max-w-full truncate rounded-md border border-accent bg-accent-soft px-2.5 py-0.5 text-left text-[12px] font-medium leading-5 text-accent hover:border-[var(--accent-hover)]"
               >
                 {title}
               </button>
             ) : (
-              <h2 className="truncate text-[15px] font-bold text-ink">{title}</h2>
+              <h2 className="max-w-full truncate rounded-md border border-accent bg-accent-soft px-2.5 py-0.5 text-[12px] font-medium leading-5 text-accent">
+                {title}
+              </h2>
             )}
             {!isDm && subtitle && (
-              <p className="truncate text-[11px] text-ink-3">{subtitle}</p>
+              <p className="mt-0.5 truncate px-0.5 text-[10px] text-ink-3">{subtitle}</p>
             )}
           </div>
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 items-center gap-0.5">
             {isPrivateChannel && (
               <button
                 type="button"
                 aria-label="チャンネルメンバー"
                 onClick={() => setMembersOpen((v) => !v)}
-                className="flex items-center gap-1 rounded px-2 py-2 text-ink-3 hover:bg-surface-2 hover:text-ink"
+                className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-ink-3 hover:bg-surface-2 hover:text-ink"
               >
-                <Icon name="lock" className="h-4 w-4" />
-                <span className="text-[12px]">{channelMembers?.length ?? 0}</span>
+                <Icon name="lock" className="h-3.5 w-3.5" />
+                <span className="text-[11px]">{channelMembers?.length ?? 0}</span>
               </button>
             )}
             <button
               type="button"
               aria-label="音声通話"
               onClick={() => startCall(callTarget, "audio")}
-              className="rounded p-2 text-ink-3 hover:bg-surface-2 hover:text-ink"
+              className="rounded-md p-1 text-ink-3 hover:bg-surface-2 hover:text-ink"
             >
-              <Icon name="phone" className="h-4 w-4" />
+              <Icon name="phone" className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"
               aria-label="ビデオ通話"
               onClick={() => startCall(callTarget, "video")}
-              className="rounded p-2 text-ink-3 hover:bg-surface-2 hover:text-ink"
+              className="rounded-md p-1 text-ink-3 hover:bg-surface-2 hover:text-ink"
             >
-              <Icon name="video" className="h-4 w-4" />
+              <Icon name="video" className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>

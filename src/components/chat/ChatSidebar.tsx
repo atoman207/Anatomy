@@ -134,11 +134,13 @@ export function ChatSidebar({
   }, [labId, viewerId, scheduleRefresh]);
 
   return (
-    <div className="flex h-full w-64 shrink-0 flex-col border-r border-line bg-surface-2">
-      <div className="flex h-12 shrink-0 items-center border-b border-line px-4">
-        <h1 className="truncate text-[14px] font-bold text-ink">{labName}</h1>
+    <div className="flex h-full w-60 shrink-0 flex-col border-r border-line bg-surface-2">
+      <div className="flex shrink-0 items-center border-b border-line px-2 py-1">
+        <span className="max-w-full truncate rounded-md border border-accent bg-accent-soft px-2.5 py-0.5 text-[12px] font-medium leading-5 text-accent">
+          {labName}
+        </span>
       </div>
-      <div className="flex-1 overflow-y-auto px-2 py-3">
+      <div className="flex-1 overflow-y-auto px-1.5 py-1.5">
         <ChannelSection
           labId={labId}
           channels={channels}
@@ -154,7 +156,7 @@ export function ChatSidebar({
 
 function SectionLabel({ children }: { children: string }) {
   return (
-    <div className="mb-1 mt-4 flex items-center justify-between px-2 text-[12px] font-semibold text-ink-3">
+    <div className="mb-0.5 mt-2 flex items-center justify-between px-1.5 text-[11px] font-semibold text-ink-3">
       {children}
     </div>
   );
@@ -192,8 +194,10 @@ function SidebarRow({
       href={href}
       aria-label={unread > 0 ? `${label}、未読 ${unread} 件` : label}
       className={cx(
-        "flex items-center gap-2 rounded px-2 py-[6px] text-[14px] leading-tight",
-        active ? "bg-accent-soft font-medium text-accent" : "text-ink-2 hover:bg-surface-3",
+        "mb-0.5 flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[12px] leading-5",
+        active
+          ? "border-accent bg-accent-soft font-medium text-accent"
+          : "border-transparent text-ink-2 hover:border-line hover:bg-surface-1",
       )}
     >
       {icon}
@@ -237,16 +241,16 @@ function ChannelSection({
 
   return (
     <div>
-      <div className="flex items-center justify-between px-2">
+      <div className="flex items-center justify-between px-1.5">
         <SectionLabel>チャンネル</SectionLabel>
         {canManageChannels && (
           <button
             type="button"
             aria-label="チャンネルを作成"
             onClick={() => setCreating((v) => !v)}
-            className="rounded p-1 text-ink-3 hover:bg-surface-3 hover:text-ink"
+            className="rounded p-0.5 text-ink-3 hover:bg-surface-3 hover:text-ink"
           >
-            <Icon name="plus" className="h-4 w-4" />
+            <Icon name="plus" className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
@@ -386,7 +390,7 @@ function DmSection({
 
   return (
     <div>
-      <div className="flex items-center justify-between px-2">
+      <div className="flex items-center justify-between px-1.5">
         <SectionLabel>ダイレクトメッセージ</SectionLabel>
         {pickable.length > 0 && (
           <button

@@ -7,6 +7,7 @@ import {
 } from "@/lib/auth/guards";
 import { LAB_ROLES, LAB_ROLE_LABELS, PLATFORM_ROLES, PLATFORM_ROLE_LABELS } from "@/lib/auth/roles";
 import { sendMail } from "@/lib/email/smtp";
+import { isMockId } from "@/lib/billing/store";
 import type { LabRole, PlatformRole } from "@/lib/supabase/types";
 
 export interface ActionResult {
@@ -599,31 +600,127 @@ export async function deleteUserAction(
       return fail(`削除を確認するため、メールアドレス（${email}）を入力してください。`);
     }
 
-    // A user who still owns a laboratory cannot be deleted: laboratories
-    // reference owner_id with ON DELETE RESTRICT, and silently orphaning a
-    // lab's data would be worse than refusing.
-    const { data: ownedLabs } = await admin
-      .from("laboratories").select("id, name").eq("owner_id", userId);
-    if (ownedLabs && ownedLabs.length > 0) {
+    const payment = await findUserPaymentHistory(userId);
+    if (payment) {
       return fail(
-        `${email} は ${ownedLabs.length} 件の研究室のオーナーです: ` +
-          `${ownedLabs.map((l) => l.name).join("、")}。先にオーナー権限を譲渡してください。`,
+        `${email} には決済履歴があるため削除できません（${payment}）。` +
+          "決済のあるアカウントは削除できません。",
       );
+    }
+
+    // laboratories.owner_id is ON DELETE RESTRICT, so owned labs must go first.
+    // Experiments and related rows cascade from laboratory deletion.
+    const { data: ownedLabs, error: ownedError } = await admin
+      .from("laboratories")
+      .select("id, name")
+      .eq("owner_id", userId);
+    if (ownedError) return fail(ownedError.message);
+
+    const deletedLabs: { id: string; name: string; contents: Record<string, number> }[] = [];
+    for (const lab of ownedLabs ?? []) {
+      const contents = await countLabContents(lab.id);
+      const { error: labDeleteError } = await admin
+        .from("laboratories")
+        .delete()
+        .eq("id", lab.id);
+      if (labDeleteError) {
+        return fail(
+          `研究室「${lab.name}」を削除できませんでした: ${labDeleteError.message}`,
+        );
+      }
+      deletedLabs.push({ id: lab.id, name: lab.name, contents });
     }
 
     const { error } = await admin.auth.admin.deleteUser(userId);
     if (error) return fail(error.message);
 
     await logAudit({
-      labId: null, userId: ctx.user.id, action: "user.deleted",
-      entity: "user", entityId: userId, detail: { email },
+      labId: null,
+      userId: ctx.user.id,
+      action: "user.deleted",
+      entity: "user",
+      entityId: userId,
+      detail: {
+        email,
+        deleted_labs: deletedLabs.map((l) => ({
+          id: l.id,
+          name: l.name,
+          ...l.contents,
+        })),
+      },
     });
 
     revalidatePath("/admin/users");
-    return done(`${email} を削除しました。`);
+    revalidatePath("/admin/labs");
+    revalidatePath("/admin", "layout");
+
+    const labNote =
+      deletedLabs.length > 0
+        ? `（所有研究室 ${deletedLabs.length} 件と関連データを削除）`
+        : "";
+    return done(`${email} を削除しました${labNote}。`);
   } catch (e) {
     return fail(e instanceof Error ? e.message : "ユーザーを削除できませんでした。");
   }
+}
+
+/**
+ * Any real Stripe subscription on a lab the user owns, or any purchased
+ * AI査読 credits for the user. Mock / complimentary grants do not count.
+ */
+async function findUserPaymentHistory(userId: string): Promise<string | null> {
+  const admin = createAdminSupabase();
+
+  const { data: credits } = await admin
+    .from("peer_review_credits")
+    .select("total_purchased")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if ((credits?.total_purchased ?? 0) > 0) {
+    return `AI査読クレジット購入 ${credits!.total_purchased} 回分`;
+  }
+
+  const { data: ownedLabs } = await admin
+    .from("laboratories")
+    .select("id, name")
+    .eq("owner_id", userId);
+  const labs = ownedLabs ?? [];
+  if (labs.length === 0) return null;
+
+  const labIds = labs.map((l) => l.id);
+  const nameById = new Map(labs.map((l) => [l.id, l.name]));
+
+  const { data: subs } = await admin
+    .from("lab_subscriptions")
+    .select("lab_id, stripe_subscription_id")
+    .in("lab_id", labIds);
+
+  for (const sub of subs ?? []) {
+    if (sub.stripe_subscription_id && !isMockId(sub.stripe_subscription_id)) {
+      const labName = nameById.get(sub.lab_id) ?? sub.lab_id;
+      return `研究室「${labName}」の Stripe 購読`;
+    }
+  }
+
+  const { data: events } = await admin
+    .from("billing_events")
+    .select("id, type, lab_id")
+    .in("lab_id", labIds)
+    .in("type", [
+      "checkout.session.completed",
+      "invoice.paid",
+      "invoice.payment_succeeded",
+      "charge.succeeded",
+      "customer.subscription.created",
+      "customer.subscription.updated",
+    ])
+    .limit(1);
+  if (events && events.length > 0) {
+    const labName = nameById.get(events[0].lab_id ?? "") ?? "所有研究室";
+    return `研究室「${labName}」の決済イベント`;
+  }
+
+  return null;
 }
 
 /**

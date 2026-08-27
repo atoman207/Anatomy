@@ -242,6 +242,8 @@ export default async function LandingPage() {
         </div>
       </section>
 
+      <NewsSection articles={news} />
+
       {/* About: what this service currently is, in plain terms - demoed the
           same way the app itself takes it in, through voice. */}
       <section id="about" className="scroll-mt-8 border-b border-line bg-surface-1">
@@ -308,6 +310,18 @@ export default async function LandingPage() {
       <section className="border-b border-line">
         <div className="mx-auto grid w-full max-w-[1100px] items-center gap-12 px-5 py-20 sm:px-8 lg:grid-cols-2">
           <Reveal>
+            <div className="landing-media relative aspect-[4/3] w-full">
+              <Image
+                src="/bg3.png"
+                alt="AIが生成したBioRender風の模式図の実例"
+                fill
+                sizes="(min-width: 1024px) 520px, 100vw"
+                className="object-cover object-center"
+              />
+            </div>
+          </Reveal>
+
+          <Reveal delayMs={120}>
             <div>
               <h2 className="font-serif text-3xl font-semibold text-ink">
                 言葉から、論文用の模式図へ
@@ -323,18 +337,6 @@ export default async function LandingPage() {
               >
                 実験ノートを開く
               </Link>
-            </div>
-          </Reveal>
-
-          <Reveal delayMs={120}>
-            <div className="landing-media relative aspect-[4/3] w-full">
-              <Image
-                src="/bg3.png"
-                alt="AIが生成したBioRender風の模式図の実例"
-                fill
-                sizes="(min-width: 1024px) 520px, 100vw"
-                className="object-cover object-center"
-              />
             </div>
           </Reveal>
         </div>
@@ -460,8 +462,6 @@ export default async function LandingPage() {
           </Reveal>
         </div>
       </section>
-
-      <NewsSection articles={news} />
 
       {/* Closing visual — artwork carries the headline; CTA matches the footer. */}
       <section className="relative isolate min-h-[440px] overflow-hidden sm:min-h-[560px]">

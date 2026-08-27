@@ -46,9 +46,8 @@ export function ChatShell({
   return (
     <div className="flex h-[calc(100dvh-var(--header-height)-8rem)] min-h-[520px] flex-col overflow-hidden rounded-xl border border-line bg-surface-1 shadow-sm">
       {/* Lab tabs - a user can belong to several labs, so switching between
-          them is a tab strip (same pill style as /labs's LabSelector) rather
-          than a single fixed workspace. */}
-      <div className="flex items-center gap-3 border-b border-line bg-surface-2 px-3 py-2">
+          them is a compact tab strip rather than a fixed workspace. */}
+      <div className="flex items-center gap-2 border-b border-line bg-surface-2 px-2 py-1">
         <LabTabs
           labs={labs}
           currentLabId={currentLabId}
