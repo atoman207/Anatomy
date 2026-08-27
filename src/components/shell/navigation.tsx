@@ -174,6 +174,12 @@ const icons = {
       <path d="m9 14.5 2 2 4.5-4.5" />
     </Icon>
   ),
+  megaphone: (
+    <Icon>
+      <path d="M3 11v2a2 2 0 0 0 2 2h1l2 6h2l-1.5-6H11l7 4V5l-7 4H5a2 2 0 0 0-2 2z" />
+      <path d="M18 9.5a3.5 3.5 0 0 1 0 5" />
+    </Icon>
+  ),
   billing: (
     <Icon>
       <rect x="2.5" y="5" width="19" height="14" rx="2" />
@@ -249,6 +255,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/templates", label: "テンプレート", icon: icons.templates, adminOnly: true },
       { href: "/admin/users", label: "ユーザー", icon: icons.users, platformOnly: true },
       { href: "/admin/peer-review", label: "AI査読者", icon: icons.peerReview, platformOnly: true },
+      { href: "/admin/news", label: "お知らせ", icon: icons.megaphone, platformOnly: true },
       { href: "/admin/content", label: "コンテンツ管理", icon: icons.content, platformOnly: true },
       { href: "/admin/billing", label: "決済", icon: icons.billing, exact: true, platformOnly: true },
       { href: "/admin/subscriptions", label: "契約管理", icon: icons.contracts, platformOnly: true },

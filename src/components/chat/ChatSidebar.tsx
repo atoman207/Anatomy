@@ -40,6 +40,17 @@ export function ChatSidebar({
 }) {
   const [byChannel, setByChannel] = useState(initialUnread.byChannel);
   const [byDm, setByDm] = useState(initialUnread.byDm);
+  // Re-seeds from the freshly-loaded server data when the viewer switches
+  // labs, adjusted during render rather than in an effect - React's own
+  // sanctioned pattern for "reset state when a prop changes" (see "You Might
+  // Not Need an Effect"), which also avoids the extra render+effect pass a
+  // labId switch would otherwise cost.
+  const [seededForLab, setSeededForLab] = useState(labId);
+  if (labId !== seededForLab) {
+    setSeededForLab(labId);
+    setByChannel(initialUnread.byChannel);
+    setByDm(initialUnread.byDm);
+  }
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pathname = usePathname();
 
@@ -57,11 +68,6 @@ export function ChatSidebar({
       refresh();
     }, 250);
   }, [refresh]);
-
-  useEffect(() => {
-    setByChannel(initialUnread.byChannel);
-    setByDm(initialUnread.byDm);
-  }, [labId]); // eslint-disable-line react-hooks/exhaustive-deps -- re-seed when lab changes
 
   useEffect(() => {
     refresh();

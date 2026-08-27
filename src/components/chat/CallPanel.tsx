@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Icon } from "@/components/icons";
 import { MAX_CALL_PARTICIPANTS } from "@/lib/chat/shared";
 import type { CallKind } from "@/lib/chat/types";
@@ -13,6 +13,19 @@ import {
 } from "@/lib/voice/webSpeech";
 
 export type CaptionLang = "ja-JP" | "en-US";
+
+const noopSubscribe = () => () => {};
+
+/**
+ * Whether the browser supports Web Speech, read without a hydration
+ * mismatch: the server snapshot is always `false` (there is no `window`
+ * server-side), and the client snapshot reflects the real browser -
+ * `useSyncExternalStore` is what lets the two safely differ instead of an
+ * effect flipping the value after mount.
+ */
+function useSpeechSupported(): boolean {
+  return useSyncExternalStore(noopSubscribe, isWebSpeechSupported, () => false);
+}
 
 function VideoTile({
   stream,
@@ -91,16 +104,16 @@ export function CallPanel({
   const [captionHint, setCaptionHint] = useState<string | null>(null);
   const sessionRef = useRef<SpeechSession | null>(null);
   const participantCount = remoteStreams.size + 1;
-  const [speechSupported, setSpeechSupported] = useState(true);
-
-  useEffect(() => {
-    setSpeechSupported(isWebSpeechSupported());
-  }, []);
+  const speechSupported = useSpeechSupported();
 
   useEffect(() => {
     if (!captionsOn) {
+      // Tearing down the external SpeechSession and resetting the UI state
+      // that tracked it - legitimate effect use (synchronizing with a
+      // non-React, imperative browser API), not derivable during render.
       sessionRef.current?.stop();
       sessionRef.current = null;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTranscript(EMPTY_TRANSCRIPT);
       setCaptionHint(null);
       return;

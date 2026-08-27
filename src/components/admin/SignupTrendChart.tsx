@@ -64,7 +64,11 @@ function buildSeries(
 export function SignupTrendChart({ signedUpAts }: { signedUpAts: string[] }) {
   const [tab, setTab] = useState<TabId>("day");
   const active = TABS.find((t) => t.id === tab) ?? TABS[0];
-  const nowMs = useMemo(() => Date.now(), []);
+  // A `useState` initializer runs exactly once, on mount - the sanctioned way
+  // to capture "now" as a stable value, unlike calling Date.now() directly
+  // in the render body or a useMemo factory (impure - React may invoke a
+  // render function more than once without committing it).
+  const [nowMs] = useState(() => Date.now());
   const series = useMemo(
     () => buildSeries(signedUpAts, active.granularity, active.days, nowMs),
     [signedUpAts, active.granularity, active.days, nowMs],

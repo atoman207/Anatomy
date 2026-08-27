@@ -101,7 +101,7 @@ export default async function BillingPage(props: PageProps<"/billing">) {
               : "有料プランは未契約です。"
         }
       >
-        <dl className="grid gap-4 sm:grid-cols-3">
+        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
           {rows.map((row) => {
             const over = !withinLimit(row.used, row.limit);
             return (
@@ -122,7 +122,14 @@ export default async function BillingPage(props: PageProps<"/billing">) {
           {entitlement.aiEnabled ? (
             <span className="text-good">利用できます</span>
           ) : (
-            <span className="text-warn">有料プランのご契約が必要です</span>
+            <span className="text-warn">個人研究者プラン以上のご契約が必要です</span>
+          )}
+          {" / "}
+          AI画像生成:{" "}
+          {entitlement.aiImageEnabled ? (
+            <span className="text-good">利用できます</span>
+          ) : (
+            <span className="text-warn">利用できません</span>
           )}
         </p>
       </Card>

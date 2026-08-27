@@ -6,8 +6,12 @@ import { getStripe } from "./stripe";
 
 /** Stripe Price id from the environment for one plan and billing cadence. */
 export function stripePriceIdFromEnv(plan: PlanId, interval: BillingInterval): string | null {
-  if (plan === "free" && interval === "year") return process.env.STRIPE_PRICE_FREE || null;
-  if (plan === "free" && interval === "month") return process.env.STRIPE_PRICE_FREE_MONTHLY || null;
+  if (plan === "solo" && interval === "year") {
+    return process.env.STRIPE_PRICE_SOLO || process.env.STRIPE_PRICE_FREE || null;
+  }
+  if (plan === "solo" && interval === "month") {
+    return process.env.STRIPE_PRICE_SOLO_MONTHLY || process.env.STRIPE_PRICE_FREE_MONTHLY || null;
+  }
   if (plan === "pro" && interval === "year") return process.env.STRIPE_PRICE_PRO || null;
   if (plan === "pro" && interval === "month") return process.env.STRIPE_PRICE_PRO_MONTHLY || null;
   if (plan === "team" && interval === "month") return process.env.STRIPE_PRICE_TEAM || null;

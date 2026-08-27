@@ -137,13 +137,12 @@ export function planOffers(
       plan: plan.id,
       amountJpy,
       fromStripe: stored?.amountJpy != null && !staleBeta,
-      // Checkout can create a matching Stripe Price on demand when keys are
-      // configured, so a missing plan_prices row must not grey out the button.
       purchasable:
-        mockCheckout
-        || stripeConfigured
-        || Boolean(stored?.priceId)
-        || staleBeta,
+        plan.amountJpy > 0
+        && (mockCheckout
+          || stripeConfigured
+          || Boolean(stored?.priceId)
+          || staleBeta),
     };
   }
 

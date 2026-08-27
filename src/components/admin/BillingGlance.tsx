@@ -33,7 +33,7 @@ export async function BillingGlance() {
     );
   }
 
-  const byPlan: Record<PlanId, number> = { free: 0, pro: 0, team: 0 };
+  const byPlan: Record<PlanId, number> = { free: 0, solo: 0, pro: 0, team: 0 };
   let paidActive = 0;
   for (const row of rows ?? []) {
     const plan = isPlanId(row.plan) ? row.plan : "free";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Badge, Button, Callout, Card, DataTable, EmptyState, Field, Select, TextInput,
 } from "@/components/ui";
@@ -21,6 +21,7 @@ interface ExperimentOption {
   name: string;
   experiment_date: string;
   lab_id: string;
+  created_by: string | null;
 }
 
 const EMPTY_INPUT: ReagentInput = {
@@ -35,21 +36,22 @@ function isExpiringSoon(expiresAt: string | null): "expired" | "soon" | null {
   return null;
 }
 
+function errorMessage(e: unknown, fallback: string): string {
+  if (typeof e === "object" && e !== null && "message" in e) {
+    const msg = (e as { message: unknown }).message;
+    if (typeof msg === "string" && msg.trim()) return msg;
+  }
+  return fallback;
+}
+
 export function ReagentManager({
   labs, initialLabId, initialExperimentId, onExperimentChange,
   selectable, selectedIds, onToggleSelected,
 }: {
   labs: LabOption[];
-  /** Preselected when it names one of `labs` (e.g. the wizard's current lab); falls back to the first lab. */
   initialLabId?: string | null;
   initialExperimentId?: string | null;
   onExperimentChange?: (next: ExperimentOption | null) => void;
-  /**
-   * Adds a checkbox column so the caller can track "which of these are used
-   * today" separately from the full registry - the report wizard's step 2
-   * uses this; the standalone /reagents tool (pure CRUD, no such concept)
-   * does not pass these props at all.
-   */
   selectable?: boolean;
   selectedIds?: Set<string>;
   onToggleSelected?: (id: string) => void;
@@ -60,11 +62,12 @@ export function ReagentManager({
   const [experiments, setExperiments] = useState<ExperimentOption[]>([]);
   const [experimentId, setExperimentId] = useState(initialExperimentId ?? "");
   const [loadedExperimentsForLabId, setLoadedExperimentsForLabId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [isLabCreator, setIsLabCreator] = useState(false);
   const [reagents, setReagents] = useState<Reagent[]>([]);
-  const [loadedForKey, setLoadedForKey] = useState<string | null>(null);
-  const loading = !!labId && !!experimentId && `${labId}:${experimentId}` !== loadedForKey;
+  const [loadedForLabId, setLoadedForLabId] = useState<string | null>(null);
+  const loading = !!labId && labId !== loadedForLabId;
   const { toast } = useToast();
-  /** Kept inline rather than as a toast: without this, a failed load leaves the whole panel empty with no explanation. */
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -72,74 +75,117 @@ export function ReagentManager({
   const [saving, setSaving] = useState(false);
   const [query, setQuery] = useState("");
 
+  const selectedExperiment = useMemo(
+    () => experiments.find((e) => e.id === experimentId) ?? null,
+    [experiments, experimentId],
+  );
+  const ownsSelectedExperiment = Boolean(
+    userId && selectedExperiment && selectedExperiment.created_by === userId,
+  );
+  /** Lab creator may browse others' experiments read-only; only own experiments are editable. */
+  const canRecord = ownsSelectedExperiment;
+
   useEffect(() => {
     if (!labId) return;
     let cancelled = false;
+    // Clearing any stale error from a previous lab before this fetch starts -
+    // legitimate effect use, not state derivable from props during render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoadError(null);
     const supabase = createClient();
-    supabase
-      .from("experiments")
-      .select("id, name, experiment_date, lab_id")
-      .eq("lab_id", labId)
-      .order("experiment_date", { ascending: false })
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) {
-          setExperiments([]);
-          setExperimentId("");
-          setLoadedExperimentsForLabId(labId);
-          setLoadError(error.message);
-          return;
-        }
-        const nextExperiments = data ?? [];
-        setExperiments(nextExperiments);
-        setLoadedExperimentsForLabId(labId);
+    (async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      const uid = userData.user?.id ?? null;
+      if (cancelled) return;
+      setUserId(uid);
 
-        // Resolve the preferred id outside any setState updater: React may
-        // re-run updaters during render, and calling onExperimentChange there
-        // would update Sidebar (via the workspace store) mid-render.
-        setExperimentId((current) => {
-          if (current && nextExperiments.some((exp) => exp.id === current)) return current;
-          if (initialExperimentId && nextExperiments.some((exp) => exp.id === initialExperimentId)) {
-            return initialExperimentId;
-          }
-          return "";
-        });
+      const { data: labRow } = await supabase
+        .from("laboratories")
+        .select("owner_id")
+        .eq("id", labId)
+        .maybeSingle();
+      const creator = Boolean(uid && labRow?.owner_id === uid);
+      if (cancelled) return;
+      setIsLabCreator(creator);
+
+      let query = supabase
+        .from("experiments")
+        .select("id, name, experiment_date, lab_id, created_by")
+        .eq("lab_id", labId)
+        .order("experiment_date", { ascending: false });
+
+      // Participants only see experiments they created. Lab creators see all
+      // for review, but write paths stay gated on ownsSelectedExperiment.
+      if (uid && !creator) {
+        query = query.eq("created_by", uid);
+      }
+
+      const { data, error } = await query;
+      if (cancelled) return;
+      if (error) {
+        setExperiments([]);
+        setExperimentId("");
+        setLoadedExperimentsForLabId(labId);
+        setLoadError(error.message);
+        return;
+      }
+      const nextExperiments = (data ?? []) as ExperimentOption[];
+      setExperiments(nextExperiments);
+      setLoadedExperimentsForLabId(labId);
+
+      setExperimentId((current) => {
+        if (current && nextExperiments.some((exp) => exp.id === current)) return current;
+        if (initialExperimentId && nextExperiments.some((exp) => exp.id === initialExperimentId)) {
+          return initialExperimentId;
+        }
+        return "";
       });
+    })();
     return () => {
       cancelled = true;
     };
-    // Intentionally omit onExperimentChange: parent selection sync happens
-    // only on explicit user change in the experiment <Select>, not on load.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialExperimentId, labId]);
 
-  useEffect(() => {
-    if (!labId || !experimentId) {
+  // Clearing to empty when the lab selection is cleared is fully determined
+  // by `labId`, so it is adjusted during render (see ChatSidebar's
+  // seededForLab for the same pattern) rather than in the effect below,
+  // which only needs to run the actual fetch.
+  const [prevReagentsLabId, setPrevReagentsLabId] = useState(labId);
+  if (labId !== prevReagentsLabId) {
+    setPrevReagentsLabId(labId);
+    if (!labId) {
       setReagents([]);
-      setLoadedForKey(null);
+      setLoadedForLabId(null);
       setLoadError(null);
-      return;
     }
+  }
+
+  useEffect(() => {
+    if (!labId) return;
     let cancelled = false;
+    // Clearing any stale error before this fetch starts - legitimate effect
+    // use, not state derivable from props during render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoadError(null);
-    listReagents(labId, experimentId).then((res) => {
+    listReagents(labId).then((res) => {
       if (cancelled) return;
       if (res.ok && res.data) setReagents(res.data);
       else setLoadError(res.error ?? "読み込みに失敗しました。");
-      setLoadedForKey(`${labId}:${experimentId}`);
+      setLoadedForLabId(labId);
     });
     return () => {
       cancelled = true;
     };
-  }, [experimentId, labId]);
+  }, [labId]);
 
   function startCreate() {
+    if (!canRecord) return;
     setEditingId("new");
     setForm(EMPTY_INPUT);
   }
 
   function startEdit(r: Reagent) {
+    if (!userId || r.created_by !== userId) return;
     setEditingId(r.id);
     setForm({
       name: r.name,
@@ -158,32 +204,32 @@ export function ReagentManager({
   }
 
   async function save() {
-    if (!labId || !experimentId || !editingId) return;
+    if (!labId || !editingId) return;
+    if (editingId === "new" && (!experimentId || !canRecord)) return;
     setSaving(true);
     try {
       const res = editingId === "new"
         ? await createReagent(labId, experimentId, form)
-        : await updateReagent(labId, experimentId, editingId, form);
+        : await updateReagent(labId, editingId, form);
       if (!res.ok) throw new Error(res.error ?? "保存に失敗しました。");
-      const refreshed = await listReagents(labId, experimentId);
+      const refreshed = await listReagents(labId);
       if (refreshed.ok && refreshed.data) setReagents(refreshed.data);
-      // A reagent just created for today's report is, by definition, one
-      // being used today - select it automatically rather than making the
-      // researcher find and re-check the row they just typed in.
-      if (editingId === "new" && selectable && res.data) onToggleSelected?.(res.data.id);
+      if (editingId === "new" && selectable && canRecord && res.data) {
+        onToggleSelected?.(res.data.id);
+      }
       cancelEdit();
       toast(editingId === "new" ? "試薬を登録しました。" : "試薬を更新しました。", { tone: "good" });
     } catch (e) {
-      toast(e instanceof Error ? e.message : "保存に失敗しました。", { tone: "danger" });
+      toast(errorMessage(e, "保存に失敗しました。"), { tone: "danger" });
     } finally {
       setSaving(false);
     }
   }
 
   async function remove(id: string) {
-    if (!labId || !experimentId) return;
+    if (!labId) return;
     if (!window.confirm("この試薬・Lotの登録を削除します。よろしいですか？")) return;
-    const res = await deleteReagent(labId, experimentId, id);
+    const res = await deleteReagent(labId, id);
     if (!res.ok) {
       toast(res.error ?? "削除に失敗しました。", { tone: "danger" });
       return;
@@ -250,6 +296,9 @@ export function ReagentManager({
               {experiments.map((exp) => (
                 <option key={exp.id} value={exp.id}>
                   {exp.experiment_date} · {exp.name}
+                  {isLabCreator && userId && exp.created_by && exp.created_by !== userId
+                    ? "（閲覧）"
+                    : ""}
                 </option>
               ))}
             </Select>
@@ -265,23 +314,37 @@ export function ReagentManager({
             variant="primary"
             icon="plus"
             onClick={startCreate}
-            disabled={editingId !== null || !experimentId}
-            title={experimentId ? undefined : "先に実験を選択してください"}
+            disabled={editingId !== null || !canRecord}
+            title={
+              !experimentId
+                ? "先に自分の実験を選択してください"
+                : !canRecord
+                  ? "他メンバーの実験は閲覧のみです"
+                  : undefined
+            }
           >
             新規登録
           </Button>
         </div>
 
+        {isLabCreator && experimentId && !canRecord && (
+          <div className="mt-3">
+            <Callout tone="info" title="閲覧モード">
+              研究室の作成者として他メンバーの実験を確認しています。試薬の選択・登録・ノートの編集はできません。問題があればチャットで伝えてください。
+            </Callout>
+          </div>
+        )}
+
         {!experimentId ? (
           <div className="mt-3">
             <Callout tone="info" title="実験を選択してください">
-              試薬・Lotは研究室全体ではなく、選択した実験ごとに管理されます。
+              登録済みの試薬は研究室で共有されます。今日の記録では、一覧から選ぶか新規登録してください。
             </Callout>
           </div>
         ) : experiments.length === 0 && loadedExperimentsForLabId === labId ? (
           <div className="mt-3">
-            <Callout tone="info" title="この研究室には実験がまだありません">
-              ステップ1で実験を作成してから、試薬・Lotを登録してください。
+            <Callout tone="info" title="表示できる実験がありません">
+              ステップ1で自分の実験を作成してから、試薬・Lotを登録してください。
             </Callout>
           </div>
         ) : null}
@@ -311,7 +374,6 @@ export function ReagentManager({
               <TextInput
                 value={form.category ?? ""}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
-                placeholder=""
               />
             </Field>
             <Field label="メーカー">
@@ -358,11 +420,9 @@ export function ReagentManager({
       )}
 
       <Card title={`登録済み (${filtered.length} 件)`} subtitle={loading ? "読み込み中…" : undefined}>
-        {!experimentId ? (
-          <EmptyState title="実験を選択すると試薬・Lotが表示されます" />
-        ) : filtered.length === 0 ? (
+        {filtered.length === 0 ? (
           <EmptyState title="試薬・Lotが登録されていません">
-            「新規登録」から追加してください。
+            自分の実験を選んだうえで「新規登録」から追加してください。次の実験では一覧から選べます。
           </EmptyState>
         ) : (
           <DataTable
@@ -372,6 +432,7 @@ export function ReagentManager({
             ]}
             rows={filtered.map((r) => {
               const status = isExpiringSoon(r.expires_at);
+              const mine = Boolean(userId && r.created_by === userId);
               return [
                 ...(selectable
                   ? [
@@ -380,6 +441,7 @@ export function ReagentManager({
                         type="checkbox"
                         checked={selectedIds?.has(r.id) ?? false}
                         onChange={() => onToggleSelected?.(r.id)}
+                        disabled={!canRecord}
                         aria-label={`${r.name} を今日の記録で使用する`}
                       />,
                     ]
@@ -395,8 +457,14 @@ export function ReagentManager({
                   {status === "soon" && <Badge tone="warn">期限間近</Badge>}
                 </span>,
                 <span key="actions" className="inline-flex gap-1.5">
-                  <Button size="sm" variant="ghost" icon="edit" onClick={() => startEdit(r)}>編集</Button>
-                  <Button size="sm" variant="danger" icon="trash" onClick={() => remove(r.id)}>削除</Button>
+                  {mine ? (
+                    <>
+                      <Button size="sm" variant="ghost" icon="edit" onClick={() => startEdit(r)}>編集</Button>
+                      <Button size="sm" variant="danger" icon="trash" onClick={() => remove(r.id)}>削除</Button>
+                    </>
+                  ) : (
+                    <span className="text-[11px] text-ink-3">共有</span>
+                  )}
                 </span>,
               ];
             })}

@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -81,10 +80,17 @@ export function MessageComposer({
   );
   const mentionOpen = !!activeMention && mentionMatches.length > 0 && !mentionDismissed;
 
-  useEffect(() => {
+  // Resets the highlighted suggestion and dismissed flag whenever the @-query
+  // changes, adjusted during render rather than in an effect - the same
+  // "reset local state when a derived value changes" pattern as ChatSidebar's
+  // seededForLab.
+  const mentionKey = activeMention ? `${activeMention.atIndex}:${activeMention.query}` : null;
+  const [seededMentionKey, setSeededMentionKey] = useState(mentionKey);
+  if (mentionKey !== seededMentionKey) {
+    setSeededMentionKey(mentionKey);
     setMentionIndex(0);
     setMentionDismissed(false);
-  }, [activeMention?.query, activeMention?.atIndex]);
+  }
 
   const applyMention = (member: MentionMember) => {
     const next = insertMention(body, caret, member);

@@ -13,6 +13,10 @@ import {
 } from "@/lib/billing/revenue";
 import type { BillingDashboardData } from "@/lib/billing/dashboardTypes";
 
+function stripeDashboardHref(path: string, testMode: boolean): string {
+  return "https://dashboard.stripe.com/" + (testMode ? "test/" : "") + path;
+}
+
 /**
  * The administrator's payments view.
  *
@@ -216,6 +220,16 @@ export function BillingDashboard({ initial }: { initial: BillingDashboardData })
         <Card
           title="最近お支払いいただいた顧客"
           subtitle="同じ顧客の複数回の決済は1行にまとめ、期間内の合計を表示します。"
+          actions={
+            <a
+              href={stripeDashboardHref("customers", data.testMode)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[13px] font-medium text-accent underline underline-offset-2"
+            >
+              すべて表示
+            </a>
+          }
         >
           {data.recentCustomers.length === 0 ? (
             <EmptyState title="この期間に決済はありません" />
@@ -245,7 +259,20 @@ export function BillingDashboard({ initial }: { initial: BillingDashboardData })
           )}
         </Card>
 
-        <Card title="最近の決済" subtitle="1件ずつの明細です。領収書は Stripe が発行したものを開きます。">
+        <Card
+          title="最近の決済"
+          subtitle="1件ずつの明細です。領収書は Stripe が発行したものを開きます。"
+          actions={
+            <a
+              href={stripeDashboardHref("payments", data.testMode)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[13px] font-medium text-accent underline underline-offset-2"
+            >
+              すべて表示
+            </a>
+          }
+        >
           <div className={cx(busy && "opacity-60")}>
             <DataTable
               maxHeight="300px"

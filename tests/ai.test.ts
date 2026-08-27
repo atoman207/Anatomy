@@ -253,7 +253,11 @@ test("missingFields reports exactly what was not said", () => {
 
 test("rendered voice notes survive the notebook markdown renderer", () => {
   const html = renderMarkdown(voiceNoteToMarkdown(note()));
-  assert.ok(html.includes("<h1>"));
+  // A dated title line (`# 2026-08-18 TMT標識`) renders as a masthead: a
+  // small date eyebrow above an <h1 class="note-title"> - not a bare <h1> -
+  // see the "note-masthead" handling in src/lib/notebook/markdown.ts.
+  assert.ok(html.includes('<h1 class="note-title">'));
+  assert.ok(html.includes('class="note-eyebrow"'));
   assert.ok(html.includes("Trypsin"));
   assert.ok(!html.includes("<script"));
 });

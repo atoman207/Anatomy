@@ -54,7 +54,8 @@ if (liveMode) {
  * tests/billing.test.ts asserts the two agree.
  */
 const PAID_PLANS = [
-  { id: "free", name: "LABNOTE 個人研究者", amountJpy: 30_000, interval: "year", envVar: "STRIPE_PRICE_FREE" },
+  { id: "solo", name: "LABNOTE 個人研究者", amountJpy: 30_000, interval: "year", envVar: "STRIPE_PRICE_SOLO" },
+  { id: "solo", name: "LABNOTE 個人研究者（月額）", amountJpy: 3_000, interval: "month", envVar: "STRIPE_PRICE_SOLO_MONTHLY", skipDb: true },
   { id: "pro", name: "LABNOTE 研究室", amountJpy: 50_000, interval: "year", envVar: "STRIPE_PRICE_PRO" },
   { id: "pro", name: "LABNOTE 研究室（月額）", amountJpy: 5_000, interval: "month", envVar: "STRIPE_PRICE_PRO_MONTHLY", skipDb: true },
   { id: "team", name: "LABNOTE 大学・研究機関", amountJpy: 50_000, interval: "month", envVar: "STRIPE_PRICE_TEAM" },

@@ -82,7 +82,7 @@ export function VoiceStep({
       if (!json.ok) {
         toast(
           json.error ??
-            "AI機能は有料プランのご契約が必要です。「料金・支払い」から個人研究者プランをお選びください。",
+            "AI機能（高精度文字起こしなど）は個人研究者プラン以上のご契約が必要です。「料金・支払い」からプランをお選びください。",
           { tone: "danger", title: "エラー" },
         );
         router.push("/billing");

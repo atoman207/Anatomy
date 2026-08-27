@@ -52,7 +52,7 @@ export function ReagentsStep({ labs }: { labs: LabOption[] }) {
   return (
     <div className="flex flex-col gap-4">
       <Callout tone="info">
-        今日使う試薬・Lotを、一覧から選ぶか新しく登録してください。選んだ試薬は次のステップ以降に引き継がれます。選ばなくても先に進めます。
+        今日使う試薬・Lotを、研究室の登録済み一覧から選ぶか新しく登録してください。選んだ試薬は次のステップ以降に引き継がれます。選ばなくても先に進めます。
       </Callout>
 
       <SelectionSummary upTo={2} />

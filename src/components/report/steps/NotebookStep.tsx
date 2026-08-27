@@ -6,8 +6,9 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Badge, Button, Callout, Card, EmptyState, Field, Select, TextArea, TextInput, cx,
+  Badge, Button, Callout, Card, EmptyState, Field, PendingOverlay, Select, TextArea, TextInput, cx,
 } from "@/components/ui";
+import { MediaPreviewModal } from "@/components/MediaPreviewModal";
 import { useToast } from "@/components/shell/Toast";
 import { useWorkspace } from "@/components/workspace";
 import { Recorder, type Recording } from "@/components/voice/Recorder";
@@ -17,7 +18,7 @@ import {
   type NotebookTemplate, type TemplateValues,
 } from "@/lib/notebook/templates";
 import { listLabTemplates } from "@/lib/notebook/templateActions";
-import { renderMarkdown } from "@/lib/notebook/markdown";
+import { renderMarkdown, extractMarkdownImageSrc } from "@/lib/notebook/markdown";
 import { buildReport } from "@/lib/notebook/report";
 import {
   buildTodayDefaults,
@@ -25,6 +26,7 @@ import {
   mapVoiceNoteToValues,
   mergePrefillLayers,
   prefillFromPrevious,
+  prefillFromRawCapture,
   prefillLotsFromReagents,
 } from "@/lib/notebook/prefill";
 import {
@@ -37,12 +39,26 @@ import {
 import { listFigures, saveFigure, type FigureSummary } from "@/lib/analyze/actions";
 import { svgToDataUri } from "@/lib/plots/svg";
 import type { NotebookTemplateRow } from "@/lib/supabase/types";
+import type { WorkspaceClip } from "@/components/workspace";
 import { SubmissionFilesManager } from "@/components/notebook/SubmissionFilesManager";
 import { SelectionSummary } from "../SelectionSummary";
 
 type Phase = "capture" | "review" | "media";
 type Engine = "browser" | "openai";
 type SpeechLang = "ja-JP" | "en-US";
+type FigureSize = "small" | "medium" | "large" | "full";
+
+const FIGURE_SIZE_OPTIONS: { id: FigureSize; label: string }[] = [
+  { id: "small", label: "小" },
+  { id: "medium", label: "中" },
+  { id: "large", label: "大" },
+  { id: "full", label: "全幅" },
+];
+
+/** Embeds a data URI as a clip's sole content, carrying the chosen display size. */
+function imageClipMarkdown(label: string, dataUri: string, size: FigureSize): string {
+  return `![${label}](${dataUri} "size:${size}")\n`;
+}
 
 export interface NotebookStepHandle {
   /** Saves the current draft as a notebook entry, same action the button uses. */
@@ -74,6 +90,7 @@ export const NotebookStep = forwardRef<NotebookStepHandle>(
     const [speechLang, setSpeechLang] = useState<SpeechLang>("ja-JP");
     const [transcribing, setTranscribing] = useState(false);
     const [structuring, setStructuring] = useState(false);
+    const [structuredWithAi, setStructuredWithAi] = useState(false);
 
     // --- ② review / fields ----------------------------------------------
     const [customTemplates, setCustomTemplates] = useState<NotebookTemplateRow[]>([]);
@@ -92,6 +109,8 @@ export const NotebookStep = forwardRef<NotebookStepHandle>(
     const [figuresOpen, setFiguresOpen] = useState(false);
     const [imagePrompt, setImagePrompt] = useState("");
     const [imageBusy, setImageBusy] = useState(false);
+    const [previewClip, setPreviewClip] = useState<WorkspaceClip | null>(null);
+    const [insertSize, setInsertSize] = useState<FigureSize>("medium");
 
     useEffect(() => {
       if (!ws.labId || ws.labId === customLoadedFor) return;
@@ -125,7 +144,7 @@ export const NotebookStep = forwardRef<NotebookStepHandle>(
         const json = (await res.json()) as { ok: boolean; error?: string };
         if (!json.ok) {
           toast(
-            json.error ?? "AI機能は有料プランのご契約が必要です。「料金・支払い」から個人研究者プラン以上をお選びください。",
+            json.error ?? "AI機能（高精度文字起こしなど）は個人研究者プラン以上のご契約が必要です。「料金・支払い」からプランをお選びください。",
             { tone: "danger", title: "エラー" },
           );
           router.push("/billing");
@@ -170,11 +189,8 @@ export const NotebookStep = forwardRef<NotebookStepHandle>(
     }
 
     /**
-     * ① → ②: structures the captured free text into the chosen template's
-     * fields (reusing the same endpoint the AI query-builder and peer-review
-     * pages call), folds in Lot numbers from the reagents selected in step 2,
-     * and stashes the raw text in the workspace so step 5's literature search
-     * can suggest a query from it.
+     * ① → ②: paid plans use AI to map capture text into template fields;
+     * the free plan prefills the template directly (previous entry, lots, raw text).
      */
     async function proceedToReview() {
       if (!rawText.trim()) {
@@ -183,35 +199,71 @@ export const NotebookStep = forwardRef<NotebookStepHandle>(
       }
       setStructuring(true);
       try {
-        let reagentLayer: TemplateValues = {};
+        let templateLayer: TemplateValues = {};
         if (ws.labId && ws.experimentId) {
           const ctx = await getNotebookPrefillContext(ws.labId, ws.experimentId, template.id);
           if (ctx.ok && ctx.data) {
             const selected = ws.selectedReagentIds.length
               ? ctx.data.reagents.filter((r) => ws.selectedReagentIds.includes(r.id))
               : ctx.data.reagents;
-            reagentLayer = prefillLotsFromReagents(template, selected);
+            templateLayer = mergePrefillLayers(
+              buildTodayDefaults(ctx.data.operator),
+              prefillFromPrevious(template, ctx.data.previousValues),
+              prefillLotsFromReagents(template, selected),
+            );
+            if (ctx.data.previousSavedAt) {
+              setPrefillHint(
+                `${new Date(ctx.data.previousSavedAt).toLocaleString("ja-JP")} の記録からプロトコル・試薬などを引き継ぎました。`,
+              );
+            }
+          }
+        } else if (ws.labId) {
+          const ctx = await getNotebookPrefillContext(ws.labId, "", template.id);
+          if (ctx.ok && ctx.data) {
+            templateLayer = buildTodayDefaults(ctx.data.operator);
           }
         }
 
-        const res = await fetch("/api/voice/structure", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            transcript: rawText,
-            labId: ws.labId ?? undefined,
-            referenceDate: today || undefined,
-          }),
-        });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error ?? "AIによる整形に失敗しました。");
+        if (ws.experimentLabel?.trim()) {
+          templateLayer = mergePrefillLayers(templateLayer, {
+            experiment_name: ws.experimentLabel.trim(),
+          });
+        }
 
-        setValues((prev) => mergePrefillLayers(reagentLayer, mapVoiceNoteToValues(json.note), prev));
+        const q = ws.labId ? `?labId=${encodeURIComponent(ws.labId)}` : "";
+        const accessRes = await fetch(`/api/ai/access${q}`, { cache: "no-store" });
+        const access = (await accessRes.json()) as { ok: boolean };
+
+        if (access.ok) {
+          const res = await fetch("/api/voice/structure", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              transcript: rawText,
+              labId: ws.labId ?? undefined,
+              referenceDate: today || undefined,
+            }),
+          });
+          const json = await res.json();
+          if (!res.ok) throw new Error(json.error ?? "AIによる整形に失敗しました。");
+
+          setValues((prev) =>
+            mergePrefillLayers(templateLayer, mapVoiceNoteToValues(json.note), prev),
+          );
+          setStructuredWithAi(true);
+          toast("内容を項目に振り分けました。下で確認・修正してください。", { tone: "good" });
+        } else {
+          setValues((prev) =>
+            mergePrefillLayers(templateLayer, prefillFromRawCapture(template, rawText), prev),
+          );
+          setStructuredWithAi(false);
+          toast("テンプレートの入力欄を用意しました。内容を確認・修正してください。", { tone: "good" });
+        }
+
         ws.setReportContext(rawText);
         setPhase("review");
-        toast("内容を項目に振り分けました。下で確認・修正してください。", { tone: "good" });
       } catch (e) {
-        toast(e instanceof Error ? e.message : "AIによる整形に失敗しました。", { tone: "danger" });
+        toast(e instanceof Error ? e.message : "次のステップへ進めませんでした。", { tone: "danger" });
       } finally {
         setStructuring(false);
       }
@@ -267,6 +319,20 @@ export const NotebookStep = forwardRef<NotebookStepHandle>(
     const full = useMemo(() => {
       const clips = ws.clips.map((c) => c.markdown);
       if (clips.length === 0) return body;
+      const attachmentsMd = clips.join("\n\n");
+      // Every built-in template reserves a trailing "## 添付ファイル" heading
+      // for exactly this - dropping images in right after it keeps them part
+      // of the report's own flow instead of bolted on as a second, redundant
+      // "解析結果・添付" section below a divider. Older/custom templates that
+      // never had that heading keep the previous append-at-the-end behavior.
+      const heading = "## 添付ファイル";
+      const idx = body.indexOf(heading);
+      if (idx !== -1) {
+        const insertAt = idx + heading.length;
+        return (
+          body.slice(0, insertAt) + "\n\n" + attachmentsMd + "\n" + body.slice(insertAt)
+        ).replace(/\n{3,}/g, "\n\n");
+      }
       return `${body}\n\n---\n\n${buildReport("解析結果・添付", clips, {
         operator: typeof effective.operator === "string" ? effective.operator : undefined,
         date: typeof effective.experiment_date === "string" ? effective.experiment_date : undefined,
@@ -381,7 +447,7 @@ export const NotebookStep = forwardRef<NotebookStepHandle>(
       });
       if (!dataUri) return;
       const label = file.name || "画像";
-      ws.addClip(label, `### ${label}\n\n![${label}](${dataUri})\n`);
+      ws.addClip(label, imageClipMarkdown(label, dataUri, insertSize));
       toast("画像を追加しました。", { tone: "good" });
     }
 
@@ -396,7 +462,7 @@ export const NotebookStep = forwardRef<NotebookStepHandle>(
     function insertFigure(f: FigureSummary) {
       if (!f.svg) return;
       const dataUri = svgToDataUri(f.svg);
-      ws.addClip(f.title, `### ${f.title}\n\n![${f.title}](${dataUri})\n`);
+      ws.addClip(f.title, imageClipMarkdown(f.title, dataUri, insertSize));
       toast("図を追加しました。", { tone: "good" });
     }
 
@@ -426,7 +492,7 @@ export const NotebookStep = forwardRef<NotebookStepHandle>(
         if (!res.ok) throw new Error(json.error ?? "画像の生成に失敗しました。");
         const label = imagePrompt.trim().slice(0, 40);
         const dataUri = json.dataUri as string;
-        ws.addClip(`AI生成: ${label}`, `### AI生成: ${label}\n\n![${label}](${dataUri})\n`);
+        ws.addClip(`AI生成: ${label}`, imageClipMarkdown(`AI生成: ${label}`, dataUri, insertSize));
 
         if (ws.labId && ws.experimentId) {
           const svg =
@@ -459,6 +525,19 @@ export const NotebookStep = forwardRef<NotebookStepHandle>(
 
     return (
       <div className="flex flex-col gap-5">
+        {imageBusy && (
+          <PendingOverlay
+            title="処理中…"
+            hint="AIが模式図を生成しています。しばらくお待ちください。"
+          />
+        )}
+
+        {previewClip && (
+          <MediaPreviewModal title={previewClip.title} onClose={() => setPreviewClip(null)}>
+            <ClipPreview markdown={previewClip.markdown} title={previewClip.title} />
+          </MediaPreviewModal>
+        )}
+
         <Callout tone="info">
           テンプレート「{template.name}」に沿って今日のラボレポートを作成します。
         </Callout>
@@ -540,7 +619,7 @@ export const NotebookStep = forwardRef<NotebookStepHandle>(
                   onClick={() => void proceedToReview()}
                   disabled={!rawText.trim() || structuring}
                 >
-                  {structuring ? "整形中…" : "次のステップ"}
+                  {structuring ? "準備中…" : "次のステップ"}
                 </Button>
               </div>
             </div>
@@ -576,7 +655,11 @@ export const NotebookStep = forwardRef<NotebookStepHandle>(
 
             <Card
               title={<>② 内容を確認・修正する {phaseDone.review && <Badge tone="good">完了済み</Badge>}</>}
-              subtitle="星印は必須。AIが振り分けた内容をここで確認・修正してください。"
+              subtitle={
+                structuredWithAi
+                  ? "星印は必須。AIが振り分けた内容をここで確認・修正してください。"
+                  : "星印は必須。テンプレートの各項目に入力・修正してください。"
+              }
             >
               {phase === "media" ? (
                 <div className="flex items-center justify-between gap-3">
@@ -661,6 +744,27 @@ export const NotebookStep = forwardRef<NotebookStepHandle>(
               </Button>
             </div>
 
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-[12px] text-ink-3">挿入サイズ（次に追加する画像に適用）:</span>
+              <div className="inline-flex overflow-hidden rounded-md border border-line">
+                {FIGURE_SIZE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setInsertSize(opt.id)}
+                    className={cx(
+                      "px-2.5 py-1 text-[12px]",
+                      insertSize === opt.id
+                        ? "bg-accent text-white"
+                        : "bg-surface-1 text-ink-2 hover:bg-surface-2",
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {figuresOpen && (
               <div className="mt-3 rounded-lg border border-line p-3">
                 {figures.length === 0 ? (
@@ -711,7 +815,17 @@ export const NotebookStep = forwardRef<NotebookStepHandle>(
                       <p className="truncate text-xs font-medium text-ink">{c.title}</p>
                       <p className="text-[11px] text-ink-3">{new Date(c.createdAt).toLocaleString()}</p>
                     </div>
-                    <Button size="sm" variant="ghost" icon="x" onClick={() => ws.removeClip(c.id)}>削除</Button>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        icon="eye"
+                        onClick={() => setPreviewClip(c)}
+                      >
+                        プレビュー
+                      </Button>
+                      <Button size="sm" variant="ghost" icon="x" onClick={() => ws.removeClip(c.id)}>削除</Button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -776,7 +890,7 @@ export const NotebookStep = forwardRef<NotebookStepHandle>(
         <div className="pointer-events-none absolute -left-[200vw] top-0 w-[794px]">
           <div
             ref={previewRef}
-            className="prose-note rounded-lg bg-white px-4 py-3 text-black"
+            className="prose-note report-paper rounded-lg bg-white px-4 py-3 text-black"
             // renderMarkdown escapes all input before inserting any markup.
             dangerouslySetInnerHTML={{ __html: html }}
           />
@@ -785,6 +899,25 @@ export const NotebookStep = forwardRef<NotebookStepHandle>(
     );
   },
 );
+
+function ClipPreview({ markdown, title }: { markdown: string; title: string }) {
+  const imageSrc = extractMarkdownImageSrc(markdown);
+  if (imageSrc) {
+    return (
+      <img
+        src={imageSrc}
+        alt={title}
+        className="mx-auto max-h-[70vh] max-w-full rounded-lg border border-line object-contain"
+      />
+    );
+  }
+  return (
+    <div
+      className="prose-note text-[13px] leading-relaxed text-ink"
+      dangerouslySetInnerHTML={{ __html: renderMarkdown(markdown) }}
+    />
+  );
+}
 
 function EngineOption({
   active, onClick, title, badge, detail,

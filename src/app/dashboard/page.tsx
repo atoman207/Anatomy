@@ -12,6 +12,7 @@ import { FREE_PEER_REVIEW_CREDITS } from "@/lib/peerReview/creditPacks";
 import { getLabEntitlement } from "@/lib/billing/subscription";
 import { STATUS_LABELS } from "@/lib/billing/plans";
 import { scoreTone } from "@/lib/ai/peerReviewReport";
+import { DashboardLabReports } from "@/components/dashboard/DashboardLabReports";
 
 export const dynamic = "force-dynamic";
 
@@ -23,26 +24,7 @@ interface Tile {
 }
 
 /**
- * Research tools. This is the whole of the product for a User: recording,
- * organising and analysing their own laboratory's work.
- */
-const RESEARCH_TILES: Tile[] = [
-  { href: "/labs", title: "研究室", description: "研究室の作成・招待・メンバー管理。", icon: "team" },
-  { href: "/notebook", title: "実験ノート", description: "前回から雛形を引き継ぎ、結果を記録。", icon: "notebook" },
-  { href: "/voice", title: "音声メモ", description: "音声から実験ノートを起こす。", icon: "mic" },
-  { href: "/reagents", title: "試薬・Lot", description: "試薬とロット番号の記録。", icon: "reagents" },
-  { href: "/experiments", title: "実験一覧", description: "所属研究室の実験を一覧。", icon: "file" },
-  { href: "/organize", title: "データ整理", description: "ファイル名の整理とサンプルシート作成。", icon: "folder" },
-  { href: "/analyze", title: "統計・図", description: "検定・多変量解析と作図。", icon: "chart" },
-  { href: "/literature", title: "論文検索", description: "PubMed・Crossref を検索して保存。", icon: "search" },
-  { href: "/calculator", title: "計算ツール", description: "希釈・モル濃度などの計算。", icon: "calculator" },
-];
-
-/**
- * Administration. Deliberately a different list rather than a few extra tiles
- * appended to the one above: an administrator arriving here is running the
- * deployment, and the management entry points should be the first thing they
- * see, not something to scroll past the research tools to find.
+ * Administration. Shown only to platform admins on the user dashboard.
  */
 const ADMIN_TILES: Tile[] = [
   { href: "/admin", title: "管理ダッシュボード", description: "全体の統計と最近の操作。", icon: "chart" },
@@ -95,7 +77,7 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
     listMyNotebookEntriesGrouped().then((r) => r.data ?? []),
   ]);
 
-  const planName = entitlement?.plan.name ?? "個人研究者";
+  const planName = entitlement?.plan.name ?? "無料";
   const planStatus = entitlement?.status
     ? STATUS_LABELS[entitlement.status]
     : { ja: "未契約", tone: "neutral" as const };
@@ -108,89 +90,7 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
         </Callout>
       )}
 
-      <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold text-ink-2">今日のラボレポート</h2>
-          <Link href="/record?step=4" className="text-xs text-accent underline">
-            実験記録を開く
-          </Link>
-        </div>
-        <Card>
-          {todaysReports.length === 0 ? (
-            <EmptyState title="今日作成されたラボレポートはまだありません">
-              <Link href="/record?step=4" className="text-accent underline">実験記録</Link>
-              でレポートを作成すると、ここに表示されます。
-            </EmptyState>
-          ) : (
-            <ul className="flex flex-col divide-y divide-[var(--border)] text-[13px]">
-              {todaysReports.map((r) => (
-                <li key={r.id} className="flex items-center gap-3 py-1.5 first:pt-0 last:pb-0">
-                  <span className="min-w-0 flex-1 truncate font-medium text-ink">{r.title}</span>
-                  <span className="hidden shrink-0 truncate text-[11px] text-ink-3 sm:block sm:max-w-[240px]">
-                    {r.experiment_name} ・ {r.lab_name}
-                  </span>
-                  <span className="shrink-0 text-[11px] text-ink-3">
-                    {new Date(r.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
-                  </span>
-                  <Link
-                    href={`/record?step=4`}
-                    className="shrink-0 text-[11px] text-accent underline underline-offset-2"
-                  >
-                    開く
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </section>
-
-      <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold text-ink-2">すべてのラボレポート（実験ごと）</h2>
-          <Link href="/experiments" className="text-xs text-accent underline">
-            実験一覧を見る
-          </Link>
-        </div>
-        <Card subtitle="あなたが作成したラボレポートを、実験ごとにまとめて確認できます。">
-          {reportGroups.length === 0 ? (
-            <EmptyState title="まだラボレポートがありません">
-              <Link href="/record?step=4" className="text-accent underline">実験記録</Link>
-              でレポートを作成すると、実験ごとにここへまとまります。
-            </EmptyState>
-          ) : (
-            <div className="flex flex-col divide-y divide-[var(--border)]">
-              {reportGroups.map((g, i) => (
-                <details key={g.experimentId} className="py-2 first:pt-0 last:pb-0" open={i === 0}>
-                  <summary className="cursor-pointer text-[13px] font-medium text-ink">
-                    {g.experimentName}
-                    <span className="ml-1.5 font-normal text-ink-3">
-                      ・ {g.labName} ・ {g.entries.length} 件
-                    </span>
-                  </summary>
-                  <ul className="mt-2 flex flex-col gap-1.5 pl-3">
-                    {g.entries.map((r) => (
-                      <li key={r.id} className="flex items-center gap-2 text-[12px]">
-                        <span className="min-w-0 flex-1 truncate text-ink-2">{r.title}</span>
-                        {r.template_slug && <Badge>{r.template_slug}</Badge>}
-                        <span className="shrink-0 text-ink-3">
-                          {new Date(r.created_at).toLocaleDateString("ja-JP")}
-                        </span>
-                        <Link
-                          href="/record?step=4"
-                          className="shrink-0 text-accent underline underline-offset-2"
-                        >
-                          開く
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              ))}
-            </div>
-          )}
-        </Card>
-      </section>
+      <DashboardLabReports today={todaysReports} groups={reportGroups} />
 
       {credits && (
         <Card
@@ -287,21 +187,10 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
         </Card>
       </section>
 
-      {isAdmin ? (
-        <>
-          <section className="flex flex-col gap-3">
-            <h2 className="text-sm font-semibold text-ink-2">管理</h2>
-            <TileGrid tiles={ADMIN_TILES} />
-          </section>
-          <section className="flex flex-col gap-3">
-            <h2 className="text-sm font-semibold text-ink-2">研究ツール</h2>
-            <TileGrid tiles={RESEARCH_TILES} />
-          </section>
-        </>
-      ) : (
+      {isAdmin && (
         <section className="flex flex-col gap-3">
-          <h2 className="text-sm font-semibold text-ink-2">研究ツール</h2>
-          <TileGrid tiles={RESEARCH_TILES} />
+          <h2 className="text-sm font-semibold text-ink-2">管理</h2>
+          <TileGrid tiles={ADMIN_TILES} />
         </section>
       )}
     </div>

@@ -47,7 +47,7 @@ export function Button({
   variant = "secondary", size = "md", icon, iconOnly = false, className, children, type = "button", ...rest
 }: ButtonProps) {
   const base =
-    "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50";
+    "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition duration-150 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100";
   const sizes = iconOnly
     ? size === "sm" ? "h-8 w-8 p-0" : "h-9 w-9 p-0"
     : size === "sm" ? "px-3 py-1.5 text-[13px]" : "px-4 py-2 text-[14px]";

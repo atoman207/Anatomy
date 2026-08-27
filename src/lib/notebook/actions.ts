@@ -1,7 +1,11 @@
 "use server";
 
 import { createServerSupabase } from "@/lib/supabase/server";
-import { getSessionContext, logAudit } from "@/lib/auth/guards";
+import {
+  assertCanRecordOnExperiment,
+  getSessionContext,
+  logAudit,
+} from "@/lib/auth/guards";
 import type { Json, Reagent } from "@/lib/supabase/types";
 
 export interface ActionResult<T = undefined> {
@@ -35,6 +39,12 @@ export async function saveNotebookEntry(
   const title = input.title.trim();
   if (!title) return { ok: false, error: "タイトルを入力してください。" };
   if (!input.experimentId) return { ok: false, error: "実験を選択してください。" };
+
+  try {
+    await assertCanRecordOnExperiment(ctx, input.experimentId);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "権限がありません。" };
+  }
 
   const supabase = await createServerSupabase();
   const { data, error } = await supabase
@@ -92,10 +102,26 @@ export async function updateNotebookEntry(
   if (!title) return { ok: false, error: "タイトルを入力してください。" };
 
   const supabase = await createServerSupabase();
+  const { data: existing } = await supabase
+    .from("notebook_entries")
+    .select("id, lab_id, experiment_id, created_by")
+    .eq("id", input.id)
+    .maybeSingle();
+  if (!existing) {
+    return { ok: false, error: "この記録は編集できません（作成日を過ぎているか、権限がありません）。" };
+  }
+  if (existing.created_by !== ctx.user.id) {
+    return {
+      ok: false,
+      error: "自分が書いたノートのみ編集できます。研究室の作成者は閲覧のみ可能です。",
+    };
+  }
+
   const { data, error } = await supabase
     .from("notebook_entries")
     .update({ title, values: input.values as Json, body_md: input.bodyMd })
     .eq("id", input.id)
+    .eq("created_by", ctx.user.id)
     .select("id, lab_id, experiment_id")
     .maybeSingle();
 
@@ -270,6 +296,46 @@ export async function listMyNotebookEntriesGrouped(
   }
 
   return { ok: true, data: [...groups.values()] };
+}
+
+export interface MyNotebookEntryDetail extends MyNotebookEntrySummary {
+  body_md: string;
+}
+
+/**
+ * Full lab-report body for preview / PDF. Only the author can load it —
+ * same scope as the dashboard lists.
+ */
+export async function getMyNotebookEntry(
+  entryId: string,
+): Promise<ActionResult<MyNotebookEntryDetail>> {
+  const ctx = await getSessionContext();
+  if (!ctx) return { ok: false, error: "ログインしていません。" };
+  if (!entryId) return { ok: false, error: "レポートが指定されていません。" };
+
+  const supabase = await createServerSupabase();
+  const { data, error } = await supabase
+    .from("notebook_entries")
+    .select(
+      "id, title, created_at, experiment_id, lab_id, template_slug, body_md, created_by, experiments(name), laboratories(name)",
+    )
+    .eq("id", entryId)
+    .maybeSingle();
+
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: "レポートが見つかりません。" };
+  if (data.created_by !== ctx.user.id && !ctx.isPlatformAdmin) {
+    return { ok: false, error: "このレポートを表示する権限がありません。" };
+  }
+
+  const mapped = mapNotebookJoinRow(data as unknown as NotebookJoinRow);
+  return {
+    ok: true,
+    data: {
+      ...mapped,
+      body_md: data.body_md ?? "",
+    },
+  };
 }
 
 export interface NotebookPrefillContext {

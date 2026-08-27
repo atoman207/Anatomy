@@ -1,7 +1,12 @@
 "use server";
 
 import { createServerSupabase } from "@/lib/supabase/server";
-import { getSessionContext, logAudit } from "@/lib/auth/guards";
+import {
+  assertCanRecordOnExperiment,
+  assertCanWriteLab,
+  getSessionContext,
+  logAudit,
+} from "@/lib/auth/guards";
 import type { Reagent } from "@/lib/supabase/types";
 
 export interface ActionResult<T = undefined> {
@@ -20,18 +25,22 @@ export interface ReagentInput {
   notes: string | null;
 }
 
-/** All reagents registered to one experiment, most recently added first. */
-export async function listReagents(labId: string, experimentId: string): Promise<ActionResult<Reagent[]>> {
+/**
+ * Lab-wide reagent catalog for one laboratory.
+ *
+ * Entries stay available across experiments so a researcher can pick from the
+ * registry on the next run, or register a new lot when needed.
+ */
+export async function listReagents(labId: string): Promise<ActionResult<Reagent[]>> {
   const ctx = await getSessionContext();
   if (!ctx) return { ok: false, error: "ログインしていません。" };
-  if (!labId || !experimentId) return { ok: true, data: [] };
+  if (!labId) return { ok: true, data: [] };
 
   const supabase = await createServerSupabase();
   const { data, error } = await supabase
     .from("reagents")
     .select("*")
     .eq("lab_id", labId)
-    .eq("experiment_id", experimentId)
     .order("created_at", { ascending: false });
 
   if (error) return { ok: false, error: error.message };
@@ -45,8 +54,13 @@ export async function createReagent(
 ): Promise<ActionResult<Reagent>> {
   const ctx = await getSessionContext();
   if (!ctx) return { ok: false, error: "ログインしていません。" };
-  if (!experimentId) return { ok: false, error: "実験を選択してください。" };
   if (!input.name.trim()) return { ok: false, error: "名称を入力してください。" };
+
+  try {
+    await assertCanRecordOnExperiment(ctx, experimentId);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "権限がありません。" };
+  }
 
   const supabase = await createServerSupabase();
   const { data, error } = await supabase
@@ -79,16 +93,31 @@ export async function createReagent(
 
 export async function updateReagent(
   labId: string,
-  experimentId: string,
   id: string,
   input: ReagentInput,
 ): Promise<ActionResult<Reagent>> {
   const ctx = await getSessionContext();
   if (!ctx) return { ok: false, error: "ログインしていません。" };
-  if (!experimentId) return { ok: false, error: "実験を選択してください。" };
   if (!input.name.trim()) return { ok: false, error: "名称を入力してください。" };
 
+  try {
+    await assertCanWriteLab(ctx, labId);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "権限がありません。" };
+  }
+
   const supabase = await createServerSupabase();
+  const { data: existing } = await supabase
+    .from("reagents")
+    .select("id, created_by")
+    .eq("id", id)
+    .eq("lab_id", labId)
+    .maybeSingle();
+  if (!existing) return { ok: false, error: "試薬が見つかりません。" };
+  if (existing.created_by && existing.created_by !== ctx.user.id) {
+    return { ok: false, error: "自分が登録した試薬のみ編集できます。" };
+  }
+
   const { data, error } = await supabase
     .from("reagents")
     .update({
@@ -102,7 +131,6 @@ export async function updateReagent(
     })
     .eq("id", id)
     .eq("lab_id", labId)
-    .eq("experiment_id", experimentId)
     .select("*")
     .single();
 
@@ -117,18 +145,33 @@ export async function updateReagent(
   return { ok: true, data };
 }
 
-export async function deleteReagent(labId: string, experimentId: string, id: string): Promise<ActionResult> {
+export async function deleteReagent(labId: string, id: string): Promise<ActionResult> {
   const ctx = await getSessionContext();
   if (!ctx) return { ok: false, error: "ログインしていません。" };
-  if (!experimentId) return { ok: false, error: "実験を選択してください。" };
+
+  try {
+    await assertCanWriteLab(ctx, labId);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "権限がありません。" };
+  }
 
   const supabase = await createServerSupabase();
+  const { data: existing } = await supabase
+    .from("reagents")
+    .select("id, created_by")
+    .eq("id", id)
+    .eq("lab_id", labId)
+    .maybeSingle();
+  if (!existing) return { ok: false, error: "試薬が見つかりません。" };
+  if (existing.created_by && existing.created_by !== ctx.user.id) {
+    return { ok: false, error: "自分が登録した試薬のみ削除できます。" };
+  }
+
   const { error } = await supabase
     .from("reagents")
     .delete()
     .eq("id", id)
-    .eq("lab_id", labId)
-    .eq("experiment_id", experimentId);
+    .eq("lab_id", labId);
 
   if (error) return { ok: false, error: error.message };
 

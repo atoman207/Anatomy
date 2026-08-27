@@ -450,6 +450,93 @@ textarea::placeholder {
 .prose-note th { background: var(--surface-2); font-weight: 600; }
 .prose-note hr { border: 0; border-top: 1px solid var(--border); margin: 1.2em 0; }
 
+/* Title block: the `# YYYY-MM-DD Title` line every notebook template emits,
+   split by the renderer into a small date eyebrow above a large title -
+   varying the two in size and weight the way a paper's own title block
+   separates a dateline from its headline, instead of one flat <h1>. */
+.prose-note .note-masthead { margin: 0 0 0.7em; }
+.prose-note .note-eyebrow {
+  margin: 0 0 0.15em;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+.prose-note .note-title {
+  margin: 0;
+  font-family: Georgia, "Hiragino Mincho ProN", "Yu Mincho", "Times New Roman", serif;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+/* The 記録時刻/担当/目的 byline paragraph directly under the title. */
+.prose-note .note-meta {
+  margin: 0.6em 0 1.1em;
+  padding-bottom: 0.8em;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+/* Figures: centered, captioned, and sized independently of the body text so
+   a schematic, an uploaded photo, and a full data figure can each occupy the
+   amount of the page appropriate to it rather than always spanning the full
+   width. Capped in height so a single tall image cannot alone exceed one
+   printed page. */
+.prose-note .note-figure {
+  margin: 1.4em auto;
+  text-align: center;
+}
+.prose-note .note-figure img {
+  display: block;
+  margin: 0 auto;
+  width: 100%;
+  max-height: 1000px;
+  height: auto;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+.prose-note .note-figure figcaption {
+  margin-top: 0.5em;
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--text-secondary);
+}
+.prose-note .note-figure-small { width: 32%; }
+.prose-note .note-figure-medium { width: 55%; }
+.prose-note .note-figure-large { width: 78%; }
+.prose-note .note-figure-full { width: 100%; }
+
+/* Intensified treatment applied only to the offscreen element the PDF is
+   rasterized from (see src/lib/reports/pdf.ts) - page-sized margins and a
+   stronger title/section rhythm, without changing how a note reads inline
+   elsewhere in the app (the history "表示" panel keeps the lighter default
+   above). */
+.prose-note.report-paper {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 28px 36px !important;
+  font-family: Georgia, "Hiragino Mincho ProN", "Yu Mincho", "Times New Roman", serif;
+}
+.prose-note.report-paper .note-title { font-size: 2.35rem; letter-spacing: -0.01em; }
+.prose-note.report-paper h2 {
+  margin-top: 1.6em;
+  padding-bottom: 0.25em;
+  border-bottom: 2px solid var(--text-primary);
+  font-family: Georgia, "Hiragino Mincho ProN", "Yu Mincho", "Times New Roman", serif;
+}
+.prose-note.report-paper h3 {
+  font-family: Georgia, "Hiragino Mincho ProN", "Yu Mincho", "Times New Roman", serif;
+  font-style: italic;
+}
+.prose-note.report-paper p,
+.prose-note.report-paper li {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Hiragino Sans, sans-serif;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -626,6 +713,24 @@ textarea::placeholder {
   box-shadow: 0 10px 28px -12px rgba(37, 99, 235, 0.55);
 }
 
+/* The お知らせ card's "詳しく見る" expander. A CSS grid-rows 0fr→1fr tween
+   animates height without measuring the content in JS, and stays crisp at
+   any content length. */
+.landing-news-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.35s var(--ease-out);
+}
+.landing-news-body.is-open {
+  grid-template-rows: 1fr;
+}
+.landing-news-body > div {
+  overflow: hidden;
+}
+.landing-news-toggle {
+  cursor: pointer;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .landing-hero-item,
   .landing-hero-bg,
@@ -633,7 +738,8 @@ textarea::placeholder {
   .landing-media,
   .landing-media img,
   .landing-feature,
-  .landing-cta {
+  .landing-cta,
+  .landing-news-body {
     animation: none !important;
     transition: none !important;
     opacity: 1 !important;

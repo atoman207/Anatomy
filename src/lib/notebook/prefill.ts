@@ -183,6 +183,52 @@ export function mapVoiceNoteToValues(note: StructuredVoiceNote): TemplateValues 
   return out;
 }
 
+/**
+ * Maps free-form capture text onto template fields without AI.
+ * Used on the free plan where `/api/voice/structure` is unavailable.
+ */
+export function prefillFromRawCapture(
+  template: NotebookTemplate,
+  rawText: string,
+): TemplateValues {
+  const text = rawText.trim();
+  if (!text) return {};
+
+  const out: TemplateValues = {};
+
+  const notes = template.fields.find((f) => f.key === "notes" && f.type === "textarea");
+  if (notes) {
+    out.notes = text;
+    return out;
+  }
+
+  const procedure = template.fields.find((f) => f.key === "procedure" && f.type === "list");
+  if (procedure) {
+    out.procedure = text
+      .split(/\n+/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .join("\n");
+    return out;
+  }
+
+  const ephemeralTextarea = template.fields.find(
+    (f) => f.type === "textarea" && EPHEMERAL_KEYS.has(f.key),
+  );
+  if (ephemeralTextarea) {
+    out[ephemeralTextarea.key] = text;
+    return out;
+  }
+
+  const anyTextarea = template.fields.find((f) => f.type === "textarea");
+  if (anyTextarea) {
+    out[anyTextarea.key] = text;
+    return out;
+  }
+
+  return out;
+}
+
 /** Merge layers: user edits win over everything beneath. */
 export function mergePrefillLayers(
   ...layers: TemplateValues[]

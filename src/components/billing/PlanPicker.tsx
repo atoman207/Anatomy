@@ -70,6 +70,7 @@ export function PlanPicker({
   const [busy, setBusy] = useState<string | null>(null);
   const [intervals, setIntervals] = useState<Record<PlanId, BillingInterval>>({
     free: DEFAULT_INTERVAL,
+    solo: DEFAULT_INTERVAL,
     pro: DEFAULT_INTERVAL,
     team: DEFAULT_INTERVAL,
   });
@@ -173,7 +174,7 @@ export function PlanPicker({
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="grid gap-5 md:grid-cols-3">
+      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         {PLAN_LIST.map((plan) => {
           const isCurrent = plan.id === currentPlan;
           const offer = offers[plan.id];
@@ -298,6 +299,15 @@ export function PlanPicker({
                     >
                       利用中
                     </Button>
+                  ) : plan.amountJpy <= 0 ? (
+                    <>
+                      <Button variant="secondary" className="w-full" disabled>
+                        無料プラン
+                      </Button>
+                      <p className="mt-2 text-[12px] leading-snug text-ink-3">
+                        有料プランを解約すると、自動的に無料プランに戻ります。
+                      </p>
+                    </>
                   ) : !offer.purchasable ? (
                     <>
                       <Button variant="secondary" className="w-full" disabled>

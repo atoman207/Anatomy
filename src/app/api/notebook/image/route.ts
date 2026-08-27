@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { AiError, isAiEnabled, generateImage } from "@/lib/ai/openai";
-import { requireAiAccess } from "@/lib/billing/subscription";
+import { requireAiImageAccess } from "@/lib/billing/subscription";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    const gate = await requireAiAccess(String(body?.labId ?? ""));
+    const gate = await requireAiImageAccess(String(body?.labId ?? ""));
     if (!gate.ok) {
       return NextResponse.json({ error: gate.error }, { status: gate.status });
     }

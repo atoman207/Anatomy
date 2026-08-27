@@ -3,8 +3,10 @@ import Image from "next/image";
 import type { Metadata } from "next";
 import { getSessionContext } from "@/lib/auth/guards";
 import { FREE_PEER_REVIEW_CREDITS, PEER_REVIEW_CREDIT_PACKS } from "@/lib/peerReview/creditPacks";
+import { listPublishedNews } from "@/lib/news/actions";
 import { VoiceTranscribeChat } from "@/components/landing/VoiceTranscribeChat";
 import { Reveal } from "@/components/landing/Reveal";
+import { NewsSection } from "@/components/landing/NewsSection";
 import { SiteHeader } from "@/components/landing/SiteHeader";
 import { SiteFooter } from "@/components/landing/SiteFooter";
 import bg6 from "../../public/bg6.png";
@@ -152,7 +154,7 @@ const PRINCIPLES: { title: string; body: string }[] = [
 export default async function LandingPage() {
   // The page is public, so a missing session is the normal case - it only
   // decides whether the calls to action say "始める" or "ダッシュボードへ".
-  const ctx = await getSessionContext();
+  const [ctx, news] = await Promise.all([getSessionContext(), listPublishedNews(5)]);
   const signedIn = Boolean(ctx);
 
   return (
@@ -458,6 +460,8 @@ export default async function LandingPage() {
           </Reveal>
         </div>
       </section>
+
+      <NewsSection articles={news} />
 
       {/* Closing visual — artwork carries the headline; CTA matches the footer. */}
       <section className="relative isolate min-h-[440px] overflow-hidden sm:min-h-[560px]">

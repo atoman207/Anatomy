@@ -38,9 +38,21 @@ export function ReportWizard({ labs }: { labs: LabOption[] }) {
   // A redirect from one of the old /notebook, /voice, /reagents, /experiments,
   // /literature routes carries ?step=N so a stale bookmark still lands on the
   // right part of the flow, not always back at step 1.
+  // Optional ?experiment=&lab= lets a lab creator open a member's experiment
+  // for read-only review from /labs.
   useEffect(() => {
     const requested = Number(searchParams.get("step"));
     if (requested >= 1 && requested <= 5) ws.setWizardStep(requested);
+
+    const experimentId = searchParams.get("experiment");
+    const labId = searchParams.get("lab");
+    if (experimentId && labId) {
+      ws.setExperiment({
+        experimentId,
+        labId,
+        label: ws.experimentId === experimentId ? ws.experimentLabel : experimentId,
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 

@@ -89,6 +89,13 @@ export async function startCheckout(
       return { ok: false, error: "プランを選択してください。" };
     }
 
+    if (plan === "free" || PLANS[plan].amountJpy <= 0) {
+      return {
+        ok: false,
+        error: "無料プランへの変更は、請求ポータルからの解約後に自動で適用されます。",
+      };
+    }
+
     const catalogue = PLANS[plan];
     const billingInterval = interval ?? catalogue.billingInterval;
     const amountJpy = planAmountFor(catalogue, billingInterval);

@@ -2393,12 +2393,12 @@ security definer
 set search_path = public
 as $$
 declare
-  current_user uuid := auth.uid();
+  caller_id uuid := auth.uid();
   lab_owner uuid;
   existing_count bigint;
 begin
   -- Service-role writes bypass ordinary browser rules intentionally.
-  if current_user is null then
+  if caller_id is null then
     return new;
   end if;
 
@@ -2407,14 +2407,14 @@ begin
     return new;
   end if;
 
-  new.created_by := current_user;
+  new.created_by := caller_id;
 
   select l.owner_id
     into lab_owner
     from public.laboratories l
    where l.id = new.lab_id;
 
-  if lab_owner = current_user then
+  if lab_owner = caller_id then
     return new;
   end if;
 
@@ -2422,7 +2422,7 @@ begin
     into existing_count
     from public.experiments e
    where e.lab_id = new.lab_id
-     and e.created_by = current_user;
+     and e.created_by = caller_id;
 
   if existing_count > 0 then
     raise exception '招待されたユーザーは、同じ研究室で作成できる実験は1件までです。'
@@ -2826,5 +2826,270 @@ create policy chat_conversation_reads_insert on public.chat_conversation_reads
       or (dm_conversation_id is not null and public.is_dm_participant(dm_conversation_id))
     )
   );
+
+notify pgrst, 'reload schema';
+
+-- ============================================================================
+-- Fix: experiment create trigger used reserved name `current_user`
+--
+-- PL/pgSQL variable `current_user` collided with the SQL built-in (session
+-- role name). `new.created_by := current_user` then tried to store the role
+-- text `authenticated` into a uuid column, so every browser insert failed
+-- with a generic error. Rename to `caller_id`. Safe to re-run.
+-- ============================================================================
+
+create or replace function public.enforce_experiment_creator_rules()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  caller_id uuid := auth.uid();
+  lab_owner uuid;
+  existing_count bigint;
+begin
+  if caller_id is null then
+    return new;
+  end if;
+
+  if tg_op = 'UPDATE' then
+    new.created_by := old.created_by;
+    return new;
+  end if;
+
+  new.created_by := caller_id;
+
+  select l.owner_id
+    into lab_owner
+    from public.laboratories l
+   where l.id = new.lab_id;
+
+  if lab_owner = caller_id then
+    return new;
+  end if;
+
+  select count(*)
+    into existing_count
+    from public.experiments e
+   where e.lab_id = new.lab_id
+     and e.created_by = caller_id;
+
+  if existing_count > 0 then
+    raise exception '招待されたユーザーは、同じ研究室で作成できる実験は1件までです。'
+      using errcode = 'check_violation';
+  end if;
+
+  return new;
+end;
+$$;
+
+-- ============================================================================
+-- Collaborative research: lab reagent catalog + creator-only writes
+--
+-- 1) Deleting an experiment must not wipe reagents other days still reuse.
+-- 2) Notebook inserts require owning the experiment; updates require owning
+--    the entry. Lab creators may still SELECT every member's notes for review.
+-- Safe to re-run.
+-- ============================================================================
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.table_constraints
+    where table_schema = 'public'
+      and table_name = 'reagents'
+      and constraint_name = 'reagents_experiment_id_fkey'
+  ) then
+    alter table public.reagents drop constraint reagents_experiment_id_fkey;
+  end if;
+end $$;
+
+alter table public.reagents
+  add constraint reagents_experiment_id_fkey
+  foreign key (experiment_id) references public.experiments (id) on delete set null;
+
+create or replace function public.owns_experiment(target_experiment uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.experiments e
+    where e.id = target_experiment
+      and e.created_by = auth.uid()
+  );
+$$;
+
+drop policy if exists notebook_entries_insert on public.notebook_entries;
+create policy notebook_entries_insert on public.notebook_entries
+  for insert with check (
+    public.can_write_lab(lab_id)
+    and public.owns_experiment(experiment_id)
+  );
+
+drop policy if exists notebook_entries_update on public.notebook_entries;
+create policy notebook_entries_update on public.notebook_entries
+  for update
+  using (created_by = auth.uid() and public.can_write_lab(lab_id))
+  with check (created_by = auth.uid() and public.can_write_lab(lab_id));
+
+drop policy if exists experiments_update on public.experiments;
+create policy experiments_update on public.experiments
+  for update
+  using (created_by = auth.uid() and public.can_write_lab(lab_id))
+  with check (created_by = auth.uid() and public.can_write_lab(lab_id));
+
+notify pgrst, 'reload schema';
+
+-- ============================================================================
+-- Four-tier billing: free + solo (個人研究者) + pro + team
+--
+-- Previously `free` meant the paid 個人研究者 tier. It is now the true free
+-- plan (1 lab / 2 members / 3 experiments, AI images only). Paying
+-- subscribers who were on `free` with a Stripe subscription move to `solo`.
+--
+-- IMPORTANT: Postgres will not let you ADD an enum value and USE it in the
+-- same transaction (error 55P04). The explicit `commit;` below closes out
+-- the ALTER TYPE on its own before anything references 'solo', so this
+-- whole block can be pasted and run as a single query. Safe to re-run.
+-- ============================================================================
+
+alter type public.billing_plan add value if not exists 'solo';
+
+-- Closes the transaction that added 'solo' so it can be referenced below.
+commit;
+
+insert into public.plan_limits (plan, max_labs, max_members, max_experiments, max_datasets, ai_enabled)
+values
+  ('free', 1,    2,    3,    null, false),
+  ('solo', 1,    5,    10,   null, true),
+  ('pro',  10,   100,  200,  null, true),
+  ('team', null, null, null, null, true)
+on conflict (plan) do update set
+  max_labs        = excluded.max_labs,
+  max_members     = excluded.max_members,
+  max_experiments = excluded.max_experiments,
+  max_datasets    = excluded.max_datasets,
+  ai_enabled      = excluded.ai_enabled;
+
+insert into public.plan_prices (plan) values ('free'), ('solo'), ('pro'), ('team')
+on conflict (plan) do nothing;
+
+update public.lab_subscriptions
+set plan = 'solo'
+where plan = 'free'
+  and stripe_subscription_id is not null;
+
+update public.plan_prices as solo
+set
+  stripe_price_id = free.stripe_price_id,
+  amount_jpy = coalesce(free.amount_jpy, 30000)
+from public.plan_prices as free
+where solo.plan = 'solo'
+  and free.plan = 'free'
+  and free.stripe_price_id is not null
+  and solo.stripe_price_id is null;
+
+update public.plan_prices
+set stripe_price_id = null, amount_jpy = 0
+where plan = 'free';
+
+update public.plan_prices
+set amount_jpy = coalesce(amount_jpy, 30000)
+where plan = 'solo' and (amount_jpy is null or amount_jpy = 0);
+
+notify pgrst, 'reload schema';
+
+-- ============================================================================
+-- Site news
+-- Safe to re-run.
+--
+-- Short announcements shown on the public landing page (see NewsSection) and
+-- managed from /admin/news. Platform-admin only, the same authority level as
+-- /admin/peer-review and the removed /admin/billing/prices: this is
+-- deployment-wide content, not something a lab manages for itself.
+--
+-- RLS is enabled with no client-facing policy at all - the same posture as
+-- contact_messages. A public visitor on the landing page has no session to
+-- check a policy against anyway; the page reads through the service-role
+-- client from its server component, and every write already goes through
+-- src/lib/news/actions.ts, which re-checks platform-admin authority itself.
+-- ============================================================================
+
+create table if not exists public.site_news (
+  id           uuid primary key default gen_random_uuid(),
+  slug         text unique,
+  title        text not null,
+  summary      text not null default '',
+  body_md      text not null default '',
+  is_published boolean not null default true,
+  published_at timestamptz not null default now(),
+  created_by   uuid references auth.users (id) on delete set null,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+
+create index if not exists site_news_published_idx
+  on public.site_news (published_at desc)
+  where is_published;
+
+drop trigger if exists touch_site_news on public.site_news;
+create trigger touch_site_news
+  before update on public.site_news
+  for each row execute function public.touch_updated_at();
+
+alter table public.site_news enable row level security;
+-- Deliberately no select/insert/update/delete policy: see the section
+-- comment above. RLS enabled with zero policies denies every direct
+-- client access, same as contact_messages and billing_events.
+
+-- Seed content, grounded in features that actually shipped (not placeholder
+-- text) - keyed on `slug` so re-running this block after an edit elsewhere
+-- in the app never duplicates these five rows.
+insert into public.site_news (slug, title, summary, body_md, is_published, published_at) values
+(
+  'service-launch',
+  'LABNOTE. を公開しました',
+  '実験記録から統計解析、AI査読までを一つのアカウントで完結する研究室基盤です。',
+  '本日より LABNOTE. の提供を開始しました。実験選択・試薬管理・テンプレート・音声入力・論文検索を一つの記録ウィザードにまとめ、完了と同時にPDFレポートを自動作成します。統計解析やAI査読、研究室のメンバー管理まで、研究室運営に必要な機能を一つのプラットフォームでご利用いただけます。',
+  true,
+  '2026-08-01T00:00:00+00:00'
+),
+(
+  'four-tier-plans',
+  '料金プランを4段階に見直しました',
+  '無料プランを新設し、個人研究者・研究室・大学機関まで規模に合わせて選べるようになりました。',
+  '無料プラン（研究室1つ・メンバー2名まで）を新たに追加し、個人研究者プラン・研究室プラン・大学機関プランと合わせて4段階の料金体系にしました。まずは無料プランで記録ウィザードをお試しいただき、必要に応じてアップグレードできます。',
+  true,
+  '2026-08-10T00:00:00+00:00'
+),
+(
+  'peer-review-credits',
+  'AI査読を従量課金でいつでも利用できるようになりました',
+  '研究室のプランに関わらず、アカウント単位のクレジットでAI査読を実行できます。',
+  '方法・統計、新規性・意義、構成・論理の3名のAI査読者が、それぞれ独立に論文を評価するAI査読機能を、研究室のプラン契約に関わらずアカウント単位のクレジットで利用できるようにしました。無料クレジットに加え、必要な分だけクレジットパックを購入できます。',
+  true,
+  '2026-08-15T00:00:00+00:00'
+),
+(
+  'record-wizard',
+  '記録ウィザードでレポート作成を1つの流れに',
+  '実験選択から論文検索まで5ステップで進み、完了と同時にPDFレポートが自動生成されます。',
+  '実験選択 → 試薬・Lot → テンプレート → 実験ノート → 論文検索の5ステップを順に進むだけで、今日のラボレポートが完成します。各ステップの先頭には、これまで選んだ研究室・実験・試薬・テンプレートが常に表示され、いつでも前のステップに戻って修正できます。',
+  true,
+  '2026-08-20T00:00:00+00:00'
+),
+(
+  'lab-chat',
+  '研究室チャットを追加しました',
+  'チャンネル・ダイレクトメッセージ・通話に対応し、公開・非公開チャンネルを使い分けられます。',
+  '研究室のメンバー同士でやり取りできるチャット機能を追加しました。公開チャンネルに加え、研究室の管理者が作成できる非公開チャンネル、メンバー間のダイレクトメッセージ、音声・映像通話に対応しています。',
+  true,
+  '2026-08-27T00:00:00+00:00'
+)
+on conflict (slug) do nothing;
 
 notify pgrst, 'reload schema';

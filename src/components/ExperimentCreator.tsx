@@ -32,7 +32,11 @@ export function ExperimentCreator({ labs }: { labs: LabOption[] }) {
   const [labId, setLabId] = useState(labs[0]?.id ?? "");
 
   function message(e: unknown): string {
-    return e instanceof Error ? e.message : "実験を作成できませんでした。";
+    if (typeof e === "object" && e !== null && "message" in e) {
+      const msg = (e as { message: unknown }).message;
+      if (typeof msg === "string" && msg.trim()) return msg;
+    }
+    return "実験を作成できませんでした。";
   }
 
   async function createExperiment(e: React.FormEvent) {

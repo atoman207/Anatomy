@@ -15,6 +15,7 @@ import {
   cancelLabInviteAction,
   changeLabMemberRoleAction,
   createLabAction,
+  deleteExperimentAction,
   deleteLabAction,
   inviteLabMemberAction,
   removeLabMemberAction,
@@ -28,6 +29,7 @@ interface LabSummary {
   labId: string;
   labName: string;
   labDescription: string | null;
+  ownerId: string;
   role: LabRole;
   memberCount: number;
   experimentCount: number;
@@ -55,6 +57,8 @@ interface ExperimentRow {
   operator: string | null;
   status: ExperimentStatus;
   notebookCount: number;
+  createdBy: string | null;
+  labId: string;
 }
 
 const STATUS_LABELS: Record<ExperimentStatus, string> = {
@@ -77,14 +81,22 @@ export default async function LabsPage(props: PageProps<"/labs">) {
 
   const summaries: LabSummary[] = [];
   for (const m of ctx.memberships) {
+    const isCreator = m.ownerId === ctx.user.id;
     const [memberCountRes, experimentCountRes] = await Promise.all([
       supabase.from("lab_members").select("user_id", { count: "exact", head: true }).eq("lab_id", m.labId),
-      supabase.from("experiments").select("id", { count: "exact", head: true }).eq("lab_id", m.labId),
+      isCreator
+        ? supabase.from("experiments").select("id", { count: "exact", head: true }).eq("lab_id", m.labId)
+        : supabase
+            .from("experiments")
+            .select("id", { count: "exact", head: true })
+            .eq("lab_id", m.labId)
+            .eq("created_by", ctx.user.id),
     ]);
     summaries.push({
       labId: m.labId,
       labName: m.labName,
       labDescription: m.labDescription,
+      ownerId: m.ownerId,
       role: m.role,
       memberCount: memberCountRes.count ?? 0,
       experimentCount: experimentCountRes.count ?? 0,
@@ -138,11 +150,16 @@ export default async function LabsPage(props: PageProps<"/labs">) {
       }));
     }
 
-    const { data: expRows } = await supabase
+    const isLabCreator = selected.ownerId === ctx.user.id;
+    let expQuery = supabase
       .from("experiments")
-      .select("id, name, experiment_date, operator, status")
+      .select("id, name, experiment_date, operator, status, created_by")
       .eq("lab_id", selected.labId)
       .order("experiment_date", { ascending: false });
+    if (!isLabCreator) {
+      expQuery = expQuery.eq("created_by", ctx.user.id);
+    }
+    const { data: expRows } = await expQuery;
 
     const expIds = (expRows ?? []).map((e) => e.id);
     const notebookCounts = new Map<string, number>();
@@ -163,12 +180,16 @@ export default async function LabsPage(props: PageProps<"/labs">) {
       operator: e.operator,
       status: e.status as ExperimentStatus,
       notebookCount: notebookCounts.get(e.id) ?? 0,
+      createdBy: e.created_by,
+      labId: selected.labId,
     }));
   }
 
   const inProgress = experiments.filter((e) => e.status === "in_progress");
   const canManage = selected ? canManageMembers(selected.role) : false;
   const canInvite = selected ? canWrite(selected.role) : false;
+  const currentUserId = ctx.user.id;
+  const isLabCreator = selected ? selected.ownerId === currentUserId : false;
   const labForCreator: LabOption[] = selected
     ? [{ id: selected.labId, name: selected.labName, description: selected.labDescription, role: selected.role }]
     : [];
@@ -246,11 +267,19 @@ export default async function LabsPage(props: PageProps<"/labs">) {
                   <>
                     {inProgress.length > 0 && (
                       <Card title={`進行中の実験（${inProgress.length} 件）`}>
-                        <ExperimentTable experiments={inProgress} />
+                        <ExperimentTable
+                          experiments={inProgress}
+                          currentUserId={currentUserId}
+                          isLabCreator={isLabCreator}
+                        />
                       </Card>
                     )}
                     <Card title={`すべての実験（${experiments.length} 件）`}>
-                      <ExperimentTable experiments={experiments} />
+                      <ExperimentTable
+                        experiments={experiments}
+                        currentUserId={currentUserId}
+                        isLabCreator={isLabCreator}
+                      />
                     </Card>
                   </>
                 )}
@@ -454,30 +483,67 @@ export default async function LabsPage(props: PageProps<"/labs">) {
   );
 }
 
-function ExperimentTable({ experiments }: { experiments: ExperimentRow[] }) {
+function ExperimentTable({
+  experiments,
+  currentUserId,
+  isLabCreator,
+}: {
+  experiments: ExperimentRow[];
+  currentUserId: string;
+  isLabCreator: boolean;
+}) {
   return (
     <ul className="flex flex-col divide-y divide-[var(--border)]">
-      {experiments.map((e) => (
-        <li key={e.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-ink">{e.name}</p>
-            <p className="text-xs text-ink-3">
-              {e.experimentDate}
-              {e.operator ? ` · ${e.operator}` : ""}
-              {e.notebookCount > 0 ? ` · ノート ${e.notebookCount} 件` : ""}
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Badge tone={STATUS_TONE[e.status]}>{STATUS_LABELS[e.status]}</Badge>
-            <Link
-              href="/record?step=4"
-              className="text-[11px] text-accent underline underline-offset-2"
-            >
-              ノートを書く
-            </Link>
-          </div>
-        </li>
-      ))}
+      {experiments.map((e) => {
+        const isMine = e.createdBy === currentUserId;
+        const canDelete = isMine;
+        return (
+          <li key={e.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-ink">
+                {e.name}
+                {isLabCreator && !isMine && (
+                  <span className="ml-1.5 text-[10px] font-normal text-ink-3">（他メンバー・閲覧のみ）</span>
+                )}
+              </p>
+              <p className="text-xs text-ink-3">
+                {e.experimentDate}
+                {e.operator ? ` · ${e.operator}` : ""}
+                {e.notebookCount > 0 ? ` · ノート ${e.notebookCount} 件` : ""}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Badge tone={STATUS_TONE[e.status]}>{STATUS_LABELS[e.status]}</Badge>
+              {isMine ? (
+                <Link
+                  href="/record?step=4"
+                  className="text-[11px] text-accent underline underline-offset-2"
+                >
+                  ノートを書く
+                </Link>
+              ) : isLabCreator ? (
+                <Link
+                  href={`/record?step=4&lab=${encodeURIComponent(e.labId)}&experiment=${encodeURIComponent(e.id)}`}
+                  className="text-[11px] text-ink-3 underline underline-offset-2"
+                  title="閲覧のみ。編集はできません。"
+                >
+                  ノートを確認
+                </Link>
+              ) : null}
+              {canDelete && (
+                <InlineActionForm
+                  action={deleteExperimentAction}
+                  hidden={{ experiment_id: e.id }}
+                  submitLabel="削除"
+                  variant="danger"
+                  iconOnly
+                  confirm={`「${e.name}」を削除しますか？関連するノートは削除されますが、試薬カタログは研究室に残ります。`}
+                />
+              )}
+            </div>
+          </li>
+        );
+      })}
     </ul>
   );
 }

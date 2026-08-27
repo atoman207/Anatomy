@@ -16,7 +16,7 @@ export type AnalysisKind =
   | "ttest" | "anova" | "pca" | "kmeans" | "hierarchical" | "differential" | "descriptive";
 export type FigureKind = "volcano" | "heatmap" | "pca" | "other" | "ai_image";
 /** Billing plan and Stripe subscription status; mirror of migration 0002. */
-export type BillingPlan = "free" | "pro" | "team";
+export type BillingPlan = "free" | "solo" | "pro" | "team";
 export type BillingStatus =
   | "active" | "trialing" | "past_due" | "canceled"
   | "incomplete" | "incomplete_expired" | "unpaid" | "paused";
@@ -387,6 +387,21 @@ export type ContactMessageRow = {
   created_at: string;
 }
 
+/* Site news - see supabase/migrations/all.sql (site news section). */
+
+export type SiteNewsRow = {
+  id: string;
+  slug: string | null;
+  title: string;
+  summary: string;
+  body_md: string;
+  is_published: boolean;
+  published_at: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export type ChannelRow = {
   id: string;
   lab_id: string;
@@ -527,6 +542,10 @@ export type Database = {
       >;
       calls: TableDef<CallRow, Insert<CallRow, "started_at">>;
       call_participants: TableDef<CallParticipantRow, Insert<CallParticipantRow, "joined_at">>;
+      site_news: TableDef<
+        SiteNewsRow,
+        Insert<SiteNewsRow, "summary" | "body_md" | "is_published" | "published_at">
+      >;
     };
     Views: Record<string, never>;
     Functions: {

@@ -43,8 +43,12 @@ export function LiveTranscriber({
 
   const sessionRef = useRef<SpeechSession | null>(null);
   const startedAtRef = useRef(0);
-  /** Snapshot of the editable text when listening began — speech appends onto this. */
-  const baseTextRef = useRef("");
+  /**
+   * Snapshot of the editable text when listening began — speech appends onto
+   * this. Real state, not a ref, since `displayValue` below reads it during
+   * render (a ref read during render can silently miss a re-render).
+   */
+  const [baseText, setBaseText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -75,7 +79,7 @@ export function LiveTranscriber({
     setListening(true);
 
     const base = (committedText ?? "").trimEnd();
-    baseTextRef.current = base;
+    setBaseText(base);
 
     const session = new SpeechSession(
       {
@@ -115,20 +119,19 @@ export function LiveTranscriber({
     const session = sessionRef.current;
     session?.stop();
     const spoken = session ? fullTranscript(session.transcript) : fullTranscript(state);
-    const base = baseTextRef.current;
-    const merged = (base ? joinJapanese(base, spoken) : spoken).trim();
+    const merged = (baseText ? joinJapanese(baseText, spoken) : spoken).trim();
     setState(EMPTY_TRANSCRIPT);
     if (merged) {
       onCommittedTextChange?.(merged);
       onCommit(merged);
     }
-  }, [onCommit, onCommittedTextChange, state]);
+  }, [baseText, onCommit, onCommittedTextChange, state]);
 
   function clear() {
     sessionRef.current?.dispose();
     sessionRef.current = null;
     setState(EMPTY_TRANSCRIPT);
-    baseTextRef.current = "";
+    setBaseText("");
     onCommittedTextChange?.("");
     setDead(false);
     setElapsed(0);
@@ -148,7 +151,7 @@ export function LiveTranscriber({
   const hasText = (committedText ?? "").trim().length > 0;
   const spokenLive = fullTranscript(state);
   const displayValue = listening
-    ? (baseTextRef.current ? joinJapanese(baseTextRef.current, spokenLive) : spokenLive)
+    ? (baseText ? joinJapanese(baseText, spokenLive) : spokenLive)
     : (committedText ?? "");
   const continueLabel = hasText ? "話し続ける" : "話し始める";
 

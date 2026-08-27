@@ -58,6 +58,15 @@ export function VoiceTranscribeChat({ text }: { text: string }) {
   const listenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const restartTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoplayedRef = useRef(false);
+  /**
+   * Always the latest `play` closure. The loop below schedules its own
+   * restart via this ref rather than closing over `play` directly - `play`
+   * is recreated whenever `text` changes, and a pending setTimeout from a
+   * previous render would otherwise keep calling a stale closure (looping
+   * forever on old `text`/`clearTimers`/`startWave`) instead of picking up
+   * the current one.
+   */
+  const playRef = useRef<() => void>(() => {});
 
   const clearTimers = useCallback(() => {
     if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
@@ -146,7 +155,7 @@ export function VoiceTranscribeChat({ text }: { text: string }) {
           rafRef.current = null;
           // Loop on its own - a visitor should not have to touch anything
           // to see the whole cycle more than once.
-          restartTimeoutRef.current = setTimeout(() => play(), RESTART_DELAY_MS);
+          restartTimeoutRef.current = setTimeout(() => playRef.current(), RESTART_DELAY_MS);
           return;
         }
         rafRef.current = requestAnimationFrame(tick);
@@ -154,6 +163,10 @@ export function VoiceTranscribeChat({ text }: { text: string }) {
       rafRef.current = requestAnimationFrame(tick);
     }, LISTEN_MS);
   }, [clearTimers, startWave, text]);
+
+  useEffect(() => {
+    playRef.current = play;
+  }, [play]);
 
   // Starts on its own the first time this section is scrolled into view -
   // the whole point is that nobody has to click a mic button to see it.

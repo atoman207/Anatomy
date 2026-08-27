@@ -29,7 +29,10 @@ export interface LabEntitlement {
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   hasStripeSubscription: boolean;
+  /** Full AI suite (transcription, structuring, literature, …). */
   aiEnabled: boolean;
+  /** Notebook AI image generation (also available on the free plan). */
+  aiImageEnabled: boolean;
 }
 
 const FREE: Omit<LabEntitlement, "labId"> = {
@@ -41,6 +44,7 @@ const FREE: Omit<LabEntitlement, "labId"> = {
   cancelAtPeriodEnd: false,
   hasStripeSubscription: false,
   aiEnabled: false,
+  aiImageEnabled: false,
 };
 
 /** The raw row, or null when the caller may not read it or none exists. */
@@ -71,6 +75,10 @@ export async function getLabEntitlement(labId: string): Promise<LabEntitlement> 
   const subscribedPlanId = isPlanId(row.plan) ? row.plan : null;
   const status = isSubscriptionStatus(row.status) ? row.status : null;
   const plan = effectivePlan(subscribedPlanId, status);
+  const entitled = statusGrantsAccess(status ?? "canceled");
+  // Free-tier features apply whenever the effective plan is free (including
+  // after a paid subscription lapses), not only while status is active.
+  const freeTier = plan.id === "free";
 
   return {
     labId,
@@ -81,15 +89,13 @@ export async function getLabEntitlement(labId: string): Promise<LabEntitlement> 
     currentPeriodEnd: row.current_period_end,
     cancelAtPeriodEnd: row.cancel_at_period_end,
     hasStripeSubscription: Boolean(row.stripe_subscription_id),
-    aiEnabled:
-      plan.limits.aiEnabled
-      && statusGrantsAccess(status ?? "canceled")
-      && (plan.id !== "free" || Boolean(row.stripe_subscription_id)),
+    aiEnabled: plan.limits.aiEnabled && (freeTier || entitled),
+    aiImageEnabled: plan.limits.aiImageEnabled && (freeTier || entitled),
   };
 }
 
 /** Tier order for picking the best subscription among owned labs. */
-const PLAN_TIER: Record<PlanId, number> = { free: 0, pro: 1, team: 2 };
+const PLAN_TIER: Record<PlanId, number> = { free: 0, solo: 1, pro: 2, team: 3 };
 
 /**
  * The max labs an owner may create, from the highest-tier active subscription
@@ -196,7 +202,49 @@ export async function requireAiAccess(labId: string | null | undefined): Promise
       ok: false,
       status: 402,
       error:
-        `AI機能は有料プランのご契約が必要です（${entitlement.plan.name}）。` +
+        "AI機能（高精度文字起こし・構造化・論文要約など）は個人研究者プラン以上のご契約が必要です。" +
+        "「料金・支払い」からプランをお選びください。",
+    };
+  }
+
+  return { ok: true, labId: resolved };
+}
+
+/**
+ * Notebook AI image generation - paid plans only (個人研究者 / solo and above).
+ */
+export async function requireAiImageAccess(labId: string | null | undefined): Promise<AiAccess> {
+  const ctx = await getSessionContext();
+  if (!ctx) {
+    return { ok: false, status: 401, error: "AI機能の利用にはログインが必要です。" };
+  }
+
+  let resolved = (labId ?? "").trim();
+  if (!resolved) {
+    if (ctx.memberships.length === 1) {
+      resolved = ctx.memberships[0].labId;
+    } else if (ctx.memberships.length === 0) {
+      return {
+        ok: false, status: 403,
+        error: "研究室に所属していないため、AI機能を利用できません。管理者に追加を依頼してください。",
+      };
+    } else {
+      return { ok: false, status: 400, error: "研究室を選択してください。" };
+    }
+  }
+
+  const isMember = ctx.memberships.some((m) => m.labId === resolved);
+  if (!isMember && !ctx.isPlatformAdmin) {
+    return { ok: false, status: 403, error: "この研究室のデータにアクセスする権限がありません。" };
+  }
+
+  const entitlement = await getLabEntitlement(resolved);
+  if (!entitlement.aiImageEnabled) {
+    return {
+      ok: false,
+      status: 402,
+      error:
+        "AI画像生成は個人研究者プラン以上のご契約が必要です。" +
         "「料金・支払い」からプランをお選びください。",
     };
   }

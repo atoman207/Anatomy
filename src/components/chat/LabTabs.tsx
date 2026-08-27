@@ -28,6 +28,14 @@ export function LabTabs({
   const labIds = labs.map((l) => l.id);
   const labIdKey = labIds.join(",");
   const [counts, setCounts] = useState<Record<string, number>>(initialUnreadCounts);
+  // Re-seeds from the freshly-loaded server data when the route switches labs,
+  // adjusted during render rather than in an effect - see the identical
+  // pattern (and rationale) in ChatSidebar's seededForLab.
+  const [seededForLab, setSeededForLab] = useState(currentLabId);
+  if (currentLabId !== seededForLab) {
+    setSeededForLab(currentLabId);
+    setCounts(initialUnreadCounts);
+  }
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = useCallback(() => {
@@ -41,10 +49,6 @@ export function LabTabs({
       refresh();
     }, 250);
   }, [refresh]);
-
-  useEffect(() => {
-    setCounts(initialUnreadCounts);
-  }, [currentLabId]); // eslint-disable-line react-hooks/exhaustive-deps -- re-seed when lab route changes
 
   useEffect(() => {
     refresh();

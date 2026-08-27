@@ -454,6 +454,59 @@ export async function removeLabMemberAction(
   }
 }
 
+/**
+ * Deletes an experiment the caller created.
+ *
+ * Only the creator may delete (lab admins use `/admin/experiments`). Matches
+ * the `experiments_delete` RLS policy: `created_by = auth.uid()` plus write
+ * access to the laboratory.
+ */
+export async function deleteExperimentAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  try {
+    const ctx = await ctxOrThrow();
+    const experimentId = String(formData.get("experiment_id") ?? "");
+    if (!experimentId) return fail("実験が指定されていません。");
+
+    const admin = createAdminSupabase();
+    const { data: experiment } = await admin
+      .from("experiments")
+      .select("id, lab_id, name, created_by")
+      .eq("id", experimentId)
+      .maybeSingle();
+
+    if (!experiment) return fail("実験が見つかりません。");
+    if (experiment.created_by !== ctx.user.id) {
+      return fail("自分が作成した実験のみ削除できます。");
+    }
+
+    await assertCanWriteLab(ctx, experiment.lab_id);
+
+    const { error } = await admin
+      .from("experiments")
+      .delete()
+      .eq("id", experimentId);
+    if (error) return fail(error.message);
+
+    await logAudit({
+      labId: experiment.lab_id,
+      userId: ctx.user.id,
+      action: "experiment.deleted",
+      entity: "experiment",
+      entityId: experimentId,
+      detail: { name: experiment.name },
+    });
+
+    refreshLabsPages(experiment.lab_id);
+    revalidatePath("/record");
+    return done("実験を削除しました。");
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "実験を削除できませんでした。");
+  }
+}
+
 export async function transferLabOwnershipAction(
   _prev: ActionResult | null,
   formData: FormData,

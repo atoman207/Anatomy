@@ -110,7 +110,7 @@ function TodayLogButton({ entries }: { entries: TodayEntry[] | null }) {
     return (
       <Link
         href="/record?step=1"
-        className="hidden shrink-0 items-center gap-1.5 rounded-lg bg-[var(--shell-accent)] px-3 py-1.5 text-[13px] font-medium text-[#08210f] transition-opacity hover:opacity-90 sm:inline-flex"
+        className="hidden shrink-0 items-center gap-1.5 rounded-lg bg-[var(--shell-accent)] px-3 py-1.5 text-[13px] font-medium text-[var(--accent-contrast)] transition-opacity hover:opacity-90 sm:inline-flex"
       >
         <Icon name="notebook" className="h-3.5 w-3.5" />
         今日の実験記録
@@ -415,7 +415,7 @@ function UserButton({ me }: { me: MeResponse | null }) {
     return (
       <Link
         href={`/login?next=${encodeURIComponent(pathname)}`}
-        className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--shell-accent)] px-3.5 py-1.5 text-[13px] font-medium text-[#08210f] transition-opacity hover:opacity-90"
+        className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--shell-accent)] px-3.5 py-1.5 text-[13px] font-medium text-[var(--accent-contrast)] transition-opacity hover:opacity-90"
       >
         <Icon name="login" className="h-3.5 w-3.5" />
         ログイン

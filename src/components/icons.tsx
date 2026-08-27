@@ -21,6 +21,7 @@ export type IconName =
   | "x"
   | "notebook"
   | "arrow"
+  | "arrowLeft"
   | "chart"
   | "user"
   | "mail"
@@ -70,6 +71,7 @@ const PATHS: Record<IconName, ReactNode> = {
   x: <><path d="M6 6l12 12" /><path d="M18 6L6 18" /></>,
   notebook: <><path d="M6 3h12v18H6z" /><path d="M10 3v18" /><path d="M13 8h3" /><path d="M13 12h3" /></>,
   arrow: <><path d="M5 12h14" /><path d="M13 6l6 6-6 6" /></>,
+  arrowLeft: <><path d="M19 12H5" /><path d="M11 6l-6 6 6 6" /></>,
   chart: <><path d="M4 19h16" /><path d="M7 16V9" /><path d="M12 16V5" /><path d="M17 16v-7" /></>,
   user: <><circle cx="12" cy="8" r="3.5" /><path d="M5 20a7 7 0 0 1 14 0" /></>,
   mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M4 7l8 6 8-6" /></>,

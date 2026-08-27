@@ -21,18 +21,20 @@ export function InviteEmailInput({
 
   const normalized = useMemo(() => value.trim().toLowerCase(), [value]);
   const isValid = EMAIL_RE.test(normalized);
+  // While the address is empty/invalid there is nothing to look up, so the
+  // displayed status is derived straight from `isValid` during render
+  // instead of being pushed into `status` from the effect below - `status`
+  // itself only ever needs to track the async lookup's own outcome.
+  const displayStatus: Status = !isValid ? "idle" : status;
 
   useEffect(() => {
-    if (!normalized) {
-      setStatus("idle");
-      return;
-    }
-    if (!isValid) {
-      setStatus("idle");
-      return;
-    }
+    if (!isValid) return;
 
     const ctrl = new AbortController();
+    // Marking the just-started external lookup as pending, not state derived
+    // from props/other state - legitimate effect use, not the "you might not
+    // need an effect" case the rule otherwise guards against.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setStatus("checking");
     const timer = window.setTimeout(async () => {
       try {
@@ -64,21 +66,21 @@ export function InviteEmailInput({
         value={value}
         onChange={(e) => setValue(e.target.value)}
         className={cx(
-          status === "exists" && "border-good bg-good-soft/40 focus:border-good",
-          status === "missing" && "border-danger/50 bg-danger-soft/40 focus:border-danger",
+          displayStatus === "exists" && "border-good bg-good-soft/40 focus:border-good",
+          displayStatus === "missing" && "border-danger/50 bg-danger-soft/40 focus:border-danger",
         )}
       />
       <p
         className={cx(
           "text-[11px] leading-snug text-ink-3",
-          status === "exists" && "text-good",
-          status === "missing" && "text-danger",
+          displayStatus === "exists" && "text-good",
+          displayStatus === "missing" && "text-danger",
         )}
       >
-        {status === "checking" && "アカウントを確認しています…"}
-        {status === "exists" && "登録済みのアカウントです。追加するとすぐ研究室に参加できます。"}
-        {status === "missing" && "未登録のメールアドレスです。招待メールを送信して登録後に参加します。"}
-        {status === "idle" && " "}
+        {displayStatus === "checking" && "アカウントを確認しています…"}
+        {displayStatus === "exists" && "登録済みのアカウントです。追加するとすぐ研究室に参加できます。"}
+        {displayStatus === "missing" && "未登録のメールアドレスです。招待メールを送信して登録後に参加します。"}
+        {displayStatus === "idle" && " "}
       </p>
     </div>
   );

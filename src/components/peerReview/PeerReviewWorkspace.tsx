@@ -90,6 +90,12 @@ export function PeerReviewWorkspace({
   }, []);
 
   useEffect(() => {
+    // Fetching the account's current balance from the server on mount -
+    // exactly what an effect is for (synchronizing with an external
+    // system). The setState the compiler traces through happens inside
+    // refreshCredits' own async body, after the request resolves, not
+    // synchronously here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refreshCredits();
   }, [refreshCredits]);
 
@@ -98,6 +104,7 @@ export function PeerReviewWorkspace({
     if (!checkout) return;
     if (checkout === "success") {
       toast("決済が完了しました。回数を反映しています…", { tone: "good" });
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       void refreshCredits();
     } else if (checkout === "cancel") {
       toast("決済をキャンセルしました。", { tone: "info" });
@@ -216,6 +223,10 @@ export function PeerReviewWorkspace({
         toast(res.error ?? "決済を開始できませんでした。", { tone: "danger", title: "エラー" });
         return;
       }
+      // A same-tab redirect to Stripe Checkout triggered by this click
+      // handler, not a render-time mutation - the rule's "modifying a
+      // variable defined outside a component" heuristic is over-broad here.
+      // eslint-disable-next-line react-hooks/immutability
       window.location.href = res.data;
     } catch (e) {
       toast(e instanceof Error ? e.message : "決済を開始できませんでした。", {

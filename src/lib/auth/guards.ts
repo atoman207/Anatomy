@@ -216,6 +216,50 @@ export async function assertIsLabOwner(
   }
 }
 
+/**
+ * True when this user created the laboratory (`laboratories.owner_id`),
+ * regardless of their current `lab_members.role` label.
+ */
+export function isLaboratoryCreator(ctx: SessionContext, labId: string): boolean {
+  if (ctx.isPlatformAdmin) return true;
+  const membership = ctx.memberships.find((m) => m.labId === labId);
+  return Boolean(membership && membership.ownerId === ctx.user.id);
+}
+
+/**
+ * Ensures the caller may write records (notes, reagents used today, reports)
+ * against this experiment: they must be its creator and able to write the lab.
+ *
+ * Lab creators may *view* everyone else's experiments and notes, but must not
+ * edit them - that keeps collaborative review read-only for the project lead.
+ */
+export async function assertCanRecordOnExperiment(
+  ctx: SessionContext,
+  experimentId: string,
+): Promise<{ labId: string; name: string }> {
+  if (!experimentId) throw new Error("実験を選択してください。");
+
+  const admin = createAdminSupabase();
+  const { data: experiment } = await admin
+    .from("experiments")
+    .select("id, lab_id, name, created_by")
+    .eq("id", experimentId)
+    .maybeSingle();
+
+  if (!experiment) throw new Error("実験が見つかりません。");
+
+  await assertCanWriteLab(ctx, experiment.lab_id);
+
+  if (experiment.created_by !== ctx.user.id) {
+    throw new Error(
+      "自分が作成した実験にのみ記録できます。" +
+        "研究室の作成者は他メンバーの実験・ノートを閲覧できますが、編集はできません。",
+    );
+  }
+
+  return { labId: experiment.lab_id, name: experiment.name };
+}
+
 export interface AuditEntry {
   labId: string | null;
   userId: string | null;

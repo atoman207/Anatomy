@@ -13,6 +13,7 @@ interface ExperimentOption {
   experiment_date: string;
   lab_id: string;
   lab_name: string;
+  created_by: string | null;
 }
 
 /**
@@ -31,6 +32,7 @@ export function ExperimentPicker({
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [signedIn, setSignedIn] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
   const [options, setOptions] = useState<ExperimentOption[]>([]);
 
   const [creating, setCreating] = useState(false);
@@ -40,7 +42,11 @@ export function ExperimentPicker({
   const [busy, setBusy] = useState(false);
 
   function message(e: unknown): string {
-    return e instanceof Error ? e.message : "実験を作成できませんでした。";
+    if (typeof e === "object" && e !== null && "message" in e) {
+      const msg = (e as { message: unknown }).message;
+      if (typeof msg === "string" && msg.trim()) return msg;
+    }
+    return "実験を作成できませんでした。";
   }
 
   useEffect(() => {
@@ -58,42 +64,72 @@ export function ExperimentPicker({
         }
         if (cancelled) return;
         setSignedIn(true);
+        setUserId(userData.user.id);
 
         // Filter to this user explicitly. RLS on lab_members lets any member
         // read the lab's whole roster, so an unfiltered query returns one row
         // per teammate and the same lab appears repeatedly in the dropdown.
         const { data: memberRows } = await supabase
           .from("lab_members")
-          .select("lab_id, laboratories(id, name)")
+          .select("lab_id, laboratories(id, name, owner_id)")
           .eq("user_id", userData.user.id)
           .order("joined_at", { ascending: true });
         const seen = new Set<string>();
+        const ownedLabIds: string[] = [];
         const labList = (memberRows ?? [])
           .map((r) => {
             const embedded = r.laboratories as unknown;
             const lab = (Array.isArray(embedded) ? embedded[0] : embedded) as
-              | { id: string; name: string }
+              | { id: string; name: string; owner_id: string }
               | null
               | undefined;
-            return lab ? { id: lab.id, name: lab.name } : null;
+            return lab ? { id: lab.id, name: lab.name, owner_id: lab.owner_id } : null;
           })
-          .filter((l): l is { id: string; name: string } => {
+          .filter((l): l is { id: string; name: string; owner_id: string } => {
             if (!l || seen.has(l.id)) return false;
             seen.add(l.id);
+            if (l.owner_id === userData.user.id) ownedLabIds.push(l.id);
             return true;
           });
         if (cancelled) return;
-        setLabs(labList);
+        setLabs(labList.map((l) => ({ id: l.id, name: l.name })));
         setNewLabId((prev) => prev || labList[0]?.id || "");
 
-        const { data: expRows, error: expError } = await supabase
+        // Own experiments always. Lab creators also load every experiment in
+        // labs they created, for read-only review of members' daily notes.
+        const { data: ownRows, error: ownError } = await supabase
           .from("experiments")
-          .select("id, name, experiment_date, lab_id, laboratories(name)")
+          .select("id, name, experiment_date, lab_id, created_by, laboratories(name)")
+          .eq("created_by", userData.user.id)
           .order("experiment_date", { ascending: false })
           .limit(100);
-        if (expError) throw expError;
+        if (ownError) throw ownError;
 
-        const opts: ExperimentOption[] = (expRows ?? []).map((r) => {
+        let reviewRows: typeof ownRows = [];
+        if (ownedLabIds.length > 0) {
+          const { data, error } = await supabase
+            .from("experiments")
+            .select("id, name, experiment_date, lab_id, created_by, laboratories(name)")
+            .in("lab_id", ownedLabIds)
+            .order("experiment_date", { ascending: false })
+            .limit(200);
+          if (error) throw error;
+          reviewRows = data ?? [];
+        }
+
+        const byId = new Map<string, {
+          id: string;
+          name: string;
+          experiment_date: string;
+          lab_id: string;
+          created_by: string | null;
+          laboratories: unknown;
+        }>();
+        for (const r of [...(ownRows ?? []), ...reviewRows]) {
+          byId.set(r.id, r as typeof byId extends Map<string, infer V> ? V : never);
+        }
+
+        const opts: ExperimentOption[] = [...byId.values()].map((r) => {
           const embedded = r.laboratories as unknown;
           const lab = (Array.isArray(embedded) ? embedded[0] : embedded) as
             | { name: string }
@@ -105,8 +141,10 @@ export function ExperimentPicker({
             experiment_date: r.experiment_date,
             lab_id: r.lab_id,
             lab_name: lab?.name ?? "—",
+            created_by: r.created_by,
           };
         });
+        opts.sort((a, b) => b.experiment_date.localeCompare(a.experiment_date));
         if (cancelled) return;
         setOptions(opts);
 
@@ -151,12 +189,16 @@ export function ExperimentPicker({
           experiment_date: today,
           created_by: userData.user?.id ?? null,
         })
-        .select("id, name, experiment_date, lab_id")
+        .select("id, name, experiment_date, lab_id, created_by")
         .single();
       if (insertError) throw insertError;
 
       const labName = labs.find((l) => l.id === newLabId)?.name ?? "—";
-      const opt: ExperimentOption = { ...data, lab_name: labName };
+      const opt: ExperimentOption = {
+        ...data,
+        lab_name: labName,
+        created_by: data.created_by ?? userData.user?.id ?? null,
+      };
       setOptions((prev) => [opt, ...prev]);
       ws.setExperiment({
         experimentId: opt.id,
@@ -217,6 +259,7 @@ export function ExperimentPicker({
                 {options.map((o) => (
                   <option key={o.id} value={o.id}>
                     {o.experiment_date} · {o.name} — {o.lab_name}
+                    {userId && o.created_by && o.created_by !== userId ? "（閲覧）" : ""}
                   </option>
                 ))}
               </Select>

@@ -1,7 +1,7 @@
 "use server";
 
 import { createServerSupabase } from "@/lib/supabase/server";
-import { getSessionContext, logAudit } from "@/lib/auth/guards";
+import { assertCanRecordOnExperiment, getSessionContext, logAudit } from "@/lib/auth/guards";
 
 export interface ActionResult<T = undefined> {
   ok: boolean;
@@ -36,6 +36,12 @@ export async function uploadReportFile(
   if (!ctx) return { ok: false, error: "ログインしていません。" };
   if (!input.labId || !input.experimentId) {
     return { ok: false, error: "実験を選択してください。" };
+  }
+
+  try {
+    await assertCanRecordOnExperiment(ctx, input.experimentId);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "権限がありません。" };
   }
 
   const supabase = await createServerSupabase();

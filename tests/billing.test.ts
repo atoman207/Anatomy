@@ -39,17 +39,20 @@ test("every plan price is a whole yen amount Stripe will actually accept", () =>
 });
 
 test("the catalogue is internally consistent", () => {
-  assert.deepEqual(PLAN_IDS, ["free", "pro", "team"]);
+  assert.deepEqual(PLAN_IDS, ["free", "solo", "pro", "team"]);
   for (const id of PLAN_IDS) assert.equal(PLANS[id].id, id);
-  assert.deepEqual(PAID_PLANS.map((p) => p.id), ["free", "pro", "team"]);
+  assert.deepEqual(PAID_PLANS.map((p) => p.id), ["solo", "pro", "team"]);
   const amounts = PLAN_LIST.map((p) => p.amountJpy);
   assert.deepEqual(amounts, [...amounts].sort((a, b) => a - b));
 });
 
-test("every plan includes AI when subscribed", () => {
-  assert.equal(PLANS.free.limits.aiEnabled, true);
-  assert.equal(PLANS.pro.limits.aiEnabled, true);
-  assert.equal(PLANS.team.limits.aiEnabled, true);
+test("paid plans include full AI; free includes no AI", () => {
+  assert.equal(PLANS.free.limits.aiEnabled, false);
+  assert.equal(PLANS.free.limits.aiImageEnabled, false);
+  for (const plan of PAID_PLANS) {
+    assert.equal(plan.limits.aiEnabled, true, `${plan.id} should unlock full AI`);
+    assert.equal(plan.limits.aiImageEnabled, true, `${plan.id} should unlock image AI`);
+  }
 });
 
 test("plan ids are validated rather than trusted", () => {
@@ -112,12 +115,14 @@ test("usage is rendered with the unlimited case spelled out", () => {
 });
 
 test("smallestPlanFor names the cheapest plan that would fit the usage", () => {
-  assert.equal(smallestPlanFor(2, "maxMembers")?.id, "free");
+  assert.equal(smallestPlanFor(1, "maxMembers")?.id, "free");
+  assert.equal(smallestPlanFor(2, "maxMembers")?.id, "solo");
   assert.equal(smallestPlanFor(5, "maxMembers")?.id, "pro");
   assert.equal(smallestPlanFor(50, "maxMembers")?.id, "pro");
   assert.equal(smallestPlanFor(101, "maxMembers")?.id, "team");
   assert.equal(smallestPlanFor(10_000, "maxExperiments")?.id, "team");
   assert.equal(smallestPlanFor(0, "maxLabs")?.id, "free");
+  assert.equal(smallestPlanFor(3, "maxExperiments")?.id, "solo");
   assert.equal(smallestPlanFor(9, "maxLabs")?.id, "pro");
   assert.equal(smallestPlanFor(10, "maxLabs")?.id, "team");
 });
@@ -130,7 +135,7 @@ test("plans.ts limits match the plan_limits rows seeded by migration", () => {
   const sql = readFileSync(new URL("../supabase/migrations/all.sql", import.meta.url), "utf8");
 
   const rowPattern =
-    /\('(free|pro|team)',\s*(null|\d+),\s*(null|\d+),\s*(null|\d+),\s*(null|\d+),\s*(true|false)\)/g;
+    /\('(free|solo|pro|team)',\s*(null|\d+),\s*(null|\d+),\s*(null|\d+),\s*(null|\d+),\s*(true|false)\)/g;
   const seeded = new Map<string, {
     labs: number | null; members: number | null; experiments: number | null; datasets: number | null; ai: boolean;
   }>();
@@ -141,7 +146,7 @@ test("plans.ts limits match the plan_limits rows seeded by migration", () => {
     });
   }
 
-  assert.equal(seeded.size, 3, "expected one seeded row per plan");
+  assert.equal(seeded.size, 4, "expected one seeded row per plan");
   for (const id of PLAN_IDS) {
     const row = seeded.get(id)!;
     const limits = PLANS[id].limits;

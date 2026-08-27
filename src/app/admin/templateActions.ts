@@ -43,6 +43,9 @@ export async function adminListTemplates(
   const rows = (data ?? []).map((row) => {
     const embedded = row.laboratories as unknown;
     const lab = (Array.isArray(embedded) ? embedded[0] : embedded) as { name: string } | null;
+    // Destructuring to omit `laboratories` from the row before returning it -
+    // the binding is intentionally unused, not leftover.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { laboratories: _drop, ...rest } = row as NotebookTemplateRow & {
       laboratories: unknown;
     };

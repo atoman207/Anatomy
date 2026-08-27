@@ -19,11 +19,11 @@
  * `tests/billing.test.ts` parses the migration and fails if the two drift.
  */
 
-export type PlanId = "free" | "pro" | "team";
+export type PlanId = "free" | "solo" | "pro" | "team";
 
 export type BillingInterval = "month" | "year";
 
-export const PLAN_IDS: PlanId[] = ["free", "pro", "team"];
+export const PLAN_IDS: PlanId[] = ["free", "solo", "pro", "team"];
 
 /** `null` means unlimited. */
 export interface PlanLimits {
@@ -31,7 +31,10 @@ export interface PlanLimits {
   maxMembers: number | null;
   maxExperiments: number | null;
   maxDatasets: number | null;
+  /** Full AI: high-precision transcription, structuring, literature, etc. */
   aiEnabled: boolean;
+  /** Notebook AI image generation (available on the free plan too). */
+  aiImageEnabled: boolean;
 }
 
 export interface Plan {
@@ -43,6 +46,7 @@ export interface Plan {
    *
    * JPY is one of Stripe's zero-decimal currencies, so this number is passed
    * to Stripe as `unit_amount` unchanged - 3000 means ¥3,000, not 30 sen.
+   * Zero means the plan is free and never creates a Checkout Session.
    */
   amountJpy: number;
   billingInterval: BillingInterval;
@@ -75,8 +79,28 @@ export const MAX_REASONABLE_JPY = 1_000_000;
 export const PLANS: Record<PlanId, Plan> = {
   free: {
     id: "free",
+    name: "無料",
+    tagline: "1研究室・メンバー2名・実験3件まで。",
+    amountJpy: 0,
+    billingInterval: "month",
+    limits: {
+      maxLabs: 1,
+      maxMembers: 2,
+      maxExperiments: 3,
+      maxDatasets: null,
+      aiEnabled: false,
+      aiImageEnabled: false,
+    },
+    features: [
+      "研究室 1 つまで",
+      "メンバー 2 名まで",
+      "実験 3 件まで",
+    ],
+  },
+  solo: {
+    id: "solo",
     name: "個人研究者",
-    tagline: "1研究室・メンバー5名・実験10件まで。",
+    tagline: "1研究室・メンバー5名・実験10件まで。AI機能すべて利用可。",
     amountJpy: 30_000,
     billingInterval: "year",
     alternateAmountJpy: 3_000,
@@ -88,12 +112,13 @@ export const PLANS: Record<PlanId, Plan> = {
       maxExperiments: 10,
       maxDatasets: null,
       aiEnabled: true,
+      aiImageEnabled: true,
     },
     features: [
       "研究室 1 つまで",
       "メンバー 5 名まで",
       "実験 10 件まで",
-      "AI機能（音声文字起こし・構造化・論文要約）",
+      "AI機能すべて（音声文字起こし・構造化・論文要約・画像生成）",
       "統計解析・作図・実験ノートはすべて利用可能",
     ],
   },
@@ -115,12 +140,13 @@ export const PLANS: Record<PlanId, Plan> = {
       maxExperiments: 200,
       maxDatasets: null,
       aiEnabled: true,
+      aiImageEnabled: true,
     },
     features: [
       "研究室 10 まで",
       "メンバー 100 名まで（全体）",
       "実験 200 件まで（全体）",
-      "AI機能（音声文字起こし・構造化・論文要約）",
+      "AI機能すべて（音声文字起こし・構造化・論文要約・画像生成）",
       "個人研究者プランの全機能",
     ],
   },
@@ -139,10 +165,11 @@ export const PLANS: Record<PlanId, Plan> = {
       maxExperiments: null,
       maxDatasets: null,
       aiEnabled: true,
+      aiImageEnabled: true,
     },
     features: [
       "研究室・メンバー・実験数 無制限",
-      "AI機能（音声文字起こし・構造化・論文要約）",
+      "AI機能すべて（音声文字起こし・構造化・論文要約・画像生成）",
       "研究室プランの全機能",
       "機関向けサポート",
     ],
