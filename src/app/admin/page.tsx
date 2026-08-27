@@ -1,5 +1,4 @@
 import { Callout, Card, StatTile } from "@/components/ui";
-import { PageHeader } from "@/components/shell/PageHeader";
 import { AdminRevenuePanel } from "@/components/admin/AdminRevenuePanel";
 import { LabsDetailPanel } from "@/components/admin/LabsDetailPanel";
 import { MemberPaymentDonut } from "@/components/admin/MemberPaymentDonut";
@@ -262,10 +261,6 @@ export default async function AdminOverviewPage(props: PageProps<"/admin">) {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader
-        title="管理者ダッシュボード"
-        description="各管理タブの内容を一覧できます。詳細の確認・編集は各タブで行います。"
-      />
       {denied === "platform" && (
         <Callout tone="warn" title="システム管理者専用">
           そのセクションはシステム管理者のみ利用できます。研究室の管理はこちらから行えます。

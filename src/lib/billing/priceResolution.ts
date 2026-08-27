@@ -96,7 +96,8 @@ export function planForPriceIdFrom(prices: PlanPriceMap): (priceId: string | nul
  *
  * `purchasable` exists so a plan with no price behind it is not offered with
  * a button that can only fail. The mock checkout sells without a Stripe price
- * at all, so it makes every plan purchasable.
+ * at all, so it makes every plan purchasable; when Stripe keys are configured,
+ * checkout creates missing prices on demand, so those plans are purchasable too.
  */
 export interface PlanOffer {
   plan: PlanId;
@@ -112,7 +113,10 @@ export type PlanOfferMap = Record<PlanId, PlanOffer>;
 
 export function planOffers(
   prices: PlanPriceMap,
-  { mockCheckout = false }: { mockCheckout?: boolean } = {},
+  {
+    mockCheckout = false,
+    stripeConfigured = false,
+  }: { mockCheckout?: boolean; stripeConfigured?: boolean } = {},
 ): PlanOfferMap {
   const offers = {} as PlanOfferMap;
 
@@ -133,7 +137,13 @@ export function planOffers(
       plan: plan.id,
       amountJpy,
       fromStripe: stored?.amountJpy != null && !staleBeta,
-      purchasable: mockCheckout || Boolean(stored?.priceId) || staleBeta,
+      // Checkout can create a matching Stripe Price on demand when keys are
+      // configured, so a missing plan_prices row must not grey out the button.
+      purchasable:
+        mockCheckout
+        || stripeConfigured
+        || Boolean(stored?.priceId)
+        || staleBeta,
     };
   }
 

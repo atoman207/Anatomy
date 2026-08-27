@@ -281,18 +281,19 @@ export default async function LabsPage(props: PageProps<"/labs">) {
                               {m.role === "owner" ? "オーナー — 下で譲渡" : "自分自身"}
                             </span>
                           ) : (
-                            <div key="ops" className="flex flex-col gap-1.5">
+                            <div key="ops" className="flex flex-nowrap items-center gap-2">
                               <InlineActionForm
                                 action={changeLabMemberRoleAction}
                                 hidden={{ lab_id: selected.labId, user_id: m.userId }}
                                 submitLabel="変更"
                                 icon="save"
+                                iconOnly
                               >
                                 <select
                                   name="role"
                                   defaultValue={m.role}
                                   aria-label={`${m.email} の役割`}
-                                  className="rounded-md border border-line-strong bg-surface-1 px-2 py-1 text-xs text-ink"
+                                  className="h-8 w-[6.75rem] rounded-md border border-line-strong bg-surface-1 px-2 text-[12px] leading-none text-ink"
                                 >
                                   {(["admin", "member", "viewer"] as LabRole[]).map((r) => (
                                     <option key={r} value={r}>{LAB_ROLE_LABELS[r].ja}</option>
@@ -304,6 +305,7 @@ export default async function LabsPage(props: PageProps<"/labs">) {
                                 hidden={{ lab_id: selected.labId, user_id: m.userId }}
                                 submitLabel="削除"
                                 variant="danger"
+                                iconOnly
                                 confirm={`${m.email} を「${selected.labName}」から削除しますか？データは研究室に残ります。`}
                               />
                             </div>

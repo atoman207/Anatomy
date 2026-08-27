@@ -82,7 +82,13 @@ export function InlineActionForm({
   return (
     <form
       action={formAction}
-      className={iconOnly ? "inline-flex shrink-0" : "flex flex-wrap items-center gap-2"}
+      className={
+        iconOnly
+          ? children
+            ? "inline-flex shrink-0 items-center gap-2"
+            : "inline-flex shrink-0"
+          : "flex flex-wrap items-center gap-2"
+      }
       onSubmit={(e) => {
         if (confirm && !window.confirm(confirm)) e.preventDefault();
       }}

@@ -408,6 +408,15 @@ test("the mock checkout can sell a plan that has no Stripe price", () => {
   }
 });
 
+test("when Stripe is configured, plans stay purchasable without a stored price id", () => {
+  // resolveCheckoutPriceId creates the Price on first checkout, so the cards
+  // must not show 準備中 just because plan_prices has not been seeded yet.
+  const offers = planOffers(mergePriceSources({}, []), { stripeConfigured: true });
+  for (const plan of PAID_PLANS) {
+    assert.equal(offers[plan.id].purchasable, true, `${plan.id} should sell via Stripe`);
+  }
+});
+
 test("every plan in the catalogue gets an offer", () => {
   const offers = planOffers(mergePriceSources({}, []));
   assert.deepEqual(Object.keys(offers).sort(), PLAN_IDS.slice().sort());

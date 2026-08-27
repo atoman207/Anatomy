@@ -4,7 +4,7 @@ import { LabPicker } from "@/components/admin/LabPicker";
 import { PlanPicker } from "@/components/billing/PlanPicker";
 import { requireUser } from "@/lib/auth/guards";
 import { formatUsage, STATUS_LABELS, withinLimit, type PlanId } from "@/lib/billing/plans";
-import { isMockCheckoutAllowed, stripeConfigStatus } from "@/lib/billing/stripe";
+import { isMockCheckoutAllowed, isStripeConfigured, stripeConfigStatus } from "@/lib/billing/stripe";
 import { getPlanPrices } from "@/lib/billing/priceStore";
 import { planOffers } from "@/lib/billing/priceResolution";
 import { getLabEntitlement, getLabUsage } from "@/lib/billing/subscription";
@@ -53,7 +53,10 @@ export default async function BillingPage(props: PageProps<"/billing">) {
   const stripeStatus = stripeConfigStatus();
   // The amounts on the cards are the ones Stripe would actually charge, not
   // the catalogue defaults - see `planOffers`.
-  const offers = planOffers(prices, { mockCheckout: isMockCheckoutAllowed() });
+  const offers = planOffers(prices, {
+    mockCheckout: isMockCheckoutAllowed(),
+    stripeConfigured: isStripeConfigured(),
+  });
 
   const checkoutOutcome =
     search.checkout === "success" ? "success" :
