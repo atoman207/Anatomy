@@ -15,8 +15,7 @@ import "server-only";
  * tested; this file only does the two reads and the one write.
  *
  * Not a `"use server"` module - the write helper here decides what customers
- * are charged, so it stays reachable only from server code. The admin-facing
- * actions are in `priceActions.ts`.
+ * are charged, so it stays reachable only from server code.
  */
 
 import { createAdminSupabase } from "@/lib/supabase/server";
@@ -48,27 +47,6 @@ export async function getPlanPrices(): Promise<PlanPriceMap> {
   } catch {
     // Migration not applied, or no service-role key: environment only.
     return mergePriceSources(envIds, []);
-  }
-}
-
-/**
- * Whether `plan_prices` exists and can be read.
- *
- * Only `/admin/billing` asks. Everywhere else a missing table degrades
- * silently to the environment variables, which is the right behaviour for a
- * customer-facing page - but an administrator who is looking at the price
- * editor needs to be told about the one setup step that has to happen outside
- * the app, rather than watching every plan sit at 未設定 for no stated reason.
- */
-export async function planPricesTableReady(): Promise<boolean> {
-  try {
-    const admin = createAdminSupabase();
-    const { error } = await admin
-      .from("plan_prices")
-      .select("plan", { head: true, count: "exact" });
-    return !error;
-  } catch {
-    return false;
   }
 }
 

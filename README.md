@@ -417,12 +417,12 @@ exceeds the beta ceiling.
 
 ### Changing a price
 
-Prices live in the `plan_prices` table, not in environment variables, so
-changing one is an administrative action rather than a redeploy:
-
-**管理 → 料金設定** (`/admin/billing`, platform administrators only). Type the
-new monthly amount, press the button, and every deployment reading the same
-database sells at it from the next checkout onwards.
+Prices are defined in `src/lib/billing/plans.ts`. Changing one is a code
+change and a deploy, not an admin-panel action: edit the amount there, ship
+it, and the next checkout for that plan finds-or-creates a matching Stripe
+Price automatically and caches its id in `plan_prices` (no manual step, no
+`/admin/billing/prices` page — that page was removed since checkout keeps
+itself in sync with the catalogue on its own).
 
 A few things worth knowing before you do:
 
@@ -432,15 +432,12 @@ A few things worth knowing before you do:
   Stripe dashboard. That is deliberate — silently re-pricing existing
   customers is how chargebacks start.
 - **The pricing page follows automatically.** `/billing` shows the amount
-  Stripe actually holds, so the cards and the Checkout session can no longer
-  disagree.
-- **A plan with no price is not offered.** Its card reads 準備中 rather than a
-  button whose only outcome is an error.
-- **`STRIPE_PRICE_PRO` / `STRIPE_PRICE_TEAM` still work**, as a fallback for a
-  deployment configured before this table existed. A price set at
-  `/admin/billing` overrides them; a plan with no stored id falls back to the
-  variable, so nothing breaks by leaving them in place. `/admin/billing`
-  labels which source each plan is using.
+  Stripe actually holds for the plan's primary interval, so the cards and the
+  Checkout session can no longer disagree.
+- **`STRIPE_PRICE_PRO` / `STRIPE_PRICE_TEAM` etc. still work**, as a fallback
+  checked before the catalogue lookup, for a deployment configured before
+  `plan_prices` existed. `/admin/billing` labels which source each plan is
+  using.
 
 In production, add the endpoint at
 `https://<your-host>/api/stripe/webhook` under Developers → Webhooks, and

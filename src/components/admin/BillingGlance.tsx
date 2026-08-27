@@ -79,13 +79,8 @@ export async function BillingGlance() {
 
 function BillingLinks() {
   return (
-    <>
-      <Link href="/admin/billing" className="text-xs text-accent underline">
-        ダッシュボード
-      </Link>
-      <Link href="/admin/billing/prices" className="text-xs text-accent underline">
-        料金設定
-      </Link>
-    </>
+    <Link href="/admin/billing" className="text-xs text-accent underline">
+      ダッシュボード
+    </Link>
   );
 }

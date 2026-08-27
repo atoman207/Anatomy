@@ -21,8 +21,9 @@ import { getSessionContext, logAudit } from "@/lib/auth/guards";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { isPlanId, PLANS, type PlanId } from "./plans";
 import { getStripe, isStripeConfigured, siteOrigin } from "./stripe";
-import { resolvePriceId } from "./priceStore";
+import { savePlanPrice } from "./priceStore";
 import { describeStripeError } from "./stripeAdmin";
+import { findOrCreateStripePrice } from "./stripeCatalog";
 import {
   isMockId, markSubscriptionCanceled, MOCK_ID_PREFIX, persistSubscription,
 } from "./store";
@@ -109,13 +110,25 @@ export async function adminChangeLabPlan(
     const row = await subscriptionRow(labId);
     const stripe = getStripe();
 
-    const price = await resolvePriceId(plan);
-    if (!price) {
+    const catalogue = PLANS[plan];
+    let price: string;
+    try {
+      price = await findOrCreateStripePrice(
+        plan,
+        catalogue.amountJpy,
+        catalogue.billingInterval,
+      );
+      try {
+        await savePlanPrice(plan, price, catalogue.amountJpy, ctx.user.id);
+      } catch {
+        // Plan change can still proceed; display cache may lag.
+      }
+    } catch {
       return {
         ok: false,
         error:
-          PLANS[plan].name + "プランの価格がまだ作成されていません。" +
-          "「料金設定」で価格を作成するか、npm run stripe:setup を実行してください。",
+          catalogue.name + "プランの価格を準備できませんでした。" +
+          "しばらくしてから再度お試しください。",
       };
     }
 

@@ -186,12 +186,6 @@ const icons = {
       <path d="M14 3v5h5M9 13h6M9 17h4" />
     </Icon>
   ),
-  prices: (
-    <Icon>
-      <path d="M20.6 13.4 12 22l-9-9V3h10z" />
-      <circle cx="7.5" cy="7.5" r="1.4" />
-    </Icon>
-  ),
   account: (
     <Icon>
       <circle cx="12" cy="12" r="3" />
@@ -258,7 +252,6 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/content", label: "コンテンツ管理", icon: icons.content, platformOnly: true },
       { href: "/admin/billing", label: "決済", icon: icons.billing, exact: true, platformOnly: true },
       { href: "/admin/subscriptions", label: "契約管理", icon: icons.contracts, platformOnly: true },
-      { href: "/admin/billing/prices", label: "料金設定", icon: icons.prices, platformOnly: true },
       { href: "/admin/audit", label: "監査ログ", icon: icons.audit, adminOnly: true },
     ],
   },

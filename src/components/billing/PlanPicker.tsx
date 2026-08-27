@@ -182,9 +182,18 @@ export function PlanPicker({
           const selectedInterval = dual
             ? intervals[plan.id]
             : plan.billingInterval;
-          const displayAmount = dual
-            ? planAmountFor(plan, selectedInterval)
-            : offer.amountJpy;
+          // `offer.amountJpy` is the Stripe/database-resolved price, and is
+          // only ever known for the *primary* interval - `plan_prices` has
+          // no interval column, so an administrator can only customize that
+          // one cadence (see `resolveCheckoutPriceId`). Every plan here has
+          // `alternateSelectable: true`, so `dual` is always true and the
+          // card would otherwise show the static catalogue amount even on
+          // the interval Stripe's actual price might differ from - showing
+          // a price checkout would not actually charge.
+          const displayAmount =
+            selectedInterval === plan.billingInterval
+              ? offer.amountJpy
+              : planAmountFor(plan, selectedInterval);
 
           return (
             <section

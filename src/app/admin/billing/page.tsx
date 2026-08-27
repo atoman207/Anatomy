@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { Badge, Callout } from "@/components/ui";
 import { requirePlatformAdmin } from "@/lib/auth/guards";
@@ -47,22 +46,14 @@ export default async function AdminBillingPage() {
           </>
         }
         actions={
-          <>
-            <Link
-              href="/admin/billing/prices"
-              className="text-[13px] text-accent underline underline-offset-2"
-            >
-              料金設定
-            </Link>
-            <a
-              href={"https://dashboard.stripe.com/" + (status.testMode ? "test/" : "") + "payments"}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[13px] text-accent underline underline-offset-2"
-            >
-              Stripe ダッシュボード
-            </a>
-          </>
+          <a
+            href={"https://dashboard.stripe.com/" + (status.testMode ? "test/" : "") + "payments"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[13px] text-accent underline underline-offset-2"
+          >
+            Stripe ダッシュボード
+          </a>
         }
       />
 

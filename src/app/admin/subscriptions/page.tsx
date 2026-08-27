@@ -45,9 +45,6 @@ export default async function AdminSubscriptionsPage() {
             <Link href="/admin/billing" className="text-[13px] text-accent underline underline-offset-2">
               決済ダッシュボード
             </Link>
-            <Link href="/admin/billing/prices" className="text-[13px] text-accent underline underline-offset-2">
-              料金設定
-            </Link>
           </>
         }
       />

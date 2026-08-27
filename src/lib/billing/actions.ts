@@ -20,11 +20,14 @@ import { revalidatePath } from "next/cache";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { assertIsLabOwner, getSessionContext, logAudit } from "@/lib/auth/guards";
 import { isPlanId, PLANS, planAmountFor, type BillingInterval, type PlanId } from "./plans";
-import {
-  getStripe, isMockCheckoutAllowed, isStripeConfigured, siteOrigin,
-} from "./stripe";
+import { getStripe, isMockCheckoutAllowed, isStripeConfigured, siteOrigin } from "./stripe";
 import { resolvePriceId, savePlanPrice } from "./priceStore";
 import { describeStripeError } from "./stripeAdmin";
+import {
+  findOrCreateStripePrice,
+  priceMatchesCheckout,
+  stripePriceIdFromEnv,
+} from "./stripeCatalog";
 import { ensureCustomer, isMockId, MOCK_ID_PREFIX, persistSubscription } from "./store";
 
 export interface ActionResult<T = undefined> {
@@ -116,8 +119,8 @@ export async function startCheckout(
       return {
         ok: false,
         error:
-          `${catalogue.name}プランの価格がまだ作成されていません。` +
-          "システム管理者が「管理 → 料金設定」で価格を作成するか、npm run stripe:setup を実行してください。",
+          `${catalogue.name}プランの価格を準備できませんでした。` +
+          "しばらくしてから再度お試しください。解決しない場合は管理者にお問い合わせください。",
       };
     }
 
@@ -194,73 +197,54 @@ export async function startCheckout(
 }
 
 /**
- * Prefer a Stripe price that matches the catalogue amount and interval, so a
- * stale plan_prices row left over from an older catalogue cannot under/over
- * charge. Falls back to the stored primary id when the product lookup fails.
+ * Which Stripe price this checkout actually charges.
+ *
+ * Always charges the catalogue amount for the selected plan and interval
+ * (`plans.ts` / `planAmountFor`). A stored `plan_prices` id or env fallback
+ * is reused only when it already matches that amount and cadence; otherwise
+ * a matching Stripe Price is found or created on the fly. That keeps checkout
+ * accurate without an administrator visiting a price-settings page first.
  */
 async function resolveCheckoutPriceId(
   plan: PlanId,
   interval: BillingInterval,
   amountJpy: number,
 ): Promise<string | null> {
-  if (plan === "pro" && interval === "month") {
-    const fromEnv = process.env.STRIPE_PRICE_PRO_MONTHLY;
-    if (fromEnv) return fromEnv;
-  }
-  if (plan === "free" && interval === "month") {
-    const fromEnv = process.env.STRIPE_PRICE_FREE_MONTHLY;
-    if (fromEnv) return fromEnv;
-  }
-  if (plan === "team" && interval === "year") {
-    const fromEnv = process.env.STRIPE_PRICE_TEAM_YEARLY;
-    if (fromEnv) return fromEnv;
-  }
-
-  const stripe = getStripe();
-  const productId = `chondro_${plan}`;
-  try {
-    const listed = await stripe.prices.list({ product: productId, active: true, limit: 100 });
-    const match = listed.data.find(
-      (p) =>
-        p.currency === "jpy"
-        && p.unit_amount === amountJpy
-        && p.recurring?.interval === interval,
-    );
-    if (match) return match.id;
-
-    // Ensure the product exists, then create the matching price.
+  const fromEnv = stripePriceIdFromEnv(plan, interval);
+  if (fromEnv) {
     try {
-      await stripe.products.retrieve(productId);
+      const price = await getStripe().prices.retrieve(fromEnv);
+      if (priceMatchesCheckout(price, amountJpy, interval)) return fromEnv;
     } catch {
-      await stripe.products.create({
-        id: productId,
-        name: `LABNOTE ${PLANS[plan].name}`,
-        metadata: { chondro_plan: plan },
-      });
+      // Env id is stale or unreachable - fall through to find-or-create.
     }
+  }
 
-    const created = await stripe.prices.create({
-      product: productId,
-      currency: "jpy",
-      unit_amount: amountJpy,
-      recurring: { interval },
-      metadata: { chondro_plan: plan, chondro_interval: interval },
-    });
+  if (interval === PLANS[plan].billingInterval) {
+    const stored = await resolvePriceId(plan);
+    if (stored) {
+      try {
+        const price = await getStripe().prices.retrieve(stored);
+        if (priceMatchesCheckout(price, amountJpy, interval)) return stored;
+      } catch {
+        // Stored id is stale or unreachable - fall through to find-or-create.
+      }
+    }
+  }
 
-    // Keep plan_prices in step for the primary cadence.
+  try {
+    const priceId = await findOrCreateStripePrice(plan, amountJpy, interval);
+
     if (interval === PLANS[plan].billingInterval) {
       try {
-        await savePlanPrice(plan, created.id, amountJpy, null);
+        await savePlanPrice(plan, priceId, amountJpy, null);
       } catch {
-        // Display still works from catalogue; charging already uses created.id.
+        // Display still works from catalogue; charging already uses priceId.
       }
     }
 
-    return created.id;
+    return priceId;
   } catch {
-    if (interval === PLANS[plan].billingInterval) {
-      return resolvePriceId(plan);
-    }
     return null;
   }
 }
