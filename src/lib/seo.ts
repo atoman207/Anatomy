@@ -11,8 +11,8 @@
  * metadata regardless of what NEXT_PUBLIC_SITE_URL is currently set to.
  */
 
-export const SITE_URL = "https://labnote.site";
-export const SITE_NAME = "LABNOTE.";
+export const SITE_URL = "https://LABNOTEsite";
+export const SITE_NAME = "LABNOTE";
 export const SITE_TAGLINE = "研究室のための記録・解析プラットフォーム";
 export const SITE_DESCRIPTION =
   "実験選択・試薬管理・音声入力・論文検索を一つの記録ウィザードにまとめ、完了と同時にPDFレポートを自動作成。" +

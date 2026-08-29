@@ -66,6 +66,19 @@ export function Header({
       </p>
 
       {me?.signedIn && !isAdmin && <TodayLogButton entries={today?.entries ?? null} />}
+      <Link
+        href="/help"
+        className="hidden shrink-0 items-center gap-1.5 rounded-lg border border-[var(--shell-border)] px-3 py-1.5 text-[13px] font-medium text-[var(--shell-text-dim)] transition-colors hover:bg-[var(--shell-hover)] hover:text-[var(--shell-text)] sm:inline-flex"
+      >
+        <Icon name="help" className="h-3.5 w-3.5" />
+        ヘルプ
+      </Link>
+      <Link
+        href="/contact"
+        className="hidden shrink-0 items-center rounded-lg border border-[var(--shell-border)] px-3 py-1.5 text-[13px] font-semibold tracking-wide text-[var(--shell-text-dim)] transition-colors hover:bg-[var(--shell-hover)] hover:text-[var(--shell-text)] sm:inline-flex"
+      >
+        CONTACT
+      </Link>
       <ThemeToggle />
       <NotificationBell notifications={notifications} />
       <UserButton me={me} />

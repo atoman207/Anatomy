@@ -4,17 +4,20 @@ import type { Metadata } from "next";
 import { getSessionContext } from "@/lib/auth/guards";
 import { FREE_PEER_REVIEW_CREDITS, PEER_REVIEW_CREDIT_PACKS } from "@/lib/peerReview/creditPacks";
 import { listPublishedNews } from "@/lib/news/actions";
+import { HeroTypewriter } from "@/components/landing/HeroTypewriter";
 import { VoiceTranscribeChat } from "@/components/landing/VoiceTranscribeChat";
 import { Reveal } from "@/components/landing/Reveal";
 import { NewsSection } from "@/components/landing/NewsSection";
 import { SiteHeader } from "@/components/landing/SiteHeader";
 import { SiteFooter } from "@/components/landing/SiteFooter";
+import { SectionTitle } from "@/components/landing/SectionTitle";
+import { ScrollToTopButton } from "@/components/landing/ScrollToTopButton";
 import bg6 from "../../public/bg6.png";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "LABNOTE. — 記録ウィザードから統計・AI査読まで",
+  title: "LABNOTE — 記録ウィザードから統計・AI査読まで",
   description:
     "実験選択・試薬管理・テンプレート・音声入力・論文検索を一つの記録ウィザードにまとめ、PDFレポートまで自動作成。統計解析・AI査読・研究室管理も一つのプラットフォームで。",
 };
@@ -43,8 +46,8 @@ export const metadata: Metadata = {
  *
  * Product screenshots: features uses `/2-bg.png`, AI-figures uses `/bg3.png`,
  * principles uses `/bg4.png`, dashboard uses `/bg5.png`, pricing uses
- * `/bg6.png`, and the closing CTA uses `/bg7.png`. Mood photography
- * (Unsplash) lives under `/landing/`.
+ * `/bg6.png`. Mood photography (Unsplash) lives under `/landing/`.
+ * Login page background uses `/bg7.png`.
  */
 
 /** Fed into the hero's voice-transcription demo below, verbatim. */
@@ -164,80 +167,29 @@ export default async function LandingPage() {
     <div className="flex min-h-dvh flex-col bg-surface-0 [word-break:auto-phrase]">
       {/* Full-viewport hero: artwork is edge-to-edge; header floats on top so
           the first screen reads as one composition, not a boxed column. */}
-      <section className="relative flex min-h-dvh w-full flex-col overflow-hidden bg-white">
-        <div className="pointer-events-none absolute inset-0" aria-hidden>
-          <Image
-            src="/bg-m.png"
-            alt=""
-            fill
-            priority
-            sizes="100vw"
-            className="landing-hero-bg object-cover object-top md:hidden"
-          />
-          <Image
-            src="/background.png"
-            alt=""
-            fill
-            priority
-            sizes="100vw"
-            className="landing-hero-bg hidden object-cover object-right md:block"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-white/85 via-white/55 to-transparent md:from-white/75 md:via-white/40" />
+      <section id="hero" className="relative flex h-dvh max-h-dvh w-full flex-col overflow-hidden bg-white">
+        <div className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden>
+          <div className="landing-hero-backdrop landing-hero-bg" />
         </div>
 
         <SiteHeader signedIn={signedIn} overHero />
 
-        <div className="relative z-10 mx-auto flex w-full max-w-[1100px] flex-1 flex-col justify-center px-5 pb-16 pt-24 sm:px-8 sm:pb-20 sm:pt-28">
+        <div className="relative z-10 mx-auto flex w-full max-w-[1100px] flex-1 flex-col justify-center px-5 pb-20 pt-24 -translate-y-6 sm:px-8 sm:pb-24 sm:pt-28 sm:-translate-y-10 lg:-translate-y-14">
           <p
             className="landing-hero-item font-serif text-5xl font-semibold tracking-tight text-ink sm:text-6xl lg:text-7xl"
             style={{ ["--hero-delay" as string]: "40ms" }}
           >
-            LABNOTE.
+            LABNOTE
           </p>
-          <h1
-            className="landing-hero-item mt-5 max-w-[18ch] font-serif text-3xl font-semibold leading-[1.2] text-ink sm:text-4xl lg:text-[2.75rem]"
+          <HeroTypewriter
+            className="landing-hero-item mt-5 font-serif text-3xl font-semibold leading-[1.2] text-ink sm:text-4xl lg:text-[2.75rem]"
             style={{ ["--hero-delay" as string]: "140ms" }}
-          >
-            今日の実験を話すだけで、
-            <br />
-            投稿前の査読まで。
-          </h1>
+          />
           <p
             className="landing-hero-item mt-5 max-w-[48ch] text-[16px] leading-relaxed text-ink-2 sm:text-lg"
             style={{ ["--hero-delay" as string]: "240ms" }}
           >
-            記録ウィザードで実験・試薬・音声ノート・図版・論文検索を一本化。完了と同時にPDFレポートとして保存します。
-          </p>
-
-          <div
-            className="landing-hero-item mt-9 flex flex-wrap items-center gap-3"
-            style={{ ["--hero-delay" as string]: "340ms" }}
-          >
-            <Link
-              href={signedIn ? "/dashboard" : "/login"}
-              className="landing-cta landing-cta-primary rounded-md bg-accent px-6 py-3 text-[15px] font-medium text-accent-contrast"
-            >
-              {signedIn ? "ダッシュボードへ" : "無料で始める"}
-            </Link>
-            <Link
-              href="#features"
-              className="landing-cta rounded-md border border-line bg-white/70 px-6 py-3 text-[15px] font-medium text-ink backdrop-blur-sm hover:bg-white"
-            >
-              できることを見る
-            </Link>
-            <Link
-              href="/contact"
-              className="landing-cta rounded-md border border-line bg-white/70 px-6 py-3 text-[15px] font-medium text-ink backdrop-blur-sm hover:bg-white"
-            >
-              お問い合わせ
-            </Link>
-          </div>
-
-          <p
-            className="landing-hero-item mt-5 text-[14px] text-ink-3"
-            style={{ ["--hero-delay" as string]: "440ms" }}
-          >
-            AI査読は最初の{FREE_PEER_REVIEW_CREDITS}回まで無料。クレジットカードの登録は不要です。
+            記録・解析・論文検索をひとつに,PDFで自動保存。
           </p>
         </div>
       </section>
@@ -249,9 +201,10 @@ export default async function LandingPage() {
       <section id="about" className="scroll-mt-8 border-b border-line bg-surface-1">
         <div className="mx-auto w-full max-w-[1100px] px-5 py-16 sm:px-8">
           <Reveal>
-            <p className="mx-auto max-w-[70ch] text-center text-[13px] font-medium tracking-[0.14em] text-accent">
-              話すだけで、記録になる
-            </p>
+            <SectionTitle
+              japanese="話すだけで、記録になる"
+              english="Speak to record"
+            />
           </Reveal>
           <Reveal delayMs={80}>
             <VoiceTranscribeChat text={ABOUT_TEXT} />
@@ -263,8 +216,8 @@ export default async function LandingPage() {
       <section id="features" className="scroll-mt-8 border-b border-line bg-surface-1">
         <div className="mx-auto w-full max-w-[1100px] px-5 py-20 sm:px-8">
           <Reveal>
-            <header className="max-w-[60ch]">
-              <h2 className="font-serif text-3xl font-semibold text-ink">できること</h2>
+            <header className="mx-auto max-w-[60ch] text-center">
+              <SectionTitle japanese="できること" english="Features" />
               <p className="mt-3 text-[16px] leading-relaxed text-ink-2">
                 ひとつの研究が、着想から投稿までに通る道筋にあわせて機能が並んでいます。
                 どれも単体で使えますが、実験に紐づけると結果が一箇所に集まります。
@@ -308,181 +261,186 @@ export default async function LandingPage() {
           visually demonstrable feature, so it gets its own section with a
           sample image rather than one card among nine. */}
       <section className="border-b border-line">
-        <div className="mx-auto grid w-full max-w-[1100px] items-center gap-12 px-5 py-20 sm:px-8 lg:grid-cols-2">
+        <div className="mx-auto w-full max-w-[1100px] px-5 py-20 sm:px-8">
           <Reveal>
-            <div className="landing-media relative aspect-[4/3] w-full">
-              <Image
-                src="/bg3.png"
-                alt="AIが生成したBioRender風の模式図の実例"
-                fill
-                sizes="(min-width: 1024px) 520px, 100vw"
-                className="object-cover object-center"
-              />
-            </div>
+            <SectionTitle
+              japanese="言葉から、論文用の模式図へ"
+              english="From words to publication figures"
+            />
           </Reveal>
 
-          <Reveal delayMs={120}>
-            <div>
-              <h2 className="font-serif text-3xl font-semibold text-ink">
-                言葉から、論文用の模式図へ
-              </h2>
-              <p className="mt-3 text-[16px] leading-relaxed text-ink-2">
-                実験ノートの内容と指示（プロンプト）から、生化学・生物学分野の模式図をAIが生成します。
-                BioRenderで作るような、細胞・分子経路・実験フローの図を、既存の記録を土台にその場で作成できます。
-                画像はアップロードでも追加でき、生成した図は他のレポートでも再利用できます。
-              </p>
-              <Link
-                href={signedIn ? "/record?step=4" : "/login"}
-                className="landing-cta mt-8 inline-block rounded-md border border-line px-5 py-2.5 text-[14px] font-medium text-ink hover:bg-surface-1"
-              >
-                実験ノートを開く
-              </Link>
-            </div>
-          </Reveal>
+          <div className="mt-10 grid items-center gap-12 lg:grid-cols-2">
+            <Reveal>
+              <div className="landing-media relative aspect-[4/3] w-full">
+                <Image
+                  src="/bg3.png"
+                  alt="AIが生成したBioRender風の模式図の実例"
+                  fill
+                  sizes="(min-width: 1024px) 520px, 100vw"
+                  className="object-cover object-center"
+                />
+              </div>
+            </Reveal>
+
+            <Reveal delayMs={120}>
+              <div className="text-center lg:text-left">
+                <p className="text-[16px] leading-relaxed text-ink-2">
+                  実験ノートの内容と指示（プロンプト）から、生化学・生物学分野の模式図をAIが生成します。
+                  BioRenderで作るような、細胞・分子経路・実験フローの図を、既存の記録を土台にその場で作成できます。
+                  画像はアップロードでも追加でき、生成した図は他のレポートでも再利用できます。
+                </p>
+                <Link
+                  href={signedIn ? "/record?step=4" : "/login"}
+                  className="landing-cta mt-8 inline-block rounded-md border border-line px-5 py-2.5 text-[14px] font-medium text-ink hover:bg-surface-1"
+                >
+                  実験ノートを開く
+                </Link>
+              </div>
+            </Reveal>
+          </div>
         </div>
       </section>
 
       {/* Principles, with imagery */}
       <section className="border-b border-line bg-surface-1">
-        <div className="mx-auto grid w-full max-w-[1100px] items-center gap-12 px-5 py-20 sm:px-8 lg:grid-cols-2">
+        <div className="mx-auto w-full max-w-[1100px] px-5 py-20 sm:px-8">
           <Reveal>
-            <div>
-              <h2 className="font-serif text-3xl font-semibold text-ink">
-                「あとから書き換えていない」と言えること
-              </h2>
-              <p className="mt-3 text-[16px] leading-relaxed text-ink-2">
-                研究記録に必要なのは、速さより、後から説明できることです。
-                このアプリは、記録を消せない・書き換えられない仕組みをデータベース側に持たせています。
-              </p>
-
-              <dl className="mt-10 flex flex-col divide-y divide-[var(--border)]">
-                {PRINCIPLES.map((p) => (
-                  <div key={p.title} className="py-5 first:pt-0 last:pb-0">
-                    <dt className="text-[15px] font-medium text-ink">{p.title}</dt>
-                    <dd className="mt-1.5 text-[15px] leading-relaxed text-ink-2">{p.body}</dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
+            <SectionTitle
+              japanese="「あとから書き換えていない」と言えること"
+              english="Records you can defend"
+            />
           </Reveal>
 
-          <Reveal delayMs={120}>
-            <div className="landing-media overflow-hidden border border-line">
-              <Image
-                src="/bg4.png"
-                alt="改ざんできない研究記録の仕組みを示す画面イメージ"
-                width={1200}
-                height={800}
-                sizes="(min-width: 1024px) 520px, 100vw"
-                className="h-full w-full object-cover"
-              />
-            </div>
-          </Reveal>
+          <div className="mt-10 grid items-center gap-12 lg:grid-cols-2">
+            <Reveal>
+              <div className="text-center lg:text-left">
+                <p className="text-[16px] leading-relaxed text-ink-2">
+                  研究記録に必要なのは、速さより、後から説明できることです。
+                  このアプリは、記録を消せない・書き換えられない仕組みをデータベース側に持たせています。
+                </p>
+
+                <dl className="mt-10 flex flex-col divide-y divide-[var(--border)]">
+                  {PRINCIPLES.map((p) => (
+                    <div key={p.title} className="py-5 first:pt-0 last:pb-0">
+                      <dt className="text-[15px] font-medium text-ink">{p.title}</dt>
+                      <dd className="mt-1.5 text-[15px] leading-relaxed text-ink-2">{p.body}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            </Reveal>
+
+            <Reveal delayMs={120}>
+              <div className="landing-media overflow-hidden border border-line">
+                <Image
+                  src="/bg4.png"
+                  alt="改ざんできない研究記録の仕組みを示す画面イメージ"
+                  width={1200}
+                  height={800}
+                  sizes="(min-width: 1024px) 520px, 100vw"
+                  className="h-full w-full object-cover"
+                />
+              </div>
+            </Reveal>
+          </div>
         </div>
       </section>
 
       {/* Dashboard, as the place everything lands */}
       <section className="border-b border-line">
-        <div className="mx-auto grid w-full max-w-[1100px] items-center gap-12 px-5 py-20 sm:px-8 lg:grid-cols-2">
+        <div className="mx-auto w-full max-w-[1100px] px-5 py-20 sm:px-8">
           <Reveal>
-            <div className="landing-media relative aspect-[4/3] w-full">
-              <Image
-                src="/bg5.png"
-                alt="ダッシュボード画面：今日のラボレポートと実験ごとの一覧"
-                fill
-                sizes="(min-width: 1024px) 520px, 100vw"
-                className="object-cover object-center"
-              />
-            </div>
+            <SectionTitle
+              japanese="今日の記録が、いちばん上に来る"
+              english="Today's work, always on top"
+            />
           </Reveal>
 
-          <Reveal delayMs={100}>
-            <div>
-              <h2 className="font-serif text-3xl font-semibold text-ink">
-                今日の記録が、いちばん上に来る
-              </h2>
-              <p className="mt-3 text-[16px] leading-relaxed text-ink-2">
-                記録ウィザードを完了すると、その日のうちはヘッダーの「今日の実験記録」ボタンからすぐ見返して修正できます。
-                ダッシュボードを開けば、今日作成したラボレポートが常に先頭に並び、その下では過去の記録を実験ごとにまとめて
-                確認できます。PDFはいつでも開いてダウンロードできます。
-              </p>
-            </div>
-          </Reveal>
+          <div className="mt-10 grid items-center gap-12 lg:grid-cols-2">
+            <Reveal>
+              <div className="landing-media relative aspect-[4/3] w-full">
+                <Image
+                  src="/bg5.png"
+                  alt="ダッシュボード画面：今日のラボレポートと実験ごとの一覧"
+                  fill
+                  sizes="(min-width: 1024px) 520px, 100vw"
+                  className="object-cover object-center"
+                />
+              </div>
+            </Reveal>
+
+            <Reveal delayMs={100}>
+              <div className="text-center lg:text-left">
+                <p className="text-[16px] leading-relaxed text-ink-2">
+                  記録ウィザードを完了すると、その日のうちはヘッダーの「今日の実験記録」ボタンからすぐ見返して修正できます。
+                  ダッシュボードを開けば、今日作成したラボレポートが常に先頭に並び、その下では過去の記録を実験ごとにまとめて
+                  確認できます。PDFはいつでも開いてダウンロードできます。
+                </p>
+              </div>
+            </Reveal>
+          </div>
         </div>
       </section>
 
       {/* Pricing */}
       <section id="pricing" className="scroll-mt-8 border-b border-line bg-surface-1">
-        <div className="mx-auto grid w-full max-w-[1100px] items-center gap-12 px-5 py-20 sm:px-8 lg:grid-cols-2">
+        <div className="mx-auto w-full max-w-[1100px] px-5 py-20 sm:px-8">
           <Reveal>
-            <div>
-              <h2 className="font-serif text-3xl font-semibold text-ink">まず無料で試せます</h2>
-              <p className="mt-3 text-[16px] leading-relaxed text-ink-2">
-                記録ウィザード・データ整理・統計・論文検索は、アカウントを作ればそのまま使えます。
-                AI査読だけは1回ごとの従量制で、最初の{FREE_PEER_REVIEW_CREDITS}回は無料です。
-              </p>
-
-              <ul className="mt-8 flex flex-col gap-3 text-[15px] leading-relaxed text-ink-2">
-                {[
-                  `AI査読は最初の${FREE_PEER_REVIEW_CREDITS}回まで無料`,
-                  ...PEER_REVIEW_CREDIT_PACKS.map((p) =>
-                    p.billingInterval === "month"
-                      ? `${p.name} ¥${p.amountJpy.toLocaleString("ja-JP")} / 月`
-                      : `${p.name} ¥${p.amountJpy.toLocaleString("ja-JP")}`,
-                  ),
-                ].map((line) => (
-                  <li key={line} className="flex gap-2.5">
-                    <span aria-hidden className="mt-[2px] text-accent">✓</span>
-                    <span>{line}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <Link
-                href={signedIn ? "/peer-review" : "/login"}
-                className="landing-cta landing-cta-primary mt-9 inline-block rounded-md bg-accent px-6 py-3 text-[15px] font-medium text-accent-contrast"
-              >
-                {signedIn ? "AI査読を試す" : "アカウントを作成する"}
-              </Link>
-            </div>
+            <SectionTitle japanese="まず無料で試せます" english="Start for free" />
           </Reveal>
 
-          <Reveal delayMs={80}>
-            <div className="landing-media overflow-hidden border border-line">
-              <Image
-                src={bg6}
-                alt="無料で始められる機能とAI査読の料金プラン"
-                width={1200}
-                height={800}
-                sizes="(min-width: 1024px) 520px, 100vw"
-                className="h-full w-full object-cover"
-                placeholder="blur"
-              />
-            </div>
-          </Reveal>
-        </div>
-      </section>
+          <div className="mt-10 grid items-center gap-12 lg:grid-cols-2">
+            <Reveal>
+              <div className="text-center lg:text-left">
+                <p className="text-[16px] leading-relaxed text-ink-2">
+                  記録ウィザード・データ整理・統計・論文検索は、アカウントを作ればそのまま使えます。
+                  AI査読だけは1回ごとの従量制で、最初の{FREE_PEER_REVIEW_CREDITS}回は無料です。
+                </p>
 
-      {/* Closing visual — artwork carries the headline; CTA matches the footer. */}
-      <section className="relative isolate min-h-[440px] overflow-hidden sm:min-h-[560px]">
-        <Image
-          src="/bg7.png"
-          alt="記録を残しませんか — アカウント作成後すぐに使い始められます"
-          fill
-          sizes="100vw"
-          className="-z-10 object-cover object-center"
-        />
-        <div className="relative z-10 mx-auto flex min-h-[440px] w-full max-w-[1100px] items-end px-5 pb-12 sm:min-h-[560px] sm:px-8 sm:pb-16">
-          <Link
-            href="/contact"
-            className="landing-cta h-fit rounded-full bg-accent px-5 py-2.5 text-[14px] font-semibold text-accent-contrast shadow-[0_1px_2px_rgba(0,0,0,0.12)] hover:opacity-90 hover:shadow-[0_2px_8px_rgba(37,99,235,0.35)]"
-          >
-            お問い合わせ
-          </Link>
+                <ul className="mt-8 flex flex-col gap-3 text-[15px] leading-relaxed text-ink-2">
+                  {[
+                    `AI査読は最初の${FREE_PEER_REVIEW_CREDITS}回まで無料`,
+                    ...PEER_REVIEW_CREDIT_PACKS.map((p) =>
+                      p.billingInterval === "month"
+                        ? `${p.name} ¥${p.amountJpy.toLocaleString("ja-JP")} / 月`
+                        : `${p.name} ¥${p.amountJpy.toLocaleString("ja-JP")}`,
+                    ),
+                  ].map((line) => (
+                    <li key={line} className="flex gap-2.5">
+                      <span aria-hidden className="mt-[2px] text-accent">✓</span>
+                      <span>{line}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <Link
+                  href={signedIn ? "/peer-review" : "/register"}
+                  className="landing-cta landing-cta-primary mt-9 inline-block rounded-md bg-accent px-6 py-3 text-[15px] font-medium text-accent-contrast"
+                >
+                  {signedIn ? "AI査読を試す" : "アカウントを作成する"}
+                </Link>
+              </div>
+            </Reveal>
+
+            <Reveal delayMs={80}>
+              <div className="landing-media overflow-hidden border border-line">
+                <Image
+                  src={bg6}
+                  alt="無料で始められる機能とAI査読の料金プラン"
+                  width={1200}
+                  height={800}
+                  sizes="(min-width: 1024px) 520px, 100vw"
+                  className="h-full w-full object-cover"
+                  placeholder="blur"
+                />
+              </div>
+            </Reveal>
+          </div>
         </div>
       </section>
 
       <SiteFooter />
+      <ScrollToTopButton />
     </div>
   );
 }

@@ -48,7 +48,8 @@ export type IconName =
   | "phoneOff"
   | "maximize"
   | "minimize"
-  | "closedCaptions";
+  | "closedCaptions"
+  | "help";
 
 const PATHS: Record<IconName, ReactNode> = {
   upload: <><path d="M12 16V4" /><path d="M7 9l5-5 5 5" /><path d="M4 20h16" /></>,
@@ -205,6 +206,13 @@ const PATHS: Record<IconName, ReactNode> = {
       <path d="M7 12h4" />
       <path d="M13 15v-4a2 2 0 0 1 4 0v4" />
       <path d="M13 12h4" />
+    </>
+  ),
+  help: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.2 9.5a2.8 2.8 0 0 1 5.4.9c0 1.8-2.2 2.1-2.6 3.6" />
+      <path d="M12 17.2v.1" />
     </>
   ),
 };

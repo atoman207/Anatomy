@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { cx } from "@/components/ui";
 
 /**
  * One definition of the navigation, used by the sidebar and the mobile drawer.
@@ -47,156 +48,208 @@ const stroke = {
   strokeLinejoin: "round" as const,
 };
 
-function Icon({ children }: { children: ReactNode }) {
+function NavIcon({ tone, children }: { tone: string; children: ReactNode }) {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden className="h-[18px] w-[18px] shrink-0" {...stroke}>
-      {children}
-    </svg>
+    <span
+      className={cx(
+        "flex h-7 w-7 shrink-0 items-center justify-center rounded-md",
+        tone,
+      )}
+    >
+      <svg viewBox="0 0 24 24" aria-hidden className="h-[17px] w-[17px]" {...stroke}>
+        {children}
+      </svg>
+    </span>
   );
 }
 
 const icons = {
-  team: (
-    <Icon>
-      <circle cx="8" cy="8" r="3.2" />
-      <path d="M2 20a6 6 0 0 1 12 0" />
-      <path d="M15 5.2a3.2 3.2 0 0 1 0 5.6" />
-      <path d="M17 20a6 6 0 0 0-2-4.5" />
-    </Icon>
-  ),
-  chat: (
-    <Icon>
-      <path d="M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-4.3 3.6A.5.5 0 0 1 4 19.2z" />
-    </Icon>
-  ),
   dashboard: (
-    <Icon>
+    <NavIcon tone="bg-blue-100 text-blue-600">
       <rect x="3" y="3" width="7" height="7" rx="1.5" />
       <rect x="14" y="3" width="7" height="7" rx="1.5" />
       <rect x="3" y="14" width="7" height="7" rx="1.5" />
       <rect x="14" y="14" width="7" height="7" rx="1.5" />
-    </Icon>
-  ),
-  organize: (
-    <Icon>
-      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-      <path d="M3 11h18" />
-    </Icon>
-  ),
-  analyze: (
-    <Icon>
-      <path d="M4 20V10M10 20V4M16 20v-6M22 20H2" />
-    </Icon>
-  ),
-  voice: (
-    <Icon>
-      <rect x="9" y="3" width="6" height="11" rx="3" />
-      <path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" />
-    </Icon>
-  ),
-  notebook: (
-    <Icon>
-      <path d="M5 4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z" />
-      <path d="M9 3v18M12 8h4M12 12h4" />
-    </Icon>
-  ),
-  literature: (
-    <Icon>
-      <circle cx="11" cy="11" r="6" />
-      <path d="m20 20-4.3-4.3" />
-    </Icon>
-  ),
-  experiments: (
-    <Icon>
-      <path d="M9 3v6.5L4.2 17A2 2 0 0 0 6 20h12a2 2 0 0 0 1.8-3L15 9.5V3" />
-      <path d="M8 3h8M7.5 14h9" />
-    </Icon>
-  ),
-  calculator: (
-    <Icon>
-      <rect x="4" y="2" width="16" height="20" rx="2" />
-      <path d="M8 6h8M8 11h1M12 11h1M16 11h1M8 15h1M12 15h1M16 15h1M8 19h1M12 19h1M16 19h1" />
-    </Icon>
-  ),
-  reagents: (
-    <Icon>
-      <path d="M9 2h6M10 2v6.5L5.5 17A2.5 2.5 0 0 0 7.7 21h8.6a2.5 2.5 0 0 0 2.2-3.9L14 8.5V2" />
-      <path d="M8 15h8" />
-    </Icon>
-  ),
-  adminHome: (
-    <Icon>
-      <path d="M12 3 4 7v5c0 4.4 3.2 8.3 8 9 4.8-.7 8-4.6 8-9V7z" />
-    </Icon>
-  ),
-  members: (
-    <Icon>
-      <circle cx="9" cy="8" r="3.2" />
-      <path d="M3 20a6 6 0 0 1 12 0" />
-      <path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M18 20a6 6 0 0 0-2-4.5" />
-    </Icon>
+    </NavIcon>
   ),
   labs: (
-    <Icon>
-      <path d="M3 21V8l7-5 7 5v13" />
-      <path d="M3 21h18M10 21v-5h4v5M7 11h.01M13 11h.01" />
-    </Icon>
+    <NavIcon tone="bg-indigo-100 text-indigo-600">
+      <path d="M3 21V9l9-6 9 6v12" />
+      <path d="M3 21h18M9 21v-6h6v6" />
+      <path d="M10 12h4" />
+    </NavIcon>
+  ),
+  chat: (
+    <NavIcon tone="bg-sky-100 text-sky-600">
+      <path d="M5 5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H9l-3.5 3a.5.5 0 0 1-.8-.4V14" />
+      <circle cx="9" cy="9.5" r="0.75" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="9.5" r="0.75" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="9.5" r="0.75" fill="currentColor" stroke="none" />
+    </NavIcon>
+  ),
+  experimentPick: (
+    <NavIcon tone="bg-violet-100 text-violet-600">
+      <path d="M9 4h8a2 2 0 0 1 2 2v14H7V6a2 2 0 0 1 2-2z" />
+      <path d="M9 2v4h8" />
+      <path d="M9 11h6M9 15h4" />
+      <path d="m10 8 1.5 1.5L14 7" />
+    </NavIcon>
+  ),
+  reagents: (
+    <NavIcon tone="bg-emerald-100 text-emerald-600">
+      <path d="M10 2h4" />
+      <path d="M11 2v7l-4.5 9.5a2 2 0 0 0 1.8 2.9h7.6a2 2 0 0 0 1.8-2.9L13 9V2" />
+      <path d="M8.5 16h7" />
+      <circle cx="10" cy="13" r="0.6" fill="currentColor" stroke="none" />
+      <circle cx="14" cy="14.5" r="0.6" fill="currentColor" stroke="none" />
+    </NavIcon>
+  ),
+  templateLayout: (
+    <NavIcon tone="bg-amber-100 text-amber-700">
+      <rect x="4" y="4" width="7" height="5" rx="1" />
+      <rect x="13" y="4" width="7" height="5" rx="1" />
+      <rect x="4" y="11" width="16" height="9" rx="1" />
+      <path d="M7 14h10M7 17h6" />
+    </NavIcon>
+  ),
+  notebookOpen: (
+    <NavIcon tone="bg-cyan-100 text-cyan-700">
+      <path d="M4 6a2 2 0 0 1 2-2h11a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2z" />
+      <path d="M8 6v14" />
+      <path d="M12 9h5M12 12h5M12 15h3" />
+      <path d="M6.5 9.5v3.5l1.5-1 1.5 1V9.5" />
+    </NavIcon>
+  ),
+  literatureSearch: (
+    <NavIcon tone="bg-rose-100 text-rose-600">
+      <path d="M6 3h8l4 4v12H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
+      <path d="M14 3v4h4" />
+      <circle cx="14.5" cy="14.5" r="3.5" />
+      <path d="m17.5 17.5 3 3" />
+    </NavIcon>
+  ),
+  organize: (
+    <NavIcon tone="bg-teal-100 text-teal-700">
+      <path d="M3 8a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <path d="M3 12h18" />
+      <path d="M8 16h4" />
+    </NavIcon>
+  ),
+  analyze: (
+    <NavIcon tone="bg-orange-100 text-orange-600">
+      <path d="M4 20V11M10 20V6M16 20v-8M22 20H2" />
+      <path d="M16 8l3-2" />
+    </NavIcon>
+  ),
+  peerReview: (
+    <NavIcon tone="bg-purple-100 text-purple-600">
+      <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
+      <path d="M14 3v5h5" />
+      <path d="m9 14.5 2 2 4.5-4.5" />
+      <circle cx="17" cy="7" r="2.5" />
+      <path d="M16 7h2M17 6v2" />
+    </NavIcon>
+  ),
+  calculator: (
+    <NavIcon tone="bg-slate-100 text-slate-600">
+      <rect x="4" y="2" width="16" height="20" rx="2" />
+      <path d="M8 6h8" />
+      <path d="M8 11h1.5M12 11h1.5M16 11h1.5M8 15h1.5M12 15h1.5M16 15h1.5M8 19h1.5M12 19h1.5M16 19h1.5" />
+    </NavIcon>
+  ),
+  experiments: (
+    <NavIcon tone="bg-violet-100 text-violet-600">
+      <path d="M9 2h6" />
+      <path d="M10 2v7L5 18a2 2 0 0 0 1.8 2.8h10.4a2 2 0 0 0 1.8-2.8L14 9V2" />
+      <path d="M7.5 15h9" />
+    </NavIcon>
+  ),
+  adminHome: (
+    <NavIcon tone="bg-indigo-100 text-indigo-700">
+      <path d="M12 3 4 7v5c0 4.4 3.2 8.3 8 9 4.8-.7 8-4.6 8-9V7z" />
+      <path d="M9 12l2 2 4-4" />
+    </NavIcon>
+  ),
+  members: (
+    <NavIcon tone="bg-blue-100 text-blue-600">
+      <circle cx="9" cy="8" r="3" />
+      <path d="M3 20a6 6 0 0 1 12 0" />
+      <path d="M16 5a3 3 0 0 1 0 5.2" />
+      <path d="M18 20a6 6 0 0 0-2.2-4.2" />
+    </NavIcon>
+  ),
+  adminLabs: (
+    <NavIcon tone="bg-indigo-100 text-indigo-600">
+      <path d="M2 20V9l10-6 10 6v11" />
+      <path d="M2 20h20M8 20v-5h8v5" />
+    </NavIcon>
   ),
   users: (
-    <Icon>
+    <NavIcon tone="bg-slate-100 text-slate-700">
       <circle cx="12" cy="8" r="3.5" />
       <path d="M5 20a7 7 0 0 1 14 0" />
-    </Icon>
+      <path d="M16 4h4v4" />
+      <path d="M18 2v6" />
+    </NavIcon>
   ),
   templates: (
-    <Icon>
-      <path d="M5 4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z" />
-      <path d="M9 3v18M12 8h4M12 12h4M12 16h4" />
-    </Icon>
+    <NavIcon tone="bg-amber-100 text-amber-700">
+      <rect x="5" y="3" width="14" height="18" rx="1.5" />
+      <path d="M9 3v18" />
+      <path d="M12 8h5M12 12h5M12 16h3" />
+    </NavIcon>
   ),
   content: (
-    <Icon>
+    <NavIcon tone="bg-cyan-100 text-cyan-700">
       <ellipse cx="12" cy="5.5" rx="8" ry="2.5" />
       <path d="M4 5.5V12c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5V5.5" />
       <path d="M4 12v6.5c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5V12" />
-    </Icon>
+    </NavIcon>
   ),
   audit: (
-    <Icon>
-      <path d="M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
-      <path d="M14 3v5h5M8 13h8M8 17h5" />
-    </Icon>
-  ),
-  peerReview: (
-    <Icon>
+    <NavIcon tone="bg-stone-100 text-stone-600">
       <path d="M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
       <path d="M14 3v5h5" />
-      <path d="m9 14.5 2 2 4.5-4.5" />
-    </Icon>
+      <path d="M8 13h8M8 17h5" />
+      <path d="M8 13l2 2 2-2" />
+    </NavIcon>
+  ),
+  reviewers: (
+    <NavIcon tone="bg-fuchsia-100 text-fuchsia-600">
+      <circle cx="8" cy="9" r="2.5" />
+      <circle cx="16" cy="9" r="2.5" />
+      <path d="M4 19a4 4 0 0 1 8 0M12 19a4 4 0 0 1 8 0" />
+      <path d="M12 3v3" />
+    </NavIcon>
   ),
   megaphone: (
-    <Icon>
+    <NavIcon tone="bg-orange-100 text-orange-600">
       <path d="M3 11v2a2 2 0 0 0 2 2h1l2 6h2l-1.5-6H11l7 4V5l-7 4H5a2 2 0 0 0-2 2z" />
       <path d="M18 9.5a3.5 3.5 0 0 1 0 5" />
-    </Icon>
+    </NavIcon>
   ),
   billing: (
-    <Icon>
+    <NavIcon tone="bg-green-100 text-green-700">
       <rect x="2.5" y="5" width="19" height="14" rx="2" />
-      <path d="M2.5 10h19M6 15h4" />
-    </Icon>
+      <path d="M2.5 10h19" />
+      <path d="M6 15h4" />
+    </NavIcon>
   ),
   contracts: (
-    <Icon>
+    <NavIcon tone="bg-emerald-100 text-emerald-700">
       <path d="M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
-      <path d="M14 3v5h5M9 13h6M9 17h4" />
-    </Icon>
+      <path d="M14 3v5h5" />
+      <path d="M9 13h6M9 17h4" />
+      <path d="m9 13 1.5 1.5L13 11" />
+    </NavIcon>
   ),
   account: (
-    <Icon>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1v.3a2 2 0 1 1-4 0v-.2a1.6 1.6 0 0 0-2.8-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3.5 15H3a2 2 0 1 1 0-4h.2A1.6 1.6 0 0 0 4.3 8.2l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 10 4.4V4a2 2 0 1 1 4 0v.2a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7h.4a2 2 0 1 1 0 4h-.2a1.6 1.6 0 0 0-1.4 1.2z" />
-    </Icon>
+    <NavIcon tone="bg-blue-100 text-blue-600">
+      <circle cx="12" cy="8" r="3.5" />
+      <path d="M5 20a7 7 0 0 1 14 0" />
+      <circle cx="17" cy="7" r="2" />
+      <path d="M16.5 6.5h1v1" />
+    </NavIcon>
   ),
 };
 
@@ -206,7 +259,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: null,
     items: [
       { href: "/dashboard", label: "ダッシュボード", icon: icons.dashboard, exact: true },
-      { href: "/labs", label: "研究室", icon: icons.team, authOnly: true },
+      { href: "/labs", label: "研究室", icon: icons.labs, authOnly: true },
       { href: "/chat", label: "チャット", icon: icons.chat, authOnly: true },
     ],
   },
@@ -214,11 +267,11 @@ export const NAV_GROUPS: NavGroup[] = [
     id: "record",
     label: "記録",
     items: [
-      { href: "/record?step=1", label: "実験選択", icon: icons.experiments },
+      { href: "/record?step=1", label: "実験選択", icon: icons.experimentPick },
       { href: "/record?step=2", label: "試薬・Lot", icon: icons.reagents },
-      { href: "/record?step=3", label: "テンプレート", icon: icons.templates },
-      { href: "/record?step=4", label: "実験ノート", icon: icons.notebook },
-      { href: "/record?step=5", label: "論文検索", icon: icons.literature },
+      { href: "/record?step=3", label: "テンプレート", icon: icons.templateLayout },
+      { href: "/record?step=4", label: "実験ノート", icon: icons.notebookOpen },
+      { href: "/record?step=5", label: "論文検索", icon: icons.literatureSearch },
     ],
   },
   {
@@ -250,11 +303,11 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/admin", label: "管理者ダッシュボード", icon: icons.adminHome, exact: true, adminOnly: true },
       { href: "/admin/members", label: "メンバー", icon: icons.members, adminOnly: true },
-      { href: "/admin/labs", label: "研究室", icon: icons.labs, adminOnly: true },
+      { href: "/admin/labs", label: "研究室", icon: icons.adminLabs, adminOnly: true },
       { href: "/admin/experiments", label: "実験", icon: icons.experiments, adminOnly: true },
       { href: "/admin/templates", label: "テンプレート", icon: icons.templates, adminOnly: true },
       { href: "/admin/users", label: "ユーザー", icon: icons.users, platformOnly: true },
-      { href: "/admin/peer-review", label: "AI査読者", icon: icons.peerReview, platformOnly: true },
+      { href: "/admin/peer-review", label: "AI査読者", icon: icons.reviewers, platformOnly: true },
       { href: "/admin/news", label: "お知らせ", icon: icons.megaphone, platformOnly: true },
       { href: "/admin/content", label: "コンテンツ管理", icon: icons.content, platformOnly: true },
       { href: "/admin/billing", label: "決済", icon: icons.billing, exact: true, platformOnly: true },
@@ -344,6 +397,7 @@ export function titleForPath(pathname: string, search?: string): string {
   }
   if (best) return best.label;
   if (pathname.startsWith("/login")) return "ログイン";
+  if (pathname.startsWith("/register")) return "登録";
   if (pathname.startsWith("/auth")) return "認証";
-  return "LABNOTE.";
+  return "LABNOTE";
 }

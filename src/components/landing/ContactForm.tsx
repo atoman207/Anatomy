@@ -6,6 +6,15 @@ import { submitContactMessage } from "@/lib/contact/actions";
 
 type Status = { tone: "good" | "danger"; text: string } | null;
 
+function RequiredMark() {
+  return (
+    <>
+      <span className="ml-1 text-danger" aria-hidden>*</span>
+      <span className="sr-only">（必須）</span>
+    </>
+  );
+}
+
 /** The /contact page's form: email, name, phone, and a short message. */
 export function ContactForm() {
   const formRef = useRef<HTMLFormElement>(null);
@@ -23,11 +32,11 @@ export function ContactForm() {
 
   return (
     <form ref={formRef} action={onSubmit} className="mt-10 flex flex-col gap-5">
-      <Field label="お名前" htmlFor="contact-name">
+      <Field label={<>お名前<RequiredMark /></>} htmlFor="contact-name">
         <TextInput id="contact-name" name="name" type="text" required autoComplete="name" disabled={pending} />
       </Field>
 
-      <Field label="メールアドレス" htmlFor="contact-email">
+      <Field label={<>メールアドレス<RequiredMark /></>} htmlFor="contact-email">
         <TextInput
           id="contact-email"
           name="email"
@@ -42,7 +51,7 @@ export function ContactForm() {
         <TextInput id="contact-phone" name="phone" type="tel" autoComplete="tel" disabled={pending} />
       </Field>
 
-      <Field label="お問い合わせ内容" htmlFor="contact-message" hint="簡単な内容で構いません">
+      <Field label={<>お問い合わせ内容<RequiredMark /></>} htmlFor="contact-message" hint="簡単な内容で構いません">
         <TextArea
           id="contact-message"
           name="message"

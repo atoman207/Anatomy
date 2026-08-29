@@ -58,18 +58,16 @@ export function Sidebar({
         aria-label="ホームへ"
       >
         <Image
-          src="/LOGO.png"
-          alt=""
-          width={34}
-          height={34}
-          className="h-[34px] w-[34px] shrink-0 rounded-lg object-contain"
+          src="/sitelogo.png"
+          alt="LABNOTE"
+          width={202}
+          height={49}
+          className={cx(
+            "shrink-0 object-contain object-left",
+            collapsed ? "h-[46px] w-[74px]" : "h-[49px] w-auto",
+          )}
           priority
         />
-        {!collapsed && (
-          <p className="truncate text-[13px] font-semibold tracking-wide leading-tight text-[var(--shell-text)]">
-            LABNOTE.
-          </p>
-        )}
       </Link>
 
       {/* Navigation */}

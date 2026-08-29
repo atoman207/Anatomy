@@ -1,13 +1,17 @@
 import Link from "next/link";
-import { Badge, Card, DataTable, Field, StatTile, TextInput } from "@/components/ui";
+import { Badge, Card, DataTable, Field, StatTile } from "@/components/ui";
+import { PasswordInput } from "@/components/PasswordInput";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { requireUser } from "@/lib/auth/guards";
 import { ActionForm } from "@/components/admin/ActionForm";
-import { updateDisplayNameAction, changePasswordAction } from "@/lib/auth/actions";
+import { changePasswordAction } from "@/lib/auth/actions";
+import { phoneNationalPart } from "@/lib/auth/profileFields";
 import { LAB_ROLE_LABELS, PLATFORM_ROLE_LABELS } from "@/lib/auth/roles";
 import type { LabRole } from "@/lib/supabase/types";
 import { SignOutButton } from "@/components/admin/SignOutButton";
 import { getMyPeerReviewCredits } from "@/lib/peerReview/credits";
+import { createServerSupabase } from "@/lib/supabase/server";
+import { AccountProfileForm } from "@/components/account/AccountProfileForm";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +24,17 @@ const ROLE_HINTS_JA: Record<LabRole, string> = {
 
 export default async function AccountPage() {
   const ctx = await requireUser("/account");
-  const credits = await getMyPeerReviewCredits();
+  const supabase = await createServerSupabase();
+  const [credits, profileRow] = await Promise.all([
+    getMyPeerReviewCredits(),
+    supabase
+      .from("profiles")
+      .select("display_name, avatar_url, date_of_birth, phone_number, major")
+      .eq("id", ctx.user.id)
+      .maybeSingle(),
+  ]);
+
+  const profile = profileRow.data;
 
   return (
     <div className="flex flex-col gap-4">
@@ -83,24 +97,27 @@ export default async function AccountPage() {
         </Card>
       )}
 
-      <Card title="表示名">
-        <ActionForm action={updateDisplayNameAction} submitLabel="保存" icon="save">
-          <Field label="表示名" htmlFor="dn">
-            <TextInput id="dn" name="display_name" defaultValue={ctx.displayName} required maxLength={80} />
-          </Field>
-        </ActionForm>
+      <Card
+        title="個人情報"
+        subtitle="表示名・アバター・連絡先など、登録時と同じ項目を変更できます。"
+      >
+        <AccountProfileForm
+          displayName={profile?.display_name ?? ctx.displayName}
+          dateOfBirth={profile?.date_of_birth ?? null}
+          phoneNational={phoneNationalPart(profile?.phone_number)}
+          major={profile?.major ?? null}
+          avatarUrl={profile?.avatar_url ?? ctx.avatarUrl}
+        />
       </Card>
 
-      <Card
-        title="パスワード変更"
-      >
+      <Card title="パスワード変更">
         <ActionForm action={changePasswordAction} submitLabel="変更" icon="lock">
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="新しいパスワード" htmlFor="pw" hint="8文字以上。">
-              <TextInput id="pw" name="password" type="password" required minLength={8} autoComplete="new-password" />
+              <PasswordInput id="pw" name="password" required minLength={8} autoComplete="new-password" />
             </Field>
             <Field label="確認" htmlFor="pw2">
-              <TextInput id="pw2" name="confirm" type="password" required minLength={8} autoComplete="new-password" />
+              <PasswordInput id="pw2" name="confirm" required minLength={8} autoComplete="new-password" />
             </Field>
           </div>
         </ActionForm>

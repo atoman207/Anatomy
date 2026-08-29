@@ -49,12 +49,11 @@ function siteOrigin(): string {
 
 function invitedSignupPath(email: string): string {
   const params = new URLSearchParams({
-    mode: "signup",
     invite: "1",
     email,
     next: "/labs",
   });
-  return `/login?${params.toString()}`;
+  return `/register?${params.toString()}`;
 }
 
 /** Finds an auth user by email, paging until found. */

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Reveal } from "./Reveal";
+import { SectionTitle } from "./SectionTitle";
 import type { SiteNewsRow } from "@/lib/supabase/types";
 
 function formatDate(iso: string): string {
@@ -21,8 +22,8 @@ export function NewsSection({ articles }: { articles: SiteNewsRow[] }) {
     <section id="news" className="scroll-mt-8 border-b border-line">
       <div className="mx-auto w-full max-w-[1100px] px-5 py-20 sm:px-8">
         <Reveal>
-          <header className="max-w-[60ch]">
-            <h2 className="font-serif text-3xl font-semibold text-ink">お知らせ</h2>
+          <header className="mx-auto max-w-[60ch] text-center">
+            <SectionTitle japanese="お知らせ" english="News" />
             <p className="mt-3 text-[16px] leading-relaxed text-ink-2">
               新しく追加した機能や変更をお知らせします。
             </p>

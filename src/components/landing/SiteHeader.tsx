@@ -28,12 +28,16 @@ export function SiteHeader({ signedIn, overHero = false }: { signedIn: boolean; 
           : "sticky top-0 z-30 border-b border-black/5 bg-white/90 shadow-[0_1px_0_rgba(0,0,0,0.04)] backdrop-blur-md"
       }
     >
-      <div className="flex h-[64px] w-full items-center gap-4 px-5 sm:px-8">
-        <Link href="/" className="group flex shrink-0 items-center gap-2.5">
-          <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl bg-white shadow-[0_1px_2px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.06)] transition-transform group-hover:scale-105">
-            <Image src="/LOGO.png" alt="" width={30} height={30} className="h-[30px] w-[30px] object-contain" />
-          </span>
-          <span className="text-[16px] font-bold tracking-wide text-black">LABNOTE.</span>
+      <div className="flex h-[77px] w-full items-center gap-4 px-5 sm:px-8">
+        <Link href="/" className="group shrink-0 transition-opacity hover:opacity-90">
+          <Image
+            src="/sitelogo.png"
+            alt="LABNOTE"
+            width={230}
+            height={52}
+            className="h-[52px] w-auto object-contain"
+            priority
+          />
         </Link>
 
         <div className="ml-auto flex items-center gap-7">
@@ -70,7 +74,7 @@ export function SiteHeader({ signedIn, overHero = false }: { signedIn: boolean; 
                   ログイン
                 </Link>
                 <Link
-                  href="/login"
+                  href="/register"
                   className="rounded-full bg-accent px-4 py-2 text-[14px] font-semibold text-accent-contrast shadow-[0_1px_2px_rgba(0,0,0,0.12)] transition-all hover:opacity-90 hover:shadow-[0_2px_8px_rgba(37,99,235,0.35)]"
                 >
                   無料で始める

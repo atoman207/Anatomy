@@ -3052,9 +3052,9 @@ alter table public.site_news enable row level security;
 insert into public.site_news (slug, title, summary, body_md, is_published, published_at) values
 (
   'service-launch',
-  'LABNOTE. を公開しました',
+  'LABNOTE を公開しました',
   '実験記録から統計解析、AI査読までを一つのアカウントで完結する研究室基盤です。',
-  '本日より LABNOTE. の提供を開始しました。実験選択・試薬管理・テンプレート・音声入力・論文検索を一つの記録ウィザードにまとめ、完了と同時にPDFレポートを自動作成します。統計解析やAI査読、研究室のメンバー管理まで、研究室運営に必要な機能を一つのプラットフォームでご利用いただけます。',
+  '本日より LABNOTE の提供を開始しました。実験選択・試薬管理・テンプレート・音声入力・論文検索を一つの記録ウィザードにまとめ、完了と同時にPDFレポートを自動作成します。統計解析やAI査読、研究室のメンバー管理まで、研究室運営に必要な機能を一つのプラットフォームでご利用いただけます。',
   true,
   '2026-08-01T00:00:00+00:00'
 ),

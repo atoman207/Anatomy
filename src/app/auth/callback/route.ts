@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createServerSupabase } from "@/lib/supabase/server";
+import { getSessionContext } from "@/lib/auth/guards";
+import { postLoginPathForSession } from "@/lib/auth/postLogin";
 import { acceptPendingLabInvites } from "@/lib/labs/actions";
+import { createServerSupabase } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,7 +20,7 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type");
-  const next = safeNext(searchParams.get("next"));
+  const rawNext = searchParams.get("next");
 
   // Supabase reports link failures (expired, already used) on the query string.
   const errorDescription =
@@ -37,7 +39,11 @@ export async function GET(request: NextRequest) {
     await consumePendingLabInvites(supabase);
     // A recovery link must land on the page that sets a new password,
     // otherwise the one-time session is spent going somewhere useless.
-    const target = type === "recovery" ? "/auth/reset" : next;
+    const ctx = await getSessionContext();
+    const target =
+      type === "recovery"
+        ? "/auth/reset"
+        : postLoginPathForSession(rawNext, ctx?.canAccessAdmin ?? false);
     return NextResponse.redirect(`${origin}${target}`);
   }
 
@@ -50,7 +56,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent("invalid_link")}`);
     }
     await consumePendingLabInvites(supabase);
-    const target = type === "recovery" ? "/auth/reset" : next;
+    const ctx = await getSessionContext();
+    const target =
+      type === "recovery"
+        ? "/auth/reset"
+        : postLoginPathForSession(rawNext, ctx?.canAccessAdmin ?? false);
     return NextResponse.redirect(`${origin}${target}`);
   }
 
@@ -74,14 +84,4 @@ async function consumePendingLabInvites(
   } catch {
     // Intentionally silent - see the note above.
   }
-}
-
-/**
- * Only same-site paths are accepted as a redirect target, so a crafted link
- * cannot bounce a freshly authenticated user to another host.
- */
-function safeNext(value: string | null): string {
-  if (!value) return "/dashboard";
-  if (!value.startsWith("/") || value.startsWith("//")) return "/dashboard";
-  return value;
 }

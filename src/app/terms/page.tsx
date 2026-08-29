@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "利用規約",
-  description: "LABNOTE. の利用規約。アカウント登録、データの取り扱い、AI査読の料金、免責事項について定めています。",
+  description: "LABNOTE の利用規約。アカウント登録、データの取り扱い、AI査読の料金、免責事項について定めています。",
   alternates: { canonical: `${SITE_URL}/terms` },
 };
 
@@ -16,7 +16,7 @@ const SECTIONS: { title: string; body: string[] }[] = [
   {
     title: "第1条（適用）",
     body: [
-      "本規約は、LABNOTE.（以下「本サービス」といいます）の利用条件を定めるものです。" +
+      "本規約は、LABNOTE（以下「本サービス」といいます）の利用条件を定めるものです。" +
         "利用者は、本規約に同意のうえ、本サービスを利用するものとします。",
     ],
   },
