@@ -3094,3 +3094,70 @@ on conflict (slug) do nothing;
 
 notify pgrst, 'reload schema';
 
+
+-- ============================================================================
+-- Administrator email broadcasts
+-- Safe to re-run.
+--
+-- The record of what the administrator mailer (/admin/email) actually sent.
+-- Two tables rather than one: `admin_email_messages` is the message as it was
+-- composed once, `admin_email_recipients` is the per-address outcome, because
+-- a broadcast is sent as one message per recipient and any single address can
+-- fail on its own (see sendBulkMail in src/lib/email/smtp.ts).
+--
+-- This is a delivery record, not a mailbox: it stores what was sent and
+-- whether the SMTP server accepted it, and nothing about what happened after
+-- the message left the server.
+--
+-- RLS is enabled with no client-facing policy at all - the same posture as
+-- contact_messages, billing_events and site_news. Every read and write goes
+-- through the service-role client behind a platform-admin check, so a policy
+-- here would only be a second, weaker copy of that rule.
+-- ============================================================================
+
+create table if not exists public.admin_email_messages (
+  id              uuid primary key default gen_random_uuid(),
+  subject         text not null,
+  body            text not null,
+  -- 'text' or 'html' - how `body` was composed, and therefore how it was sent.
+  body_format     text not null default 'text',
+  -- The From address at send time. Recorded because SMTP_FROM is environment
+  -- configuration: reading it back later would show today's mailbox, not the
+  -- one this message actually went out as.
+  from_address    text not null default '',
+  reply_to        text,
+  -- How the recipient list was chosen ('selected' / 'all' / 'lab' / 'manual'),
+  -- kept for the audit trail: the addresses below are the fact, this is the
+  -- intent behind them.
+  audience        text not null default 'selected',
+  recipient_count integer not null default 0,
+  sent_count      integer not null default 0,
+  failed_count    integer not null default 0,
+  sent_by         uuid references auth.users (id) on delete set null,
+  created_at      timestamptz not null default now()
+);
+
+create table if not exists public.admin_email_recipients (
+  id         uuid primary key default gen_random_uuid(),
+  message_id uuid not null references public.admin_email_messages (id) on delete cascade,
+  email      text not null,
+  -- Null for an address typed in by hand that matches no account.
+  user_id    uuid references auth.users (id) on delete set null,
+  ok         boolean not null default false,
+  error      text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists admin_email_messages_created_idx
+  on public.admin_email_messages (created_at desc);
+
+create index if not exists admin_email_recipients_message_idx
+  on public.admin_email_recipients (message_id);
+
+alter table public.admin_email_messages enable row level security;
+alter table public.admin_email_recipients enable row level security;
+-- Deliberately no select/insert/update/delete policy: see the section
+-- comment above. RLS enabled with zero policies denies every direct client
+-- access, same as contact_messages and site_news.
+
+notify pgrst, 'reload schema';

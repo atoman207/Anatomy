@@ -402,6 +402,34 @@ export type SiteNewsRow = {
   updated_at: string;
 }
 
+/* Administrator email broadcasts - see supabase/migrations/all.sql
+   (administrator email broadcasts section). */
+
+export type AdminEmailMessageRow = {
+  id: string;
+  subject: string;
+  body: string;
+  body_format: string;
+  from_address: string;
+  reply_to: string | null;
+  audience: string;
+  recipient_count: number;
+  sent_count: number;
+  failed_count: number;
+  sent_by: string | null;
+  created_at: string;
+}
+
+export type AdminEmailRecipientRow = {
+  id: string;
+  message_id: string;
+  email: string;
+  user_id: string | null;
+  ok: boolean;
+  error: string | null;
+  created_at: string;
+}
+
 export type ChannelRow = {
   id: string;
   lab_id: string;
@@ -545,6 +573,22 @@ export type Database = {
       site_news: TableDef<
         SiteNewsRow,
         Insert<SiteNewsRow, "summary" | "body_md" | "is_published" | "published_at">
+      >;
+      admin_email_messages: TableDef<
+        AdminEmailMessageRow,
+        Insert<
+          AdminEmailMessageRow,
+          | "body_format"
+          | "from_address"
+          | "audience"
+          | "recipient_count"
+          | "sent_count"
+          | "failed_count"
+        >
+      >;
+      admin_email_recipients: TableDef<
+        AdminEmailRecipientRow,
+        Insert<AdminEmailRecipientRow, "ok">
       >;
     };
     Views: Record<string, never>;

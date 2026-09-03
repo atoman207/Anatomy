@@ -228,6 +228,12 @@ const icons = {
       <path d="M18 9.5a3.5 3.5 0 0 1 0 5" />
     </NavIcon>
   ),
+  email: (
+    <NavIcon tone="bg-sky-100 text-sky-600">
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M4 7.5l8 5.5 8-5.5" />
+    </NavIcon>
+  ),
   billing: (
     <NavIcon tone="bg-green-100 text-green-700">
       <rect x="2.5" y="5" width="19" height="14" rx="2" />
@@ -308,6 +314,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/templates", label: "テンプレート", icon: icons.templates, adminOnly: true },
       { href: "/admin/users", label: "ユーザー", icon: icons.users, platformOnly: true },
       { href: "/admin/peer-review", label: "AI査読者", icon: icons.reviewers, platformOnly: true },
+      { href: "/admin/email", label: "メール送信", icon: icons.email, platformOnly: true },
       { href: "/admin/news", label: "お知らせ", icon: icons.megaphone, platformOnly: true },
       { href: "/admin/content", label: "コンテンツ管理", icon: icons.content, platformOnly: true },
       { href: "/admin/billing", label: "決済", icon: icons.billing, exact: true, platformOnly: true },
