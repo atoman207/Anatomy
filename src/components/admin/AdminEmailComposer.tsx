@@ -44,7 +44,12 @@ export function AdminEmailComposer({
   const [query, setQuery] = useState("");
   const [labFilter, setLabFilter] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [manual, setManual] = useState("");
+  // Hand-entered addresses, kept as a committed list plus the box the
+  // administrator is still typing in. Two pieces rather than one string so
+  // each address can be shown back and removed individually - a 20-address
+  // paste in a plain textarea gives no way to see that one of them is wrong.
+  const [manualList, setManualList] = useState<string[]>([]);
+  const [draft, setDraft] = useState("");
   const [format, setFormat] = useState<"text" | "html">("text");
 
   const visible = useMemo(() => {
@@ -60,8 +65,31 @@ export function AdminEmailComposer({
     });
   }, [users, query, labFilter]);
 
-  const manualAddresses = useMemo(() => parseAddressList(manual), [manual]);
+  // The draft is folded in here rather than only on Enter, so an address
+  // still sitting in the box when 送信 is clicked is sent instead of silently
+  // dropped. This is also exactly what the hidden input posts, so what the
+  // count says and what the server receives cannot drift apart.
+  const manualAddresses = useMemo(
+    () => [...new Set([...manualList, ...parseAddressList(draft)])],
+    [manualList, draft],
+  );
   const manualInvalid = manualAddresses.filter((a) => !EMAIL_RE.test(a));
+
+  /** Moves whatever is in the box into the chip list. */
+  const commitDraft = () => {
+    const parsed = parseAddressList(draft);
+    if (parsed.length > 0) {
+      setManualList((prev) => [...new Set([...prev, ...parsed])]);
+    }
+    setDraft("");
+  };
+
+  const removeManual = (address: string) => {
+    setManualList((prev) => prev.filter((a) => a !== address));
+    // Also clear it out of the box, or a removed chip would reappear from the
+    // draft on the next render.
+    if (parseAddressList(draft).includes(address)) setDraft("");
+  };
 
   // Selected accounts and typed addresses can name the same inbox; the server
   // dedupes on the address, so the count shown here has to as well.
@@ -100,6 +128,16 @@ export function AdminEmailComposer({
           window.alert("宛先を1件以上選択または入力してください。");
           return;
         }
+        // The action refuses these too, but catching it here keeps a typo
+        // from costing a round trip - and from sending to the good addresses
+        // first and reporting the bad one afterwards.
+        if (manualInvalid.length > 0) {
+          e.preventDefault();
+          window.alert(
+            `メールアドレスの形式が正しくありません:\n${manualInvalid.join("\n")}`,
+          );
+          return;
+        }
         if (!window.confirm(`${total} 件の宛先にメールを送信します。よろしいですか？`)) {
           e.preventDefault();
         }
@@ -111,10 +149,12 @@ export function AdminEmailComposer({
       ))}
 
       <Card
-        title="宛先"
+        title="登録ユーザーから選択"
         subtitle="1人でも、複数人でも、全員でも送信できます。"
         actions={
-          <Badge tone={total > 0 ? "accent" : "neutral"}>{total} 件を選択中</Badge>
+          <Badge tone={selectedEmails.size > 0 ? "accent" : "neutral"}>
+            {selectedEmails.size} 名を選択中
+          </Badge>
         }
       >
         <div className="flex flex-col gap-3">
@@ -183,23 +223,105 @@ export function AdminEmailComposer({
             )}
           </div>
 
+        </div>
+      </Card>
+
+      <Card
+        title="メールアドレスを直接入力"
+        subtitle="登録ユーザー以外にも送信できます。1件ずつでも、まとめて貼り付けても構いません。"
+        actions={
+          <Badge tone={manualAddresses.length > 0 ? "accent" : "neutral"}>
+            {manualAddresses.length} 件
+          </Badge>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          {/* The address list the server actually receives. Built from the
+              chips plus whatever is still in the box, so nothing typed can be
+              left behind by clicking 送信 without pressing Enter first. */}
+          <input type="hidden" name="manual_emails" value={manualAddresses.join(",")} />
+
           <Field
-            label="その他のアドレス"
+            label="メールアドレス"
             htmlFor="manual-emails"
-            hint="アカウントを持たない相手にも送れます。カンマ・改行・空白区切り。"
+            hint="Enter または「追加」で確定します。カンマ・セミコロン・改行・空白で区切って複数まとめて入力もできます。"
           >
-            <TextArea
-              id="manual-emails"
-              name="manual_emails"
-              value={manual}
-              onChange={(e) => setManual(e.target.value)}
-              placeholder="someone@example.com, another@example.com"
-              rows={2}
-            />
+            <div className="flex flex-wrap items-start gap-2">
+              <TextInput
+                id="manual-emails"
+                className="min-w-0 flex-1"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  // Enter inside a form would submit it; here it means
+                  // "confirm this address", which is what a chip input does
+                  // everywhere else.
+                  if (e.key === "Enter" || e.key === "," || e.key === ";") {
+                    e.preventDefault();
+                    commitDraft();
+                  }
+                }}
+                onBlur={commitDraft}
+                placeholder="someone@example.com"
+                inputMode="email"
+                autoComplete="off"
+              />
+              <Button icon="plus" onClick={commitDraft} disabled={draft.trim() === ""}>
+                追加
+              </Button>
+            </div>
           </Field>
+
+          {manualList.length > 0 && (
+            <ul className="flex flex-wrap gap-1.5">
+              {manualList.map((address) => {
+                const bad = !EMAIL_RE.test(address);
+                return (
+                  <li key={address}>
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full py-0.5 pl-2.5 pr-1 text-[12px] font-medium ${
+                        bad ? "bg-danger-soft text-danger" : "bg-surface-2 text-ink-2"
+                      }`}
+                    >
+                      <span className="font-mono">{address}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeManual(address)}
+                        title={`${address} を削除`}
+                        aria-label={`${address} を削除`}
+                        className="flex h-4 w-4 items-center justify-center rounded-full text-[13px] leading-none transition-colors hover:bg-danger hover:text-white"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          {manualList.length > 1 && (
+            <div>
+              <Button
+                size="sm"
+                variant="ghost"
+                icon="clear"
+                onClick={() => {
+                  setManualList([]);
+                  setDraft("");
+                }}
+              >
+                入力したアドレスをすべて削除
+              </Button>
+            </div>
+          )}
+
           {manualInvalid.length > 0 && (
             <Callout tone="warn" title="メールアドレスの形式が正しくありません">
               {manualInvalid.slice(0, 5).join("、")}
+              {manualInvalid.length > 5 && ` ほか${manualInvalid.length - 5}件`}
+              <br />
+              このままでは送信できません。赤いアドレスを削除するか、修正してください。
             </Callout>
           )}
         </div>
@@ -269,9 +391,26 @@ export function AdminEmailComposer({
             1回の送信は最大500件までです。
           </Callout>
 
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <TestButton />
-            <SendButton count={total} disabled={!sender} />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            {/* Spelled out rather than left as one number: the two ways of
+                choosing a recipient are in separate cards, so the total is
+                the only place they are visibly added up. */}
+            <p className="text-[13px] text-ink-2">
+              宛先合計{" "}
+              <span className={total > 0 ? "font-semibold text-ink" : "text-ink-3"}>
+                {total} 件
+              </span>
+              {selectedEmails.size > 0 && manualAddresses.length > 0 && (
+                <span className="text-ink-3">
+                  （登録ユーザー {selectedEmails.size} 名 + 直接入力{" "}
+                  {manualAddresses.filter((a) => !selectedEmails.has(a)).length} 件）
+                </span>
+              )}
+            </p>
+            <span className="flex flex-wrap items-center gap-2">
+              <TestButton />
+              <SendButton count={total} disabled={!sender} />
+            </span>
           </div>
         </div>
       </Card>
