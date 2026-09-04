@@ -3161,3 +3161,87 @@ alter table public.admin_email_recipients enable row level security;
 -- access, same as contact_messages and site_news.
 
 notify pgrst, 'reload schema';
+
+-- ============================================================================
+-- Administrator email: rate-limit governor and resumable delivery
+-- Safe to re-run.
+--
+-- Namecheap Private Email caps outgoing mail per mailbox in a trailing
+-- 60-minute window (20/hour on a trial plan, 500/hour on a paid one). A
+-- campaign larger than that window cannot be delivered in one pass, and
+-- pushing into the limit earns "554 5.7.1 ... too many messages from sender
+-- in last 60 minutes" for every remaining recipient - and, per Namecheap's
+-- policy, eventually a disabled mailbox.
+--
+-- So delivery becomes resumable instead of all-or-nothing:
+--
+--   * every recipient row now carries its own `status`, so a campaign can
+--     stop when the hourly budget runs out and continue later with exactly
+--     the recipients that have not been sent to yet. `ok` is kept in step
+--     with it for anything still reading that column.
+--   * `admin_email_rate_log` holds one row per SMTP transaction, which is
+--     what the hourly budget is actually counted against. It lives in the
+--     database rather than in process memory because the limit belongs to
+--     the mailbox: a server restart, or a second instance, must not get a
+--     fresh allowance the provider will not honour.
+--
+-- RLS stays enabled with no client-facing policy, as with the other
+-- admin_email_* tables.
+-- ============================================================================
+
+alter table public.admin_email_recipients
+  add column if not exists status   text not null default 'pending',
+  add column if not exists attempts integer not null default 0,
+  add column if not exists sent_at  timestamptz,
+  -- The recipient's display name as it was at queue time. Stored rather than
+  -- looked up when the message is finally sent, because delivery can now
+  -- happen an hour or a day later: {{name}} should read as it did when the
+  -- campaign was composed, and an address with no account has no name to
+  -- look up at all.
+  add column if not exists display_name text;
+
+-- Backfill rows written before this section existed: they were all attempted
+-- exactly once, and `ok` already says how it went.
+update public.admin_email_recipients
+   set status = case when ok then 'sent' else 'failed' end,
+       attempts = 1,
+       sent_at = coalesce(sent_at, created_at)
+ where status = 'pending'
+   and created_at < now();
+
+alter table public.admin_email_messages
+  add column if not exists pending_count  integer not null default 0,
+  add column if not exists message_count  integer not null default 0,
+  -- 'individual' (one message per recipient, needed for {{name}}) or
+  -- 'bcc' (one message per batch of recipients).
+  add column if not exists delivery_mode  text not null default 'individual',
+  -- 'complete' once nothing is pending, otherwise 'partial'.
+  add column if not exists status         text not null default 'complete';
+
+create index if not exists admin_email_recipients_pending_idx
+  on public.admin_email_recipients (message_id)
+  where status = 'pending';
+
+create index if not exists admin_email_messages_pending_idx
+  on public.admin_email_messages (created_at desc)
+  where pending_count > 0;
+
+-- One row per SMTP transaction actually started, which is the unit the
+-- provider's hourly limit counts. `recipients` records how many addresses
+-- rode along in that transaction (1 for individual mode, up to 45 for bcc),
+-- so the log also answers "how many people did we reach this hour".
+create table if not exists public.admin_email_rate_log (
+  id         uuid primary key default gen_random_uuid(),
+  message_id uuid references public.admin_email_messages (id) on delete set null,
+  recipients integer not null default 1,
+  sent_at    timestamptz not null default now()
+);
+
+create index if not exists admin_email_rate_log_sent_idx
+  on public.admin_email_rate_log (sent_at desc);
+
+alter table public.admin_email_rate_log enable row level security;
+-- Deliberately no policy: service-role access only, as with the rest of the
+-- admin_email_* tables.
+
+notify pgrst, 'reload schema';

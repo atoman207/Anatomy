@@ -29,10 +29,16 @@ import { revalidatePath } from "next/cache";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { getSessionContext, logAudit } from "@/lib/auth/guards";
 import {
-  emailSenderAddress, isEmailConfigured, sendBulkMail,
-  type BulkRecipient,
+  emailSenderAddress, isEmailConfigured, sendTransaction, usesPlaceholders,
+  type BulkRecipient, type DeliveryMode,
 } from "@/lib/email/smtp";
 import { EMAIL_RE, htmlToText, parseAddressList } from "@/lib/email/compose";
+import {
+  dispatchMessage, readBudget, FROM_NAME, type DispatchResult,
+} from "@/lib/email/campaign";
+import {
+  isRateLimitError, maxRecipientsPerMessage, messagesNeeded,
+} from "@/lib/email/limits";
 import type { AdminEmailMessageRow } from "@/lib/supabase/types";
 
 export interface ActionResult {
@@ -43,18 +49,17 @@ export interface ActionResult {
 const fail = (message: string): ActionResult => ({ ok: false, message });
 const done = (message: string): ActionResult => ({ ok: true, message });
 
-/** The display name recipients see beside the From address. */
-const FROM_NAME = "LABNOTE";
-
 const SUBJECT_MAX = 200;
 const BODY_MAX = 20000;
 /**
- * A ceiling on one broadcast. Not a licensing limit - a send runs inside the
- * server action's own request, so an unbounded list would mean an unbounded
- * wait with no way to tell whether it was still going. Larger audiences
- * should go out in batches.
+ * A ceiling on one campaign's recipient list.
+ *
+ * No longer a limit on what can be *delivered* - anything beyond the hour's
+ * budget is queued and resumed, so a list this size completes over several
+ * hours rather than failing. It is a sanity bound on a single paste, so a
+ * runaway list is caught at the door instead of becoming a multi-day queue.
  */
-const RECIPIENTS_MAX = 500;
+const RECIPIENTS_MAX = 5000;
 
 async function platformAdmin() {
   const ctx = await getSessionContext();
@@ -81,6 +86,68 @@ export interface EmailAudience {
   labs: string[];
   /** From address, or null when SMTP is not configured. */
   sender: string | null;
+}
+
+/** What the composer needs to explain the mailbox's limits before a send. */
+export interface SendingCapacity {
+  /** Messages allowed per trailing hour by the mailbox's plan. */
+  messagesPerHour: number;
+  /** Messages already spent in the current window. */
+  messagesUsed: number;
+  /** Messages still available right now. */
+  messagesRemaining: number;
+  /** Recipients that fit in one Bcc batch. */
+  recipientsPerMessage: number;
+  /** Recipients reachable right now without waiting: remaining x batch size. */
+  reachableNow: number;
+  /** Recipients reachable in a fresh hour: per-hour x batch size. */
+  reachablePerHour: number;
+  /** When throttled capacity next frees up. */
+  resetsAt: string | null;
+  /** False until the rate-governor migration has been applied. */
+  ledgerReady: boolean;
+}
+
+export async function loadSendingCapacity(): Promise<SendingCapacity> {
+  await platformAdmin();
+  const budget = await readBudget();
+  const perMessage = maxRecipientsPerMessage();
+  return {
+    messagesPerHour: budget.perHour,
+    messagesUsed: budget.used,
+    messagesRemaining: budget.remaining,
+    recipientsPerMessage: perMessage,
+    reachableNow: budget.remaining * perMessage,
+    reachablePerHour: budget.perHour * perMessage,
+    resetsAt: budget.resetsAt,
+    ledgerReady: budget.ledgerReady,
+  };
+}
+
+/**
+ * How this exact draft would be delivered - the composer shows it before the
+ * send so "389 recipients" is never a surprise about what happens next.
+ */
+export async function estimateCampaign(
+  recipientCount: number,
+  subject: string,
+  body: string,
+): Promise<{
+  mode: DeliveryMode;
+  messages: number;
+  fitsInCurrentWindow: boolean;
+  capacity: SendingCapacity;
+}> {
+  const capacity = await loadSendingCapacity();
+  const mode: DeliveryMode = usesPlaceholders(subject, body) ? "individual" : "bcc";
+  const perMessage = mode === "bcc" ? capacity.recipientsPerMessage : 1;
+  const messages = messagesNeeded(recipientCount, perMessage);
+  return {
+    mode,
+    messages,
+    fitsInCurrentWindow: messages <= capacity.messagesRemaining,
+    capacity,
+  };
 }
 
 /** Every account that could receive mail, with what the composer filters on. */
@@ -149,6 +216,11 @@ export interface SentEmailSummary {
   recipientCount: number;
   sentCount: number;
   failedCount: number;
+  /** Recipients still queued because the hourly budget ran out. */
+  pendingCount: number;
+  /** SMTP transactions used - lower than the recipient count in bcc mode. */
+  messageCount: number;
+  deliveryMode: string;
   fromAddress: string;
   sentByEmail: string | null;
   createdAt: string;
@@ -201,6 +273,9 @@ export async function listSentEmails(limit = 20): Promise<SentEmailSummary[]> {
     subject: m.subject,
     audience: m.audience,
     recipientCount: m.recipient_count,
+    pendingCount: m.pending_count ?? 0,
+    messageCount: m.message_count ?? 0,
+    deliveryMode: m.delivery_mode ?? "individual",
     sentCount: m.sent_count,
     failedCount: m.failed_count,
     fromAddress: m.from_address,
@@ -339,7 +414,18 @@ export async function sendAdminEmailAction(
     const fromAddress = emailSenderAddress() ?? "";
     const admin = createAdminSupabase();
 
+    // Bcc batching is the only way a few hundred recipients fit inside the
+    // mailbox's hourly message limit, so it is the default - but it sends one
+    // body to a whole batch, which makes per-recipient substitution
+    // impossible. A message that uses {{name}} therefore has to go one at a
+    // time, and pays for it in throughput. The composer says which mode a
+    // draft will use before it is sent.
+    const mode: DeliveryMode = usesPlaceholders(composed.subject, composed.body)
+      ? "individual"
+      : "bcc";
+
     // Recorded before the first message goes out - see the note at the top.
+    // Everything starts pending; delivery below moves rows out of that state.
     const { data: message, error: insertError } = await admin
       .from("admin_email_messages")
       .insert({
@@ -350,38 +436,27 @@ export async function sendAdminEmailAction(
         reply_to: composed.replyTo,
         audience,
         recipient_count: recipients.length,
+        pending_count: recipients.length,
+        delivery_mode: mode,
+        status: "partial",
         sent_by: ctx.user.id,
       })
       .select("id")
       .single();
     if (insertError) return fail(insertError.message);
 
-    const outcomes = await sendBulkMail(recipients, {
-      subject: composed.subject,
-      text: composed.format === "html" ? htmlToText(composed.body) : composed.body,
-      html: composed.format === "html" ? composed.body : undefined,
-      // Defaults to the sending mailbox so a recipient replying to a
-      // broadcast reaches a mailbox someone actually reads.
-      replyTo: composed.replyTo ?? (fromAddress || undefined),
-      fromName: FROM_NAME,
-    });
-
-    const sent = outcomes.filter((o) => o.ok).length;
-    const failed = outcomes.length - sent;
-
-    await admin.from("admin_email_recipients").insert(
-      outcomes.map((o) => ({
+    const { error: recipientError } = await admin.from("admin_email_recipients").insert(
+      recipients.map((r) => ({
         message_id: message.id,
-        email: o.email,
-        user_id: o.userId ?? null,
-        ok: o.ok,
-        error: o.error ?? null,
+        email: r.email,
+        user_id: r.userId ?? null,
+        display_name: r.name ?? null,
+        status: "pending",
       })),
     );
-    await admin
-      .from("admin_email_messages")
-      .update({ sent_count: sent, failed_count: failed })
-      .eq("id", message.id);
+    if (recipientError) return fail(recipientError.message);
+
+    const result = await dispatchMessage(message.id);
 
     await logAudit({
       labId: null,
@@ -393,29 +468,100 @@ export async function sendAdminEmailAction(
         subject: composed.subject,
         audience,
         recipients: recipients.length,
-        sent,
-        failed,
+        delivery_mode: result.deliveryMode,
+        messages: result.messages,
+        sent: result.sent,
+        failed: result.failed,
+        pending: result.pending,
+        rate_limited: result.rateLimited,
+      },
+    });
+
+    revalidatePath("/admin/email");
+    return summarize(recipients.length, result);
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "メールを送信できませんでした。");
+  }
+}
+
+/** Turns a dispatch outcome into the one sentence the administrator sees. */
+function summarize(requested: number, result: DispatchResult): ActionResult {
+  const resumeNote = result.resetsAt
+    ? `送信上限に達したため、残り ${result.pending} 件は待機中です。` +
+      `${new Date(result.resetsAt).toLocaleTimeString("ja-JP")} 以降に「残りを送信」で続けられます。`
+    : result.pending > 0
+      ? `残り ${result.pending} 件は待機中です。「残りを送信」で続けられます。`
+      : "";
+
+  if (result.pending === 0 && result.failed === 0) {
+    return done(
+      requested === 1
+        ? "メールを送信しました。"
+        : `${result.sent} 件すべてに送信しました（${result.messages} 通に分割）。`,
+    );
+  }
+  if (result.sent === 0 && result.failed === 0 && result.pending > 0) {
+    return fail(
+      `送信上限に達しているため、まだ送信できていません。${resumeNote}`,
+    );
+  }
+  if (result.failed === 0) {
+    return done(`${result.sent} 件に送信しました。${resumeNote}`);
+  }
+  return fail(
+    `${result.sent} 件に送信し、${result.failed} 件は失敗しました。${resumeNote}` +
+      "失敗した宛先は下の送信履歴で確認できます。",
+  );
+}
+
+/**
+ * Continues a campaign whose recipients did not all fit in the hour it was
+ * started in.
+ *
+ * Separate from starting one, and deliberately re-entrant: it reads only
+ * rows still marked pending, so clicking it twice cannot double-send.
+ */
+export async function resumeAdminEmailAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  try {
+    const ctx = await platformAdmin();
+    const messageId = String(formData.get("message_id") ?? "");
+    if (!messageId) return fail("送信レコードが指定されていません。");
+
+    if (!isEmailConfigured()) {
+      return fail("SMTPが設定されていません。");
+    }
+
+    const result = await dispatchMessage(messageId);
+
+    await logAudit({
+      labId: null,
+      userId: ctx.user.id,
+      action: "email.resumed",
+      entity: "admin_email_message",
+      entityId: messageId,
+      detail: {
+        messages: result.messages,
+        sent: result.sent,
+        failed: result.failed,
+        pending: result.pending,
+        rate_limited: result.rateLimited,
       },
     });
 
     revalidatePath("/admin/email");
 
-    if (failed === 0) {
-      return done(
-        recipients.length === 1
-          ? `${recipients[0].email} にメールを送信しました。`
-          : `${sent} 件のメールを送信しました。`,
-      );
+    if (result.sent === 0 && result.pending > 0) {
+      const when = result.resetsAt
+        ? `${new Date(result.resetsAt).toLocaleTimeString("ja-JP")} 以降に再度お試しください。`
+        : "しばらく待ってから再度お試しください。";
+      return fail(`まだ送信上限に達しています（残り ${result.pending} 件）。${when}`);
     }
-    if (sent === 0) {
-      const first = outcomes.find((o) => !o.ok)?.error ?? "";
-      return fail(`送信できませんでした（${failed} 件失敗）。${first}`);
-    }
-    return fail(
-      `${sent} 件を送信しましたが、${failed} 件は送信できませんでした。下の送信履歴で失敗した宛先を確認してください。`,
-    );
+    return summarize(result.sent + result.failed + result.pending, result);
   } catch (e) {
-    return fail(e instanceof Error ? e.message : "メールを送信できませんでした。");
+    return fail(e instanceof Error ? e.message : "残りを送信できませんでした。");
   }
 }
 
@@ -439,16 +585,31 @@ async function sendTest(
   const fromAddress = emailSenderAddress() ?? "";
 
   // Prefixed so a test can never be mistaken for the real broadcast in the
-  // administrator's own inbox. Placeholders in the subject are substituted by
-  // sendBulkMail like any other send - the prefix sits outside that.
-  const [outcome] = await sendBulkMail([self], {
-    subject: `[テスト送信] ${composed.subject}`,
-    text: composed.format === "html" ? htmlToText(composed.body) : composed.body,
-    html: composed.format === "html" ? composed.body : undefined,
-    replyTo: composed.replyTo ?? (fromAddress || undefined),
-    fromName: FROM_NAME,
-  });
+  // administrator's own inbox. Sent in individual mode so `{{name}}` is
+  // substituted, which is half of what a test is for. It still costs one
+  // message against the hourly budget, so it is logged like any other.
+  const outcome = await sendTransaction(
+    [self],
+    {
+      subject: `[テスト送信] ${composed.subject}`,
+      text: composed.format === "html" ? htmlToText(composed.body) : composed.body,
+      html: composed.format === "html" ? composed.body : undefined,
+      replyTo: composed.replyTo ?? (fromAddress || undefined),
+      fromName: FROM_NAME,
+    },
+    "individual",
+  );
 
-  if (!outcome.ok) return fail(`テスト送信に失敗しました: ${outcome.error ?? ""}`);
+  await createAdminSupabase().from("admin_email_rate_log").insert({ recipients: 1 });
+
+  if (!outcome.ok) {
+    if (isRateLimitError(outcome.error)) {
+      return fail(
+        "送信上限に達しているため、テスト送信できません。" +
+          "1時間あたりの送信可能数を超えています。時間をおいてお試しください。",
+      );
+    }
+    return fail(`テスト送信に失敗しました: ${outcome.error}`);
+  }
   return done(`${email} にテストメールを送信しました。本文と差し込みを確認してください。`);
 }

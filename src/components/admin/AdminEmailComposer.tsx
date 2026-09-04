@@ -5,7 +5,8 @@ import { useFormStatus } from "react-dom";
 import { Badge, Button, Callout, Card, Field, Select, TextArea, TextInput } from "@/components/ui";
 import { useToast } from "@/components/shell/Toast";
 import { sendAdminEmailAction } from "@/lib/email/adminActions";
-import type { EmailAudienceUser } from "@/lib/email/adminActions";
+import type { EmailAudienceUser, SendingCapacity } from "@/lib/email/adminActions";
+import { messagesNeeded } from "@/lib/email/limits";
 // The same splitting and validation the action uses, so the count shown on
 // the button is the count that will actually be sent.
 import { EMAIL_RE, parseAddressList } from "@/lib/email/compose";
@@ -29,11 +30,12 @@ interface ActionResult {
  * sendAdminEmailAction), so this component decides *who*, never *where*.
  */
 export function AdminEmailComposer({
-  users, labs, sender,
+  users, labs, sender, capacity,
 }: {
   users: EmailAudienceUser[];
   labs: string[];
   sender: string | null;
+  capacity: SendingCapacity;
 }) {
   const [state, formAction] = useActionState<ActionResult | null, FormData>(
     sendAdminEmailAction,
@@ -51,6 +53,12 @@ export function AdminEmailComposer({
   const [manualList, setManualList] = useState<string[]>([]);
   const [draft, setDraft] = useState("");
   const [format, setFormat] = useState<"text" | "html">("text");
+  // Controlled so the delivery plan below can react to what is actually
+  // written: whether the draft needs per-recipient substitution decides
+  // whether it can be batched, which decides how many people it reaches
+  // inside the mailbox's hourly limit.
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -99,6 +107,15 @@ export function AdminEmailComposer({
   );
   const total = selectedEmails.size + manualAddresses.filter((a) => !selectedEmails.has(a)).length;
 
+  // A draft using {{name}} cannot be batched: one Bcc message carries one
+  // body, so a personalised send costs one message per person and reaches far
+  // fewer people per hour. Worth showing before the send, not after.
+  const personalized = /\{\{\s*(name|email)\s*\}\}/.test(`${subject}\n${body}`);
+  const plannedMessages = messagesNeeded(
+    total,
+    personalized ? 1 : capacity.recipientsPerMessage,
+  );
+
   const toggle = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -138,7 +155,16 @@ export function AdminEmailComposer({
           );
           return;
         }
-        if (!window.confirm(`${total} 件の宛先にメールを送信します。よろしいですか？`)) {
+        const overflow = plannedMessages > capacity.messagesRemaining;
+        const detail = overflow
+          ? `\n\n1時間の送信上限（残り ${capacity.messagesRemaining} 通）を超えるため、` +
+            "送れない分は待機列に入り、後から「残りを送信」で続行できます。"
+          : "";
+        if (
+          !window.confirm(
+            `${total} 件の宛先に ${plannedMessages} 通として送信します。よろしいですか？${detail}`,
+          )
+        ) {
           e.preventDefault();
         }
       }}
@@ -343,6 +369,8 @@ export function AdminEmailComposer({
                 name="subject"
                 required
                 maxLength={200}
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
                 placeholder="【LABNOTE】メンテナンスのお知らせ"
               />
             </Field>
@@ -382,14 +410,18 @@ export function AdminEmailComposer({
               required
               maxLength={20000}
               rows={12}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
               placeholder={"{{name}} 様\n\nいつもLABNOTEをご利用いただきありがとうございます。"}
             />
           </Field>
 
-          <Callout tone="info">
-            宛先ごとに1通ずつ送信されるため、受信者に他の宛先が見えることはありません。
-            1回の送信は最大500件までです。
-          </Callout>
+          <DeliveryPlan
+            total={total}
+            personalized={personalized}
+            messages={plannedMessages}
+            capacity={capacity}
+          />
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             {/* Spelled out rather than left as one number: the two ways of
@@ -415,6 +447,75 @@ export function AdminEmailComposer({
         </div>
       </Card>
     </form>
+  );
+}
+
+/**
+ * What this draft will actually do to the mailbox when sent.
+ *
+ * This panel exists because of a real incident: a 389-recipient send
+ * delivered 20 and collected 369 rejections, because the provider allows a
+ * fixed number of *messages* per hour and the send was one message per
+ * recipient. Batching into Bcc groups fixed the throughput, but the number
+ * that matters - messages, not recipients - is invisible unless it is shown.
+ */
+function DeliveryPlan({
+  total, personalized, messages, capacity,
+}: {
+  total: number;
+  personalized: boolean;
+  messages: number;
+  capacity: SendingCapacity;
+}) {
+  if (total === 0) {
+    return (
+      <Callout tone="info">
+        宛先ごとの内容差し込み（{"{{name}}"}）を使わない場合、最大{" "}
+        {capacity.recipientsPerMessage} 件をBCCで1通にまとめて送信します。
+        受信者に他の宛先は見えません。1時間あたり {capacity.messagesPerHour} 通まで送信でき、
+        これは約 {capacity.reachablePerHour.toLocaleString("ja-JP")} 宛先に相当します。
+      </Callout>
+    );
+  }
+
+  const fits = messages <= capacity.messagesRemaining;
+  const deliverableNow = fits
+    ? total
+    : Math.max(0, capacity.messagesRemaining) * (personalized ? 1 : capacity.recipientsPerMessage);
+
+  return (
+    <Callout
+      tone={fits ? "good" : "warn"}
+      title={
+        fits
+          ? `${total.toLocaleString("ja-JP")} 件を ${messages} 通で送信します`
+          : `${total.toLocaleString("ja-JP")} 件のうち、今すぐ送信できるのは約 ${deliverableNow.toLocaleString("ja-JP")} 件です`
+      }
+    >
+      {personalized ? (
+        <>
+          本文に {"{{name}}"} などの差し込みがあるため、
+          <strong>宛先ごとに1通ずつ</strong>送信します（{total} 通）。
+          差し込みをやめると最大 {capacity.recipientsPerMessage} 件を1通にまとめられ、
+          一度に送れる件数が大幅に増えます。
+        </>
+      ) : (
+        <>
+          最大 {capacity.recipientsPerMessage} 件ずつBCCでまとめ、{messages} 通として送信します。
+          受信者に他の宛先は見えません。
+        </>
+      )}
+      <br />
+      1時間の送信上限は {capacity.messagesPerHour} 通で、残り{" "}
+      {capacity.messagesRemaining} 通です。
+      {!fits && (
+        <>
+          {" "}
+          上限を超える分は<strong>待機列に入り、送信履歴の「残りを送信」で続行</strong>できます。
+          エラーにはなりません。
+        </>
+      )}
+    </Callout>
   );
 }
 

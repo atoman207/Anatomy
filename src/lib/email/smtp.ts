@@ -88,10 +88,15 @@ function getTransporter(cfg: SmtpConfig): Transporter {
     secure: cfg.secure,
     auth: { user: cfg.user, pass: cfg.password },
     pool: true,
-    maxConnections: 3,
+    // One connection, one message per second. The binding constraint is the
+    // provider's *hourly* ceiling, enforced in campaign.ts against the rate
+    // log; this is just the last line of defence against a burst. It used to
+    // be 3 connections at 5/second - nearly 18,000 messages an hour, which
+    // is two orders of magnitude past what the mailbox permits.
+    maxConnections: 1,
     maxMessages: 100,
     rateDelta: 1000,
-    rateLimit: 5,
+    rateLimit: 1,
   });
   cachedForUser = cfg.user;
   return cachedTransporter;
@@ -186,62 +191,92 @@ export function renderTemplate(template: string, recipient: BulkRecipient): stri
 }
 
 /**
- * Sends one message per recipient, and reports each outcome separately.
+ * Sends exactly one SMTP transaction, to one recipient or to a batch.
  *
- * One message each rather than one message with many addresses in To (or
- * Bcc), for three reasons: nobody learns who else uses the deployment, one
- * bad address cannot take the whole broadcast down with it, and `{{name}}`
- * can be substituted per person. The cost is an SMTP transaction per
- * recipient, which is what the connection pool above is for.
+ * One transaction is the unit the provider's hourly limit counts, so it is
+ * also the unit this function exposes: the caller (src/lib/email/campaign.ts)
+ * owns how many of these it is allowed to start, and this owns what one of
+ * them looks like on the wire. Splitting it that way is what lets the budget
+ * be enforced against the database rather than hoped for.
  *
- * Sends run a few at a time. Fully sequential is needlessly slow for a few
- * hundred recipients; fully parallel would open a connection per recipient
- * and trip the provider's rate limit.
+ * In "bcc" mode every address goes in Bcc and the To header is the sending
+ * mailbox itself, so recipients still cannot see one another - Bcc is not
+ * disclosed to other recipients - while 45 people cost one message instead
+ * of 45. Placeholders cannot be substituted in that mode, because there is
+ * one body for the whole batch; `campaign.ts` refuses bcc mode when the
+ * message uses `{{name}}` for exactly that reason.
  */
-export async function sendBulkMail(
+export interface TransactionMessage {
+  subject: string;
+  text: string;
+  html?: string;
+  replyTo?: string;
+  fromName?: string;
+  /**
+   * Address for a `List-Unsubscribe` header. Bulk mail without one is
+   * treated as less trustworthy by receiving providers, and Namecheap
+   * requires mass mailings to be opt-in, which implies a way out.
+   */
+  unsubscribeMailto?: string;
+}
+
+export type DeliveryMode = "individual" | "bcc";
+
+export type TransactionResult =
+  | { ok: true; recipients: number }
+  | { ok: false; recipients: number; error: string };
+
+export async function sendTransaction(
   recipients: readonly BulkRecipient[],
-  message: BulkMessage,
-  concurrency = 3,
-): Promise<BulkOutcome[]> {
+  message: TransactionMessage,
+  mode: DeliveryMode,
+): Promise<TransactionResult> {
   const cfg = readConfig();
-  if (!cfg) {
-    return recipients.map((r) => ({ ...r, ok: false, error: NOT_CONFIGURED }));
-  }
+  if (!cfg) return { ok: false, recipients: recipients.length, error: NOT_CONFIGURED };
+  if (recipients.length === 0) return { ok: true, recipients: 0 };
 
   const transporter = getTransporter(cfg);
   const from = formatFrom(cfg.from, message.fromName);
-  const outcomes: BulkOutcome[] = new Array(recipients.length);
+  const headers = message.unsubscribeMailto
+    ? { "List-Unsubscribe": `<mailto:${message.unsubscribeMailto}>` }
+    : undefined;
 
-  // A shared cursor rather than fixed slices: one slow recipient must not
-  // hold up every message queued behind it.
-  let cursor = 0;
-  const worker = async () => {
-    for (;;) {
-      const index = cursor++;
-      if (index >= recipients.length) return;
-      const recipient = recipients[index];
-      try {
-        await transporter.sendMail({
-          from,
-          to: recipient.email,
-          replyTo: message.replyTo,
-          subject: renderTemplate(message.subject, recipient),
-          text: renderTemplate(message.text, recipient),
-          html: message.html ? renderTemplate(message.html, recipient) : undefined,
-        });
-        outcomes[index] = { ...recipient, ok: true };
-      } catch (e) {
-        outcomes[index] = {
-          ...recipient,
-          ok: false,
-          error: e instanceof Error ? e.message : "送信に失敗しました。",
-        };
-      }
+  try {
+    if (mode === "bcc") {
+      await transporter.sendMail({
+        from,
+        // The mailbox addresses itself; the audience rides in Bcc.
+        to: cfg.from,
+        bcc: recipients.map((r) => r.email),
+        replyTo: message.replyTo,
+        subject: message.subject,
+        text: message.text,
+        html: message.html,
+        headers,
+      });
+    } else {
+      const recipient = recipients[0];
+      await transporter.sendMail({
+        from,
+        to: recipient.email,
+        replyTo: message.replyTo,
+        subject: renderTemplate(message.subject, recipient),
+        text: renderTemplate(message.text, recipient),
+        html: message.html ? renderTemplate(message.html, recipient) : undefined,
+        headers,
+      });
     }
-  };
+    return { ok: true, recipients: recipients.length };
+  } catch (e) {
+    return {
+      ok: false,
+      recipients: recipients.length,
+      error: e instanceof Error ? e.message : "送信に失敗しました。",
+    };
+  }
+}
 
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, recipients.length) }, worker),
-  );
-  return outcomes;
+/** True when the subject or body needs per-recipient substitution. */
+export function usesPlaceholders(...templates: (string | undefined)[]): boolean {
+  return templates.some((t) => !!t && /\{\{\s*(name|email)\s*\}\}/.test(t));
 }

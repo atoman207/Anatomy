@@ -416,6 +416,14 @@ export type AdminEmailMessageRow = {
   recipient_count: number;
   sent_count: number;
   failed_count: number;
+  /** Recipients not yet attempted - non-zero when the hourly budget ran out. */
+  pending_count: number;
+  /** SMTP transactions used so far (one per recipient, or one per Bcc batch). */
+  message_count: number;
+  /** "individual" or "bcc" - see src/lib/email/limits.ts. */
+  delivery_mode: string;
+  /** "complete" once nothing is pending, otherwise "partial". */
+  status: string;
   sent_by: string | null;
   created_at: string;
 }
@@ -427,7 +435,21 @@ export type AdminEmailRecipientRow = {
   user_id: string | null;
   ok: boolean;
   error: string | null;
+  /** "pending" | "sent" | "failed" - what resuming a campaign reads. */
+  status: string;
+  attempts: number;
+  sent_at: string | null;
+  /** Display name captured when queued, for {{name}} at delivery time. */
+  display_name: string | null;
   created_at: string;
+}
+
+/** One row per SMTP transaction, for the trailing-hour rate budget. */
+export type AdminEmailRateLogRow = {
+  id: string;
+  message_id: string | null;
+  recipients: number;
+  sent_at: string;
 }
 
 export type ChannelRow = {
@@ -584,11 +606,19 @@ export type Database = {
           | "recipient_count"
           | "sent_count"
           | "failed_count"
+          | "pending_count"
+          | "message_count"
+          | "delivery_mode"
+          | "status"
         >
       >;
       admin_email_recipients: TableDef<
         AdminEmailRecipientRow,
-        Insert<AdminEmailRecipientRow, "ok">
+        Insert<AdminEmailRecipientRow, "ok" | "status" | "attempts">
+      >;
+      admin_email_rate_log: TableDef<
+        AdminEmailRateLogRow,
+        Insert<AdminEmailRateLogRow, "recipients" | "sent_at">
       >;
     };
     Views: Record<string, never>;
