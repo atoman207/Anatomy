@@ -31,11 +31,16 @@ import "server-only";
  *   - The budget is counted in the database (`admin_email_rate_log`), not in
  *     process memory, so a restart or a second instance cannot hand itself a
  *     fresh allowance the provider will not honour.
+ *
+ * Both of those tables came in a later migration section, so everything here
+ * also works without them - see `EmailSchema` and `sendCampaignDirect`. The
+ * degraded path gives up resumability, not safety: batching and stopping on
+ * the first throttle rejection do not depend on any schema.
  */
 
 import { createAdminSupabase } from "@/lib/supabase/server";
 import {
-  chunk, isRateLimitError, isTransientError, maxMessagesPerHour,
+  chunk, isRateLimitError, isTransientError, maxMessagesPerHour, maxRecipientsPerHour,
   maxRecipientsPerMessage,
 } from "@/lib/email/limits";
 import { htmlToText } from "@/lib/email/compose";
@@ -67,6 +72,67 @@ const MAX_RUN_MS = 120_000;
 /** Pause between transactions, so a burst never looks like an attack. */
 const GAP_MS = 250;
 
+/**
+ * Which parts of the delivery schema this database actually has.
+ *
+ * The rate ledger and the per-recipient `status` column arrived in a later
+ * migration section, and a deployment can be running this code before that
+ * SQL has been pasted in. Rather than refusing to send until it is - which
+ * takes the whole feature offline over an optional upgrade - the two
+ * capabilities are probed and the sender degrades:
+ *
+ *   - with `queue`: recipients are queued and a campaign resumes across
+ *     hours, which is the full behaviour.
+ *   - without it: the campaign is capped to what this hour can carry and
+ *     sent immediately, and the administrator is told how many were held
+ *     back. Batching and the stop-on-throttle rule still apply, so the
+ *     mass-rejection failure cannot recur either way.
+ */
+export interface EmailSchema {
+  /** `admin_email_rate_log` exists - the budget can be counted exactly. */
+  rateLog: boolean;
+  /** `admin_email_recipients.status` exists - campaigns can be resumed. */
+  queue: boolean;
+}
+
+export async function readEmailSchema(): Promise<EmailSchema> {
+  const admin = createAdminSupabase();
+  // Deliberately NOT `head: true`. PostgREST answers a head request with
+  // 204 No Content even when the relation does not exist, so supabase-js
+  // reports no error and a missing table probes as present. Asking for one
+  // real row costs nothing and returns the actual PGRST205 / 42703.
+  const [rateLog, queue] = await Promise.all([
+    admin.from("admin_email_rate_log").select("id").limit(1),
+    admin.from("admin_email_recipients").select("status").limit(1),
+  ]);
+  return { rateLog: !rateLog.error, queue: !queue.error };
+}
+
+/**
+ * Best-effort trailing-hour record for deployments with no rate ledger.
+ *
+ * Process-local, so it is lost on restart and not shared between instances -
+ * which is exactly why the ledger exists. It is still worth keeping: within
+ * one process it stops a second campaign from walking into the limit the
+ * first one just reached. The hard guarantee comes from stopping on the
+ * first throttle rejection, which needs no bookkeeping at all.
+ */
+const inMemorySends: { at: number; recipients: number }[] = [];
+
+function recordInMemory(recipients: number): void {
+  inMemorySends.push({ at: Date.now(), recipients });
+}
+
+function countInMemory(): { messages: number; recipients: number; oldest: number | null } {
+  const cutoff = Date.now() - 60 * 60 * 1000;
+  while (inMemorySends.length > 0 && inMemorySends[0].at < cutoff) inMemorySends.shift();
+  return {
+    messages: inMemorySends.length,
+    recipients: inMemorySends.reduce((sum, s) => sum + s.recipients, 0),
+    oldest: inMemorySends[0]?.at ?? null,
+  };
+}
+
 export interface RateBudget {
   /** Transactions allowed per trailing hour (the plan's limit). */
   perHour: number;
@@ -74,17 +140,22 @@ export interface RateBudget {
   used: number;
   /** Transactions still available right now. */
   remaining: number;
+  /** Addresses allowed per trailing hour - the second, independent ceiling. */
+  recipientsPerHour: number;
+  /** Addresses already reached inside the current window. */
+  recipientsUsed: number;
+  /** Addresses still reachable right now. */
+  recipientsRemaining: number;
   /**
    * When the oldest in-window transaction ages out, freeing capacity again.
    * Null when nothing has been sent in the last hour.
    */
   resetsAt: string | null;
   /**
-   * False when `admin_email_rate_log` is not there yet - the migration has
-   * not been applied. Reported rather than swallowed: with no ledger the
-   * budget cannot be enforced, and sending anyway is precisely the mistake
-   * that earned 369 rejections. The caller shows a "run the migration"
-   * message instead of a misleading "you are rate limited".
+   * False when `admin_email_rate_log` is not there yet, so `used` came from
+   * the process-local record instead. Reported so the UI can say the budget
+   * is only approximate and recommend applying the migration, rather than
+   * quietly presenting a number that resets whenever the server does.
    */
   ledgerReady: boolean;
 }
@@ -98,31 +169,66 @@ export interface RateBudget {
  */
 export async function readBudget(): Promise<RateBudget> {
   const perHour = maxMessagesPerHour();
+  const recipientsPerHour = maxRecipientsPerHour();
   const admin = createAdminSupabase();
   const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
   const { data, error } = await admin
     .from("admin_email_rate_log")
-    .select("sent_at")
+    .select("sent_at, recipients")
     .gte("sent_at", since)
     .order("sent_at", { ascending: true });
 
-  // A missing table (migration not applied yet) must not claim a full
-  // allowance - that is the failure mode this whole module exists to avoid.
+  // No ledger yet: fall back to the process-local record rather than
+  // reporting zero capacity, which would look like a permanent throttle and
+  // take sending offline over a migration that has not been pasted in.
   if (error) {
-    return { perHour, used: perHour, remaining: 0, resetsAt: null, ledgerReady: false };
+    const local = countInMemory();
+    return {
+      perHour,
+      used: local.messages,
+      remaining: Math.max(0, perHour - local.messages),
+      recipientsPerHour,
+      recipientsUsed: local.recipients,
+      recipientsRemaining: Math.max(0, recipientsPerHour - local.recipients),
+      resetsAt: local.oldest
+        ? new Date(local.oldest + 60 * 60 * 1000).toISOString()
+        : null,
+      ledgerReady: false,
+    };
   }
 
   const rows = data ?? [];
   const used = rows.length;
+  const recipientsUsed = rows.reduce((sum, r) => sum + (r.recipients ?? 1), 0);
   const oldest = rows[0]?.sent_at ?? null;
   return {
     perHour,
     used,
     remaining: Math.max(0, perHour - used),
+    recipientsPerHour,
+    recipientsUsed,
+    recipientsRemaining: Math.max(0, recipientsPerHour - recipientsUsed),
     resetsAt: oldest ? new Date(new Date(oldest).getTime() + 60 * 60 * 1000).toISOString() : null,
     ledgerReady: true,
   };
+}
+
+/**
+ * Notes one SMTP transaction against the hourly budget.
+ *
+ * Always updates the process-local record, and additionally the durable
+ * ledger when the table is there. Never throws: losing a budget entry must
+ * not abort a send that already happened, and the throttle-detection path is
+ * what actually protects the mailbox.
+ */
+async function recordTransaction(recipients: number, messageId?: string): Promise<void> {
+  recordInMemory(recipients);
+  // Returns `{ error }` rather than throwing, so a missing ledger table is
+  // simply an error to ignore: the in-memory record above stands in for it.
+  await createAdminSupabase()
+    .from("admin_email_rate_log")
+    .insert({ message_id: messageId ?? null, recipients });
 }
 
 export interface DispatchResult {
@@ -204,9 +310,14 @@ export async function dispatchMessage(messageId: string): Promise<DispatchResult
   let messages = 0;
   let rateLimited = false;
   let usedBudget = budget.used;
+  let usedRecipients = budget.recipientsUsed;
 
   for (const batch of batches) {
     if (usedBudget >= budget.perHour) break;
+    // The recipient ceiling binds independently of the message ceiling: a
+    // batched campaign spends few messages but many addresses, so checking
+    // only the message count would sail past it.
+    if (usedRecipients + batch.length > budget.recipientsPerHour) break;
     if (Date.now() - startedAt > MAX_RUN_MS) break;
     if (messages > 0 && GAP_MS > 0) {
       await new Promise((resolve) => setTimeout(resolve, GAP_MS));
@@ -215,13 +326,12 @@ export async function dispatchMessage(messageId: string): Promise<DispatchResult
     const result = await sendTransaction(batch.map((b) => b.recipient), payload, mode);
     messages++;
     usedBudget++;
+    usedRecipients += batch.length;
 
     // Logged whether or not it succeeded: a rejected attempt still counted
     // against the mailbox as far as the provider is concerned, and treating
     // it as free is how a throttled sender keeps digging.
-    await admin
-      .from("admin_email_rate_log")
-      .insert({ message_id: messageId, recipients: batch.length });
+    await recordTransaction(batch.length, messageId);
 
     if (result.ok) {
       sent += batch.length;
@@ -335,4 +445,102 @@ export async function listPendingCampaigns(limit = 20): Promise<
     pending: m.pending_count,
     createdAt: m.created_at,
   }));
+}
+
+/* ------------------------------------------------------------------ */
+/* Delivery without the queue columns                                  */
+/* ------------------------------------------------------------------ */
+
+export interface DirectSendResult {
+  sent: number;
+  failed: number;
+  /** Recipients deliberately not attempted, because the hour cannot carry them. */
+  deferred: number;
+  messages: number;
+  rateLimited: boolean;
+  resetsAt: string | null;
+  deliveryMode: DeliveryMode;
+  /** Per-recipient outcome for the rows the caller has to write. */
+  outcomes: { recipient: BulkRecipient; ok: boolean; error: string | null }[];
+}
+
+/**
+ * Sends a campaign immediately, without relying on the queue columns.
+ *
+ * Used when `admin_email_recipients.status` does not exist yet. The
+ * difference from `dispatchMessage` is only what happens to the overflow:
+ * with no place to record "pending", recipients beyond this hour's capacity
+ * are **not attempted at all** and reported back as deferred, rather than
+ * being sent into a limit that would reject them. The administrator re-sends
+ * those once capacity returns.
+ *
+ * Everything that prevents the original failure still applies here: Bcc
+ * batching, the hourly cap, and stopping dead on the first throttle
+ * rejection instead of attempting the rest.
+ */
+export async function sendCampaignDirect(
+  recipients: readonly BulkRecipient[],
+  payload: TransactionMessage,
+  mode: DeliveryMode,
+): Promise<DirectSendResult> {
+  const perMessage = mode === "bcc" ? maxRecipientsPerMessage() : 1;
+  const budget = await readBudget();
+
+  // Only as many recipients as the hour can carry, under whichever of the
+  // two ceilings binds first. Trimming up front is what keeps every recorded
+  // row honest: each one was really attempted, and the rest are reported as
+  // untouched rather than failed.
+  const capacity = Math.min(
+    Math.max(0, budget.remaining) * perMessage,
+    Math.max(0, budget.recipientsRemaining),
+  );
+  const attempted = recipients.slice(0, capacity);
+
+  const outcomes: DirectSendResult["outcomes"] = [];
+  const batches = chunk(attempted, perMessage);
+  const startedAt = Date.now();
+  let sent = 0;
+  let failed = 0;
+  let messages = 0;
+  let rateLimited = false;
+
+  for (const batch of batches) {
+    if (Date.now() - startedAt > MAX_RUN_MS) {
+      // Out of time rather than out of allowance: the untried remainder is
+      // deferred, not failed, for the same reason as above.
+      break;
+    }
+    if (messages > 0) await new Promise((r) => setTimeout(r, GAP_MS));
+
+    const result = await sendTransaction(batch, payload, mode);
+    messages++;
+    await recordTransaction(batch.length);
+
+    if (result.ok) {
+      sent += batch.length;
+      for (const recipient of batch) outcomes.push({ recipient, ok: true, error: null });
+      continue;
+    }
+    if (isRateLimitError(result.error)) {
+      rateLimited = true;
+      break;
+    }
+    failed += batch.length;
+    for (const recipient of batch) {
+      outcomes.push({ recipient, ok: false, error: result.error });
+    }
+  }
+
+  const after = await readBudget();
+  const untried = recipients.length - sent - failed;
+  return {
+    sent,
+    failed,
+    deferred: untried,
+    messages,
+    rateLimited,
+    resetsAt: untried > 0 ? after.resetsAt : null,
+    deliveryMode: mode,
+    outcomes,
+  };
 }

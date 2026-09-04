@@ -6,7 +6,9 @@ import { renderTemplate, usesPlaceholders } from "../src/lib/email/smtp";
 import {
   chunk, isRateLimitError, isTransientError, maxMessagesPerHour,
   maxRecipientsPerMessage, messagesNeeded,
-  DEFAULT_MAX_MESSAGES_PER_HOUR, PROVIDER_MAX_RECIPIENTS_PER_MESSAGE,
+  maxRecipientsPerHour,
+  DEFAULT_MAX_MESSAGES_PER_HOUR, DEFAULT_MAX_RECIPIENTS_PER_HOUR,
+  PROVIDER_MAX_RECIPIENTS_PER_MESSAGE,
 } from "../src/lib/email/limits";
 
 /**
@@ -243,4 +245,29 @@ test("a draft using placeholders cannot be batched", () => {
   assert.equal(usesPlaceholders(undefined, undefined), false);
   // A lone brace pair is not a placeholder.
   assert.equal(usesPlaceholders("{name}", "{{other}}"), false);
+});
+
+test("the per-hour recipient ceiling is independent of the message ceiling", () => {
+  // Namecheap does not document whether a 45-address Bcc message counts as
+  // one email or 45, so a second ceiling on addresses guards the ambiguous
+  // case. 500 is safe under either reading.
+  assert.equal(maxRecipientsPerHour({}), DEFAULT_MAX_RECIPIENTS_PER_HOUR);
+  assert.equal(maxRecipientsPerHour({ SMTP_MAX_RECIPIENTS_PER_HOUR: "5000" }), 5000);
+  for (const bad of ["", "0", "-1", "nonsense"]) {
+    assert.equal(
+      maxRecipientsPerHour({ SMTP_MAX_RECIPIENTS_PER_HOUR: bad }),
+      DEFAULT_MAX_RECIPIENTS_PER_HOUR,
+      bad,
+    );
+  }
+});
+
+test("a 500-recipient campaign fits inside a paid plan's hourly allowance", () => {
+  // The configuration this deployment runs: 500 messages and 500 addresses
+  // per hour, 45 addresses per message.
+  const perMessage = maxRecipientsPerMessage({ SMTP_MAX_RECIPIENTS_PER_MESSAGE: "45" });
+  const messages = messagesNeeded(500, perMessage);
+  assert.equal(messages, 12);
+  assert.ok(messages <= maxMessagesPerHour({ SMTP_MAX_MESSAGES_PER_HOUR: "500" }));
+  assert.ok(500 <= maxRecipientsPerHour({ SMTP_MAX_RECIPIENTS_PER_HOUR: "500" }));
 });

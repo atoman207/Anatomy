@@ -80,32 +80,6 @@ export default async function AdminEmailPage() {
     );
   }
 
-  // Without the rate ledger the hourly budget cannot be enforced, and the
-  // insert that starts a campaign would fail on the new columns anyway. Say
-  // so plainly rather than letting it look like a throttle or a bug.
-  if (!capacity.ledgerReady) {
-    return (
-      <div className="flex flex-col gap-4">
-        <PageHeader
-          title="メール送信"
-          description="ユーザーへメールを送信します。システム管理者のみ。"
-        />
-        <Callout tone="danger" title="データベースの更新が必要です">
-          一括送信の送信上限管理テーブル（
-          <code className="font-mono text-[12px]">admin_email_rate_log</code>
-          ）がまだ作成されていません。
-          <code className="font-mono text-[12px]">supabase/migrations/all.sql</code>{" "}
-          の末尾にある「Administrator email: rate-limit governor and resumable
-          delivery」の節を Supabase の SQL エディタで実行してください。
-          <br />
-          このテーブルがないと1時間あたりの送信上限を管理できず、
-          上限超過による大量エラー（554 too many messages）を防げないため、
-          送信フォームは表示していません。
-        </Callout>
-      </div>
-    );
-  }
-
   const totalPending = history.reduce((sum, h) => sum + h.pendingCount, 0);
   const totalFailed = history.reduce((sum, h) => sum + h.failedCount, 0);
   const onTrialLimit = capacity.messagesPerHour <= DEFAULT_MAX_MESSAGES_PER_HOUR;
@@ -129,7 +103,7 @@ export default async function AdminEmailPage() {
         <StatTile
           label="1時間の送信上限"
           value={`${capacity.messagesPerHour} 通`}
-          hint={`1通あたり最大 ${capacity.recipientsPerMessage} 宛先（BCC一括）`}
+          hint={`${capacity.recipientsPerHour.toLocaleString("ja-JP")} 宛先まで／1通に最大 ${capacity.recipientsPerMessage} 宛先`}
           tone="accent"
         />
         <StatTile
@@ -151,6 +125,33 @@ export default async function AdminEmailPage() {
         />
       </div>
 
+      {/* An optional upgrade, not a blocker: without these tables the send
+          still batches and still stops on the first throttle, it just cannot
+          resume a campaign across hours or remember the budget across a
+          restart. Worded as a recommendation so nobody goes looking for a
+          fault that is not there. */}
+      {!capacity.ledgerReady && (
+        <Callout tone="warn" title="データベースを更新すると、より確実に送信できます">
+          <code className="font-mono text-[12px]">supabase/migrations/all.sql</code>{" "}
+          の末尾にある「Administrator email: rate-limit governor and resumable
+          delivery」の節が、まだこのデータベースに適用されていません。
+          <br />
+          <strong>送信は現在も可能です。</strong>
+          BCC一括送信・1時間あたりの上限・エラー検知時の即時停止はすべて有効です。
+          ただし次の2点が制限されます:
+          <ul className="mt-1 ml-4 list-disc">
+            <li>
+              上限を超えた宛先を「待機列」に保存できないため、超過分は送信されず、
+              後から宛先を選び直して再送する必要があります（自動再開は使えません）。
+            </li>
+            <li>
+              送信数の記録がサーバー再起動で失われるため、上限管理が概算になります。
+            </li>
+          </ul>
+          上記の節を Supabase の SQL エディタで実行すると、どちらも解消されます。
+        </Callout>
+      )}
+
       {capacity.messagesRemaining === 0 && (
         <Callout tone="warn" title="現在、送信上限に達しています">
           直近1時間で {capacity.messagesUsed} 通を送信済みです。
@@ -165,16 +166,30 @@ export default async function AdminEmailPage() {
         </Callout>
       )}
 
-      {onTrialLimit && (
+      {onTrialLimit ? (
         <Callout tone="info" title="送信上限を引き上げられます">
-          現在は1時間あたり {capacity.messagesPerHour} 通（= 最大{" "}
-          {capacity.reachablePerHour.toLocaleString("ja-JP")} 宛先）で動作しています。これは
-          Namecheap Private Email の<strong>トライアルプランの上限</strong>と同じ値です。
-          有料プラン（Launch/Expand/Scale）では 1時間あたり 500 通まで許可されるため、環境変数{" "}
+          現在は1時間あたり {capacity.messagesPerHour} 通で動作しています。これは Namecheap
+          Private Email の<strong>トライアルプランの上限</strong>と同じ値です。
+          有料プランでは1時間あたり 500 通まで許可されるため、環境変数{" "}
           <code className="font-mono text-[12px]">SMTP_MAX_MESSAGES_PER_HOUR=500</code>{" "}
-          を設定すれば1時間あたり約 {(500 * capacity.recipientsPerMessage).toLocaleString("ja-JP")}{" "}
-          宛先まで一括送信できます。プランを確認せずに引き上げると、超過分が
-          「too many messages」で失敗します。
+          を設定してください（設定後はサーバーの再起動が必要です）。
+          プランを確認せずに引き上げると、超過分が「too many messages」で失敗します。
+        </Callout>
+      ) : (
+        <Callout tone="info" title="1時間あたりの上限は2つあります">
+          <strong>{capacity.messagesPerHour} 通</strong>（送信するメール本体の数）と{" "}
+          <strong>{capacity.recipientsPerHour.toLocaleString("ja-JP")} 宛先</strong>
+          （届く人数）の両方が上限で、先に到達したほうで停止します。
+          BCC一括送信では1通に最大 {capacity.recipientsPerMessage} 宛先まとめられるため、
+          {capacity.recipientsPerHour.toLocaleString("ja-JP")} 宛先は{" "}
+          {Math.ceil(capacity.recipientsPerHour / capacity.recipientsPerMessage)} 通に収まります。
+          <br />
+          宛先数の上限は、Namecheap の「1時間 {capacity.messagesPerHour} 通」が
+          BCCの宛先を1通と数えるか人数分と数えるか公表されていないため、
+          <strong>どちらの解釈でも安全な値</strong>を既定にしています。
+          さらに増やす場合は Namecheap に確認のうえ{" "}
+          <code className="font-mono text-[12px]">SMTP_MAX_RECIPIENTS_PER_HOUR</code>{" "}
+          を設定してください。上限を超えてもエラーにはならず、待機列に入ります。
         </Callout>
       )}
 

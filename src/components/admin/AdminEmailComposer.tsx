@@ -478,10 +478,11 @@ function DeliveryPlan({
     );
   }
 
-  const fits = messages <= capacity.messagesRemaining;
-  const deliverableNow = fits
-    ? total
-    : Math.max(0, capacity.messagesRemaining) * (personalized ? 1 : capacity.recipientsPerMessage);
+  // Two ceilings bind at once: messages per hour and addresses per hour.
+  const byMessages = Math.max(0, capacity.messagesRemaining) *
+    (personalized ? 1 : capacity.recipientsPerMessage);
+  const deliverableNow = Math.min(byMessages, capacity.reachableNow);
+  const fits = messages <= capacity.messagesRemaining && total <= deliverableNow;
 
   return (
     <Callout
@@ -506,8 +507,9 @@ function DeliveryPlan({
         </>
       )}
       <br />
-      1時間の送信上限は {capacity.messagesPerHour} 通で、残り{" "}
-      {capacity.messagesRemaining} 通です。
+      1時間の上限は {capacity.messagesPerHour} 通／{capacity.recipientsPerHour} 宛先で、
+      残り {capacity.messagesRemaining} 通・
+      {(capacity.recipientsPerHour - capacity.recipientsUsed).toLocaleString("ja-JP")} 宛先です。
       {!fits && (
         <>
           {" "}

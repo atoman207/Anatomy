@@ -42,6 +42,25 @@ export const DEFAULT_MAX_MESSAGES_PER_HOUR = 20;
  */
 export const DEFAULT_MAX_RECIPIENTS_PER_MESSAGE = 45;
 
+/**
+ * Recipients per trailing hour - a second ceiling, independent of the
+ * message count.
+ *
+ * It exists because Namecheap's "500 emails/hour" is not explicit about what
+ * an "email" is when one message carries 45 people in Bcc. The wording of
+ * the rejection ("too many *messages* from sender") and the separate
+ * 50-recipients-per-message rule both indicate messages are counted, which
+ * would make the reachable audience 500 x 45. But that is an inference, not
+ * a documented guarantee, and being wrong about it means mass rejections.
+ *
+ * 500 is the default because it is safe under *either* reading: 500
+ * recipients is within the limit whether the provider counts messages or
+ * addresses. Raise it only after confirming with the provider how Bcc
+ * recipients are counted - and note that exceeding it is not an error here
+ * anyway, it just queues the remainder for the next hour.
+ */
+export const DEFAULT_MAX_RECIPIENTS_PER_HOUR = 500;
+
 /** Just the shape these readers need, so a test can pass a bare object. */
 export type EnvLike = Record<string, string | undefined>;
 
@@ -60,6 +79,21 @@ function readPositiveInt(raw: string | undefined, fallback: number): number {
  */
 export function maxMessagesPerHour(env: EnvLike = process.env): number {
   return readPositiveInt(env.SMTP_MAX_MESSAGES_PER_HOUR, DEFAULT_MAX_MESSAGES_PER_HOUR);
+}
+
+/**
+ * How many individual addresses may be reached in a trailing hour, across
+ * however many messages that takes.
+ *
+ * Set `SMTP_MAX_RECIPIENTS_PER_HOUR` to raise it. See the note on
+ * `DEFAULT_MAX_RECIPIENTS_PER_HOUR` for why the default is deliberately the
+ * cautious reading of the provider's limit.
+ */
+export function maxRecipientsPerHour(env: EnvLike = process.env): number {
+  return readPositiveInt(
+    env.SMTP_MAX_RECIPIENTS_PER_HOUR,
+    DEFAULT_MAX_RECIPIENTS_PER_HOUR,
+  );
 }
 
 /**

@@ -34,7 +34,8 @@ import {
 } from "@/lib/email/smtp";
 import { EMAIL_RE, htmlToText, parseAddressList } from "@/lib/email/compose";
 import {
-  dispatchMessage, readBudget, FROM_NAME, type DispatchResult,
+  dispatchMessage, readBudget, readEmailSchema, sendCampaignDirect, FROM_NAME,
+  type DispatchResult,
 } from "@/lib/email/campaign";
 import {
   isRateLimitError, maxRecipientsPerMessage, messagesNeeded,
@@ -98,9 +99,13 @@ export interface SendingCapacity {
   messagesRemaining: number;
   /** Recipients that fit in one Bcc batch. */
   recipientsPerMessage: number;
-  /** Recipients reachable right now without waiting: remaining x batch size. */
+  /** The independent per-hour ceiling on addresses reached. */
+  recipientsPerHour: number;
+  /** Addresses already reached in the current window. */
+  recipientsUsed: number;
+  /** Recipients reachable right now, under whichever ceiling binds first. */
   reachableNow: number;
-  /** Recipients reachable in a fresh hour: per-hour x batch size. */
+  /** Recipients reachable in a fresh hour, under whichever ceiling binds. */
   reachablePerHour: number;
   /** When throttled capacity next frees up. */
   resetsAt: string | null;
@@ -117,8 +122,12 @@ export async function loadSendingCapacity(): Promise<SendingCapacity> {
     messagesUsed: budget.used,
     messagesRemaining: budget.remaining,
     recipientsPerMessage: perMessage,
-    reachableNow: budget.remaining * perMessage,
-    reachablePerHour: budget.perHour * perMessage,
+    recipientsPerHour: budget.recipientsPerHour,
+    recipientsUsed: budget.recipientsUsed,
+    // Two ceilings apply at once - messages and addresses - so what is
+    // actually reachable is the lower of the two, not the message figure.
+    reachableNow: Math.min(budget.remaining * perMessage, budget.recipientsRemaining),
+    reachablePerHour: Math.min(budget.perHour * perMessage, budget.recipientsPerHour),
     resetsAt: budget.resetsAt,
     ledgerReady: budget.ledgerReady,
   };
@@ -145,7 +154,8 @@ export async function estimateCampaign(
   return {
     mode,
     messages,
-    fitsInCurrentWindow: messages <= capacity.messagesRemaining,
+    fitsInCurrentWindow:
+      messages <= capacity.messagesRemaining && recipientCount <= capacity.reachableNow,
     capacity,
   };
 }
@@ -424,6 +434,18 @@ export async function sendAdminEmailAction(
       ? "individual"
       : "bcc";
 
+    // The queue columns arrived in a later migration section. Without them a
+    // campaign cannot be resumed, so it is sent directly and capped to what
+    // the hour can carry - see sendCampaignDirect. Checked per send rather
+    // than cached, because the migration can be applied while the server is
+    // running and the better path should take effect immediately.
+    const schema = await readEmailSchema();
+    if (!schema.queue) {
+      return await sendWithoutQueue(ctx.user.id, {
+        composed, recipients, audience, mode, fromAddress,
+      });
+    }
+
     // Recorded before the first message goes out - see the note at the top.
     // Everything starts pending; delivery below moves rows out of that state.
     const { data: message, error: insertError } = await admin
@@ -482,6 +504,113 @@ export async function sendAdminEmailAction(
   } catch (e) {
     return fail(e instanceof Error ? e.message : "メールを送信できませんでした。");
   }
+}
+
+/**
+ * Sends a campaign on a database that has no queue columns yet.
+ *
+ * Writes only the columns the original migration section created, so it works
+ * before "rate-limit governor and resumable delivery" has been pasted in.
+ * What it gives up is resuming: recipients beyond this hour's capacity are
+ * not attempted, and the administrator is told how many to re-send later.
+ * What it keeps is everything that prevents the mass-rejection failure -
+ * Bcc batching, the hourly cap, and stopping on the first throttle.
+ */
+async function sendWithoutQueue(
+  userId: string,
+  input: {
+    composed: ComposedMessage;
+    recipients: BulkRecipient[];
+    audience: string;
+    mode: DeliveryMode;
+    fromAddress: string;
+  },
+): Promise<ActionResult> {
+  const { composed, recipients, audience, mode, fromAddress } = input;
+  const admin = createAdminSupabase();
+
+  const result = await sendCampaignDirect(
+    recipients,
+    {
+      subject: composed.subject,
+      text: composed.format === "html" ? htmlToText(composed.body) : composed.body,
+      html: composed.format === "html" ? composed.body : undefined,
+      replyTo: composed.replyTo ?? (fromAddress || undefined),
+      fromName: FROM_NAME,
+      unsubscribeMailto: composed.replyTo ?? (fromAddress || undefined),
+    },
+    mode,
+  );
+
+  const { data: message } = await admin
+    .from("admin_email_messages")
+    .insert({
+      subject: composed.subject,
+      body: composed.body,
+      body_format: composed.format,
+      from_address: fromAddress,
+      reply_to: composed.replyTo,
+      audience,
+      recipient_count: recipients.length,
+      sent_count: result.sent,
+      failed_count: result.failed,
+      sent_by: userId,
+    })
+    .select("id")
+    .single();
+
+  if (message && result.outcomes.length > 0) {
+    await admin.from("admin_email_recipients").insert(
+      result.outcomes.map((o) => ({
+        message_id: message.id,
+        email: o.recipient.email,
+        user_id: o.recipient.userId ?? null,
+        ok: o.ok,
+        error: o.error,
+      })),
+    );
+  }
+
+  await logAudit({
+    labId: null,
+    userId,
+    action: "email.sent",
+    entity: "admin_email_message",
+    entityId: message?.id ?? null,
+    detail: {
+      subject: composed.subject,
+      audience,
+      delivery_mode: result.deliveryMode,
+      messages: result.messages,
+      sent: result.sent,
+      failed: result.failed,
+      deferred: result.deferred,
+      rate_limited: result.rateLimited,
+      queue_available: false,
+    },
+  });
+
+  revalidatePath("/admin/email");
+
+  const deferredNote =
+    result.deferred > 0
+      ? `1時間の送信上限のため、${result.deferred} 件は送信していません（宛先は保持されています）。` +
+        `${result.resetsAt ? `${new Date(result.resetsAt).toLocaleTimeString("ja-JP")} 以降に` : "時間をおいて"}` +
+        "残りの宛先を選び直して再送してください。"
+      : "";
+
+  if (result.sent === 0 && result.failed === 0) {
+    return fail(`送信上限に達しているため、まだ送信できていません。${deferredNote}`);
+  }
+  if (result.failed === 0) {
+    return done(
+      `${result.sent} 件に送信しました（${result.messages} 通に分割）。${deferredNote}`,
+    );
+  }
+  return fail(
+    `${result.sent} 件に送信し、${result.failed} 件は失敗しました。${deferredNote}` +
+      "失敗した宛先は下の送信履歴で確認できます。",
+  );
 }
 
 /** Turns a dispatch outcome into the one sentence the administrator sees. */
