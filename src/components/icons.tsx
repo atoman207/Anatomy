@@ -49,7 +49,9 @@ export type IconName =
   | "maximize"
   | "minimize"
   | "closedCaptions"
-  | "help";
+  | "help"
+  | "info"
+  | "coin";
 
 const PATHS: Record<IconName, ReactNode> = {
   upload: <><path d="M12 16V4" /><path d="M7 9l5-5 5 5" /><path d="M4 20h16" /></>,
@@ -213,6 +215,23 @@ const PATHS: Record<IconName, ReactNode> = {
       <circle cx="12" cy="12" r="9" />
       <path d="M9.2 9.5a2.8 2.8 0 0 1 5.4.9c0 1.8-2.2 2.1-2.6 3.6" />
       <path d="M12 17.2v.1" />
+    </>
+  ),
+  info: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5" />
+      <circle cx="12" cy="8" r="0.75" fill="currentColor" stroke="none" />
+    </>
+  ),
+  // 硬貨に円記号（¥）を重ねたお金のアイコン。
+  coin: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8.5 7.5l3.5 4.5 3.5-4.5" />
+      <path d="M12 12v5" />
+      <path d="M9 13h6" />
+      <path d="M9 15.5h6" />
     </>
   ),
 };

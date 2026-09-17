@@ -36,10 +36,8 @@ const WAVE_TRACK_WIDTH_PX = FREQ_BARS.length * (BAR_PX + BAR_GAP_PX);
  * as if it just landed in a chat window from dictation, and loops itself
  * a few seconds after finishing.
  *
- * Purely visual by default. The optional SpeechSynthesis narration is
- * best-effort only - wrapped so a browser that blocks it (autoplay policy,
- * no ja-JP voice installed) never breaks the typing animation, which runs
- * on its own clock regardless of whether audio actually played.
+ * Purely visual: it does not speak (the site's assistant is the only voice),
+ * and it holds its loop while a modal such as the assistant is open.
  *
  * The full text is always present for assistive tech via a `sr-only`
  * paragraph; the animated bubble underneath it is `aria-hidden` so a screen
@@ -131,16 +129,9 @@ export function VoiceTranscribeChat({ text }: { text: string }) {
     // Waveform appears the moment sound / listening starts.
     startWave();
 
-    try {
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = "ja-JP";
-        utterance.rate = 1.1;
-        window.speechSynthesis.speak(utterance);
-      }
-    } catch {
-      /* Narration is a bonus, never required for the visual. */
-    }
+    // No spoken narration: the page's assistant is the only voice on the
+    // site, and an OS speech voice looping underneath it mixed two different
+    // voices together.
 
     listenTimeoutRef.current = setTimeout(() => {
       setPhase("typing");
@@ -155,7 +146,16 @@ export function VoiceTranscribeChat({ text }: { text: string }) {
           rafRef.current = null;
           // Loop on its own - a visitor should not have to touch anything
           // to see the whole cycle more than once.
-          restartTimeoutRef.current = setTimeout(() => playRef.current(), RESTART_DELAY_MS);
+          // …but not while a modal (the assistant) is open on top: the loop's
+          // per-frame updates would compete with its 3D rendering.
+          const restart = () => {
+            if (document.querySelector('[role="dialog"][aria-modal="true"]')) {
+              restartTimeoutRef.current = setTimeout(restart, RESTART_DELAY_MS);
+              return;
+            }
+            playRef.current();
+          };
+          restartTimeoutRef.current = setTimeout(restart, RESTART_DELAY_MS);
           return;
         }
         rafRef.current = requestAnimationFrame(tick);

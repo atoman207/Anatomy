@@ -448,6 +448,53 @@ export class SpeechSession {
     }
   }
 
+  /**
+   * Stops listening and resolves with the complete transcript once the engine
+   * has flushed it.
+   *
+   * Recognition runs a beat behind the speaker: the last phrase is still
+   * being decoded when the user clicks stop, and arrives in `onresult` just
+   * before `onend`. Reading the transcript at click time drops it - or sends
+   * nothing at all for a short utterance.
+   */
+  finish(timeoutMs = 1500): Promise<string> {
+    const recognition = this.recognition;
+    const alreadyEnded = !recognition || this.restartTimer !== null;
+    this.wantListening = false;
+    this.clearWatchdog();
+    this.clearRestartTimer();
+
+    const text = () => fullTranscript(this.state).trim();
+    if (alreadyEnded) {
+      this.detachRecognition();
+      this.callbacks.onStateChange(false);
+      return Promise.resolve(text());
+    }
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const settle = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        const result = text();
+        this.detachRecognition();
+        resolve(result);
+      };
+      const timer = setTimeout(settle, timeoutMs);
+      const previousEnd = recognition.onend;
+      recognition.onend = (e) => {
+        previousEnd?.call(recognition, e);
+        settle();
+      };
+      try {
+        recognition.stop();
+      } catch {
+        settle();
+      }
+    });
+  }
+
   stop(): void {
     this.wantListening = false;
     this.clearWatchdog();

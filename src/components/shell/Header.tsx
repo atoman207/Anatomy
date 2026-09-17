@@ -7,6 +7,7 @@ import { cx } from "@/components/ui";
 import { Icon } from "@/components/icons";
 import { Avatar } from "@/components/chat/Avatar";
 import { signOutAction } from "@/lib/auth/actions";
+import { COIN_LINK_URL } from "@/lib/links";
 import { useWorkspace } from "@/components/workspace";
 import { titleForPath } from "./navigation";
 import { subscribeTheme, getTheme, getThemeServer, toggleTheme } from "./themePreference";
@@ -79,6 +80,7 @@ export function Header({
       >
         CONTACT
       </Link>
+      <CoinLink />
       <ThemeToggle />
       <NotificationBell notifications={notifications} />
       <UserButton me={me} />
@@ -179,6 +181,22 @@ function TodayLogButton({ entries }: { entries: TodayEntry[] | null }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** 外部サイト（Lucky Bronze Coin）を新しいタブで開くお金アイコン。 */
+function CoinLink() {
+  return (
+    <a
+      href={COIN_LINK_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="Lucky Bronze Coin を新しいタブで開く"
+      title="Lucky Bronze Coin"
+      className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[var(--shell-text-dim)] transition-colors hover:bg-[var(--shell-hover)] hover:text-[var(--shell-text)]"
+    >
+      <Icon name="coin" className="h-5 w-5" />
+    </a>
   );
 }
 

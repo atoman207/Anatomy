@@ -1,5 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
+import { Icon } from "@/components/icons";
+import { COIN_LINK_URL } from "@/lib/links";
 
 /**
  * Shared by every public (unauthenticated) page - the landing page itself,
@@ -58,6 +60,16 @@ export function SiteHeader({ signedIn, overHero = false }: { signedIn: boolean; 
           </nav>
 
           <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+            <a
+              href={COIN_LINK_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Lucky Bronze Coin を新しいタブで開く"
+              title="Lucky Bronze Coin"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-black/70 transition-colors hover:bg-black/5 hover:text-black"
+            >
+              <Icon name="coin" className="h-5 w-5" />
+            </a>
             {signedIn ? (
               <Link
                 href="/dashboard"

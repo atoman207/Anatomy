@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Noto_Sans_JP, Noto_Serif_JP, Roboto } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/shell/AppShell";
+import { ThemeInitScript } from "@/components/shell/ThemeInitScript";
 import { ToastProvider } from "@/components/shell/Toast";
 import { WorkspaceProvider } from "@/components/workspace";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/seo";
@@ -82,14 +83,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       suppressHydrationWarning
       className={`${notoSans.variable} ${notoSerif.variable} ${roboto.variable} h-full antialiased`}
     >
-      <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem("chondro.theme");if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t);}catch(e){}})();`,
-          }}
-        />
-      </head>
       <body className="min-h-dvh font-sans">
+        {/* beforeInteractive injects into <head> regardless of placement */}
+        <ThemeInitScript />
         <ToastProvider>
           <WorkspaceProvider>
             <AppShell>{children}</AppShell>

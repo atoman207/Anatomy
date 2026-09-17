@@ -3245,3 +3245,118 @@ alter table public.admin_email_rate_log enable row level security;
 -- admin_email_* tables.
 
 notify pgrst, 'reload schema';
+
+-- ===========================================================================
+-- AI assistant knowledge base (RAG for the voice / video avatar chatbot)
+-- ===========================================================================
+-- Documents the assistant may quote in addition to the built-in knowledge in
+-- src/lib/ai/assistantKnowledge.ts: FAQ entries, announcements, anything that
+-- should change without a deploy. The chat route reads published rows with
+-- the service role and retrieves the most relevant ones per question.
+create table if not exists public.assistant_knowledge_documents (
+  id         uuid primary key default gen_random_uuid(),
+  -- overview / pricing / plans / features / experiment-recording /
+  -- voice-input / ai-peer-review / registration / security / faq / contact
+  category   text not null default 'faq',
+  title      text not null,
+  body       text not null,
+  -- Synonyms and alternate spellings that do not appear in the body.
+  keywords   text[] not null default '{}',
+  published  boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists assistant_knowledge_documents_published_idx
+  on public.assistant_knowledge_documents (category)
+  where published;
+
+drop trigger if exists assistant_knowledge_documents_touch on public.assistant_knowledge_documents;
+create trigger assistant_knowledge_documents_touch
+  before update on public.assistant_knowledge_documents
+  for each row execute function public.touch_updated_at();
+
+alter table public.assistant_knowledge_documents enable row level security;
+
+drop policy if exists assistant_knowledge_documents_admin on public.assistant_knowledge_documents;
+create policy assistant_knowledge_documents_admin on public.assistant_knowledge_documents
+  for all using (public.is_platform_admin()) with check (public.is_platform_admin());
+
+notify pgrst, 'reload schema';
+
+-- ============================================================================
+-- Assistant answer cache (in-house, token-saving)
+-- ----------------------------------------------------------------------------
+-- Answers to questions visitors ask repeatedly, stored as text + spoken audio
+-- so the assistant can replay them without calling any model. Rows are written
+-- only by the server (service role): answers are generated server-side from the
+-- knowledge base, never taken from the browser, so the shared cache cannot be
+-- poisoned. Matching happens in application code (src/lib/ai/answerCache).
+--
+--   pending    - asked, not yet worth generating (asked_count below threshold)
+--   generating - server is producing the canonical answer + audio
+--   ready      - served from cache
+--   failed / disabled - never served (disabled = removed by an admin)
+--
+-- knowledge_version ties an answer to the knowledge base it was written from;
+-- when the knowledge changes, old rows simply stop matching.
+-- ============================================================================
+
+create table if not exists public.assistant_answer_cache (
+  id                uuid primary key default gen_random_uuid(),
+  audience          text not null check (audience in ('guest', 'member')),
+  question          text not null,
+  normalized        text not null,
+  answer            text,
+  audio             bytea,
+  audio_mime        text,
+  status            text not null default 'pending'
+                    check (status in ('pending', 'generating', 'ready', 'failed', 'disabled')),
+  asked_count       integer not null default 1,
+  hit_count         integer not null default 0,
+  knowledge_version text not null,
+  model             text,
+  last_asked_at     timestamptz not null default now(),
+  last_hit_at       timestamptz,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now()
+);
+
+create unique index if not exists assistant_answer_cache_question_idx
+  on public.assistant_answer_cache (audience, knowledge_version, normalized);
+
+create index if not exists assistant_answer_cache_lookup_idx
+  on public.assistant_answer_cache (audience, knowledge_version, status);
+
+drop trigger if exists assistant_answer_cache_touch on public.assistant_answer_cache;
+create trigger assistant_answer_cache_touch
+  before update on public.assistant_answer_cache
+  for each row execute function public.touch_updated_at();
+
+-- Atomic counters (read-modify-write from the app would lose concurrent counts).
+create or replace function public.assistant_answer_cache_bump(p_id uuid, p_hit boolean)
+returns integer
+language sql
+security definer
+set search_path = public
+as $$
+  update public.assistant_answer_cache
+     set hit_count     = hit_count + case when p_hit then 1 else 0 end,
+         last_hit_at   = case when p_hit then now() else last_hit_at end,
+         asked_count   = asked_count + case when p_hit then 0 else 1 end,
+         last_asked_at = case when p_hit then last_asked_at else now() end
+   where id = p_id
+  returning asked_count;
+$$;
+
+revoke all on function public.assistant_answer_cache_bump(uuid, boolean) from public, anon, authenticated;
+
+alter table public.assistant_answer_cache enable row level security;
+
+-- Only platform admins may read/review/disable entries from the app; the
+-- assistant itself uses the service role.
+drop policy if exists assistant_answer_cache_admin on public.assistant_answer_cache;
+create policy assistant_answer_cache_admin on public.assistant_answer_cache
+  for all using (public.is_platform_admin()) with check (public.is_platform_admin());
+
+notify pgrst, 'reload schema';

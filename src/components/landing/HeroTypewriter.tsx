@@ -36,11 +36,8 @@ export function HeroTypewriter({
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (reduced) {
-      setCharIndex(TEXT.length);
-      setDone(true);
-      return;
-    }
+    // Reduced motion: nothing to animate; the render below shows the full text.
+    if (reduced) return;
 
     const clear = () => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
@@ -70,14 +67,17 @@ export function HeroTypewriter({
     return clear;
   }, [reduced]);
 
-  const visible = TEXT.slice(0, charIndex);
+  // Derived rather than set from the effect: reduced motion always shows the
+  // whole headline, even if the preference changes after mount.
+  const shownDone = reduced || done;
+  const visible = reduced ? TEXT : TEXT.slice(0, charIndex);
 
   return (
-    <h1 className={cx(className)} style={style} aria-live={done ? "off" : "polite"}>
+    <h1 className={cx(className)} style={style} aria-live={shownDone ? "off" : "polite"}>
       <span className="sr-only">{TEXT}</span>
       <span className="block whitespace-nowrap">
         {visible}
-        {!done && (
+        {!shownDone && (
           <span className="text-accent opacity-80" aria-hidden>|</span>
         )}
       </span>

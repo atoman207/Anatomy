@@ -36,6 +36,11 @@ export interface AiConfig {
   /** Streaming transcription over WebRTC/WebSocket - not valid for uploads. */
   realtime: string;
   image: string;
+  /** Text-to-speech for the talking assistant avatar. */
+  speech: string;
+  speechVoice: string;
+  /** Speech-to-speech model for the live assistant conversation. */
+  realtimeChat: string;
 }
 
 export function aiConfig(): AiConfig {
@@ -46,7 +51,85 @@ export function aiConfig(): AiConfig {
     transcribe: process.env.OPENAI_MODEL_TRANSCRIBE || "gpt-4o-transcribe",
     realtime: process.env.OPENAI_MODEL_REALTIME || "gpt-live-transcribe",
     image: process.env.OPENAI_MODEL_IMAGE || "gpt-image-2",
+    speech: process.env.OPENAI_MODEL_TTS || "gpt-4o-mini-tts",
+    // marin: OpenAI's most natural young female voice; steered to standard
+    // Japanese by ASSISTANT_VOICE_INSTRUCTIONS.
+    speechVoice: process.env.OPENAI_TTS_VOICE || "marin",
+    // gpt-realtime: ~0.45s to first audio (2.1 measured ~0.8s), which is what
+    // keeps replies inside a second of the user finishing.
+    realtimeChat: process.env.OPENAI_MODEL_REALTIME_CHAT || "gpt-realtime",
   };
+}
+
+export interface RealtimeClientSecret {
+  /** Ephemeral `ek_...` key the browser uses to open the WebRTC call. */
+  value: string;
+  /** Unix seconds; the key must be used to connect before then. */
+  expiresAt: number;
+  model: string;
+}
+
+/**
+ * Mints a short-lived client secret for a realtime (speech-to-speech) session.
+ *
+ * The browser talks to OpenAI directly over WebRTC with this key - audio never
+ * round-trips through our server, which is what keeps replies under a second -
+ * while the real API key and the session's instructions stay server-side.
+ */
+export async function createRealtimeClientSecret(session: {
+  instructions: string;
+  voice?: string;
+  maxOutputTokens?: number;
+  silenceMs?: number;
+}): Promise<RealtimeClientSecret> {
+  const key = requireKey();
+  const cfg = aiConfig();
+
+  const res = await post(
+    "/realtime/client_secrets",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        expires_after: { anchor: "created_at", seconds: 600 },
+        session: {
+          type: "realtime",
+          model: cfg.realtimeChat,
+          instructions: session.instructions,
+          // Audio counts toward this cap (~20 tokens per spoken second), so a
+          // tight cap cuts the voice off mid-sentence. Brevity comes from the
+          // instructions; this only stops a runaway reply (~45s).
+          max_output_tokens: session.maxOutputTokens ?? 1200,
+          audio: {
+            input: {
+              noise_reduction: { type: "near_field" },
+              transcription: { model: cfg.realtime, language: "ja" },
+              turn_detection: {
+                type: "server_vad",
+                threshold: 0.55,
+                prefix_padding_ms: 300,
+                silence_duration_ms: session.silenceMs ?? 450,
+                // The client asks the answer cache first and only then requests
+                // a model response on a miss (see /api/ai/answer).
+                create_response: false,
+                interrupt_response: true,
+              },
+            },
+            output: { voice: session.voice ?? cfg.speechVoice },
+          },
+        },
+      }),
+    },
+    20_000,
+  );
+
+  if (!res.ok) throw await failure(res);
+  const body = await res.json();
+  if (!body?.value) throw new AiError("リアルタイム接続キーを取得できませんでした。", 502);
+  return { value: body.value, expiresAt: body.expires_at ?? 0, model: cfg.realtimeChat };
 }
 
 export function isAiEnabled(): boolean {
@@ -143,7 +226,10 @@ export interface StructuredResult<T> {
 export interface StructuredOptions {
   model?: string;
   system: string;
-  user: string;
+  /** Single user turn; ignored when `messages` is given. */
+  user?: string;
+  /** Multi-turn conversation, oldest first (chat assistants). */
+  messages?: { role: "user" | "assistant"; content: string }[];
   schemaName: string;
   schema: Record<string, unknown>;
   timeoutMs?: number;
@@ -175,7 +261,7 @@ export async function respondStructured<T>(
         model,
         input: [
           { role: "system", content: opts.system },
-          { role: "user", content: opts.user },
+          ...(opts.messages ?? [{ role: "user" as const, content: opts.user ?? "" }]),
         ],
         text: {
           format: {
@@ -269,6 +355,66 @@ export async function transcribeAudio(
   };
 }
 
+export interface TextResult {
+  text: string;
+  model: string;
+  usage: Usage;
+}
+
+export interface TextOptions {
+  model?: string;
+  system: string;
+  /** Prior turns plus the latest user message, oldest first. */
+  messages: { role: "user" | "assistant"; content: string }[];
+  timeoutMs?: number;
+}
+
+/**
+ * Free-form Responses API call for the lab assistant chatbots.
+ *
+ * Unlike `respondStructured`, the model returns plain prose the UI can
+ * speak aloud or show in a bubble - no JSON schema.
+ */
+export async function respondText(opts: TextOptions): Promise<TextResult> {
+  const key = requireKey();
+  const cfg = aiConfig();
+  const model = opts.model ?? cfg.cheap;
+
+  const input = [
+    { role: "system", content: opts.system },
+    ...opts.messages.map((m) => ({ role: m.role, content: m.content })),
+  ];
+
+  const res = await post(
+    "/responses",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ model, input }),
+    },
+    opts.timeoutMs ?? 60_000,
+  );
+
+  if (!res.ok) throw await failure(res);
+
+  const body = await res.json();
+  const text: string = (body.output ?? [])
+    .flatMap((o: { content?: { type: string; text?: string }[] }) => o.content ?? [])
+    .filter((c: { type: string }) => c.type === "output_text")
+    .map((c: { text?: string }) => c.text ?? "")
+    .join("")
+    .trim();
+
+  if (!text) {
+    throw new AiError("モデルが空の応答を返しました。", 502);
+  }
+
+  return { text, model, usage: readUsage(body.usage) };
+}
+
 export interface GeneratedImage {
   /** Base64-encoded PNG, undecorated (no `data:` prefix). */
   base64: string;
@@ -337,6 +483,55 @@ export async function generateImage(
   if (!b64) throw new AiError("モデルが画像を返しませんでした。", 502);
 
   return { base64: b64, model: cfg.image };
+}
+
+/**
+ * Synthesizes speech for the talking assistant avatar.
+ *
+ * The browser's own `speechSynthesis` cannot be routed through Web Audio, so
+ * its waveform is invisible to the page. Real audio bytes are what let the
+ * client derive mouth shapes from the exact sound being played.
+ */
+export async function synthesizeSpeech(
+  text: string,
+  opts: { instructions?: string; timeoutMs?: number; format?: "mp3" | "wav" } = {},
+): Promise<{ audio: ArrayBuffer; contentType: string; model: string }> {
+  const key = requireKey();
+  const cfg = aiConfig();
+
+  const request = (voice: string) =>
+    post(
+      "/audio/speech",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${key}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: cfg.speech,
+          voice,
+          input: text,
+          instructions: opts.instructions,
+          // WAV for Unreal: uncompressed PCM decodes without a codec there.
+          response_format: opts.format ?? "mp3",
+        }),
+      },
+      opts.timeoutMs ?? 60_000,
+    );
+
+  let res = await request(cfg.speechVoice);
+  // A voice the configured model does not offer is a 400; coral exists on
+  // every TTS model and is also a female voice.
+  if (res.status === 400 && cfg.speechVoice !== "coral") res = await request("coral");
+
+  if (!res.ok) throw await failure(res);
+
+  return {
+    audio: await res.arrayBuffer(),
+    contentType: res.headers.get("content-type") ?? (opts.format === "wav" ? "audio/wav" : "audio/mpeg"),
+    model: cfg.speech,
+  };
 }
 
 /** Quick reachability probe used by the health endpoint. */

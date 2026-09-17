@@ -56,6 +56,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (drawerOpen) setDrawerOpen(false);
   }
 
+
   // Identity and notifications, refreshed on navigation and on auth changes.
   useEffect(() => {
     // Nothing on public marketing pages consumes either, and most of their

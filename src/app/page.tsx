@@ -12,6 +12,7 @@ import { SiteHeader } from "@/components/landing/SiteHeader";
 import { SiteFooter } from "@/components/landing/SiteFooter";
 import { SectionTitle } from "@/components/landing/SectionTitle";
 import { ScrollToTopButton } from "@/components/landing/ScrollToTopButton";
+import { LandingChatbot } from "@/components/chatbot/LandingChatbot";
 import bg6 from "../../public/bg6.png";
 
 export const dynamic = "force-dynamic";
@@ -159,6 +160,7 @@ export default async function LandingPage() {
   // decides whether the calls to action say "始める" or "ダッシュボードへ".
   const [ctx, news] = await Promise.all([getSessionContext(), listPublishedNews(5)]);
   const signedIn = Boolean(ctx);
+  const fallbackLabId = ctx?.memberships[0]?.labId ?? null;
 
   return (
     // `auto-phrase` breaks Japanese lines at phrase boundaries instead of
@@ -441,6 +443,15 @@ export default async function LandingPage() {
 
       <SiteFooter />
       <ScrollToTopButton />
+      <LandingChatbot
+        fallbackLabId={fallbackLabId}
+        historyScope={ctx ? `user:${ctx.email}` : "guest"}
+        viewer={{
+          signedIn,
+          name: ctx?.displayName ?? null,
+          avatarUrl: ctx?.avatarUrl ?? null,
+        }}
+      />
     </div>
   );
 }
