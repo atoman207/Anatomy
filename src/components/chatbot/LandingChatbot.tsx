@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { AssistantChatModal, type ChatViewer } from "./AssistantChatModal";
-import { Icon } from "@/components/icons";
 
 /**
  * The one assistant chatbot, on the home page (`/`). Usable without signing
@@ -39,8 +39,14 @@ export function LandingChatbot({
           aria-label="研究アシスタントと話す"
           onClick={() => setOpen(true)}
         >
-          <span className="relative grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br from-indigo-500 to-blue-600 text-white">
-            <Icon name="mic" className="h-5 w-5" />
+          <span className="relative block h-12 w-12">
+            <Image
+              src="/chatbot.png"
+              alt=""
+              width={96}
+              height={96}
+              className="h-12 w-12 rounded-full object-cover object-top"
+            />
             <span
               aria-hidden
               className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-white"

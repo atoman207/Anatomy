@@ -1,0 +1,17 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "1.0",
+  "FriendlyName": "LABNOTE Avatar Controller",
+  "Description": "Receives conversation state, TTS audio, emotion/gesture cues and visemes from the LABNOTE website over Pixel Streaming and drives a MetaHuman.",
+  "Category": "LABNOTE",
+  "CreatedBy": "LABNOTE",
+  "CanContainContent": true,
+  "Modules": [
+    {
+      "Name": "LabnoteAvatar",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    }
+  ]
+}
