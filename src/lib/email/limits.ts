@@ -36,6 +36,39 @@ export const PROVIDER_MAX_RECIPIENTS_PER_MESSAGE = 50;
 export const DEFAULT_MAX_MESSAGES_PER_HOUR = 20;
 
 /**
+ * Which way mail leaves the deployment.
+ *
+ * A shared mailbox (Private Email) and a sending API (Resend) are not the
+ * same kind of sender, and mixing them is what wrecks a domain's reputation:
+ * a broadcast sent from the mailbox that also answers the contact form makes
+ * one unhappy recipient's spam complaint land on replies to customers too.
+ * The recommendation in .env.example is to keep the contact mailbox on SMTP
+ * and move broadcasts to an API sender on a *subdomain* (news@mail.example.jp),
+ * which is what `RESEND_FROM` is for.
+ *
+ * `EMAIL_PROVIDER` forces one or the other; otherwise the presence of an API
+ * key decides, so adding the key is all it takes to switch.
+ */
+export type EmailProvider = "smtp" | "resend";
+
+export function emailProvider(env: EnvLike = process.env): EmailProvider {
+  const explicit = (env.EMAIL_PROVIDER ?? "").trim().toLowerCase();
+  if (explicit === "smtp") return "smtp";
+  if (explicit === "resend") return "resend";
+  return env.RESEND_API_KEY ? "resend" : "smtp";
+}
+
+/**
+ * Hourly defaults for an API sender. Resend's own limit is a request rate
+ * (2/second) rather than an hourly quota, so these are a deliberate
+ * throttle rather than a transcription of a documented ceiling: a new
+ * sending domain earns its volume gradually (see `warmupState`), and an
+ * accidental 10,000-recipient send should be paced, not sprayed.
+ */
+export const DEFAULT_API_MESSAGES_PER_HOUR = 100;
+export const DEFAULT_API_RECIPIENTS_PER_HOUR = 2_000;
+
+/**
  * Bcc recipients per message. Kept a little under the provider's 50 so the
  * To header (the sending mailbox itself) and any Reply-To do not push the
  * message over the line.
@@ -78,7 +111,11 @@ function readPositiveInt(raw: string | undefined, fallback: number): number {
  * for a paid Private Email plan). Leaving it unset assumes the trial limit.
  */
 export function maxMessagesPerHour(env: EnvLike = process.env): number {
-  return readPositiveInt(env.SMTP_MAX_MESSAGES_PER_HOUR, DEFAULT_MAX_MESSAGES_PER_HOUR);
+  const fallback =
+    emailProvider(env) === "resend"
+      ? DEFAULT_API_MESSAGES_PER_HOUR
+      : DEFAULT_MAX_MESSAGES_PER_HOUR;
+  return readPositiveInt(env.SMTP_MAX_MESSAGES_PER_HOUR, fallback);
 }
 
 /**
@@ -90,10 +127,70 @@ export function maxMessagesPerHour(env: EnvLike = process.env): number {
  * cautious reading of the provider's limit.
  */
 export function maxRecipientsPerHour(env: EnvLike = process.env): number {
-  return readPositiveInt(
-    env.SMTP_MAX_RECIPIENTS_PER_HOUR,
-    DEFAULT_MAX_RECIPIENTS_PER_HOUR,
-  );
+  const fallback =
+    emailProvider(env) === "resend"
+      ? DEFAULT_API_RECIPIENTS_PER_HOUR
+      : DEFAULT_MAX_RECIPIENTS_PER_HOUR;
+  return readPositiveInt(env.SMTP_MAX_RECIPIENTS_PER_HOUR, fallback);
+}
+
+/* ------------------------------------------------------------------ */
+/* Warm-up                                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The daily ceiling a new sending domain is allowed, by age in days.
+ *
+ * Reputation at Gmail and Microsoft is built from a *pattern*, not from
+ * authentication alone: a domain that has never sent anything and suddenly
+ * mails two thousand people is filtered on volume no matter how correct its
+ * SPF, DKIM and DMARC are. Ramping is the whole remedy - a few dozen a day at
+ * first, doubling as engagement accumulates, until the domain is established.
+ *
+ * Roughly the schedule the large mailbox providers themselves describe: about
+ * a month to full volume. After day 28 the ramp is over and only the
+ * configured hourly ceilings apply.
+ */
+export const WARMUP_STEPS: readonly { throughDay: number; cap: number }[] = [
+  { throughDay: 2, cap: 50 },
+  { throughDay: 4, cap: 100 },
+  { throughDay: 7, cap: 200 },
+  { throughDay: 14, cap: 500 },
+  { throughDay: 21, cap: 1_000 },
+  { throughDay: 28, cap: 2_000 },
+];
+
+export interface WarmupState {
+  /** True while the ramp still limits the day's sending. */
+  active: boolean;
+  /** Day number since `EMAIL_WARMUP_START`, 1 on the first day. */
+  day: number;
+  /** Addresses allowed in 24 hours, or null when the ramp no longer binds. */
+  dailyCap: number | null;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Where the sending domain is in its warm-up.
+ *
+ * Set `EMAIL_WARMUP_START` to the date the domain began sending (YYYY-MM-DD).
+ * Unset means no ramp - correct for a mailbox that has been sending for years,
+ * and wrong for a domain that was set up last week.
+ */
+export function warmupState(env: EnvLike = process.env, now: Date = new Date()): WarmupState {
+  const raw = (env.EMAIL_WARMUP_START ?? "").trim();
+  if (!raw) return { active: false, day: 0, dailyCap: null };
+
+  const started = Date.parse(raw.length === 10 ? `${raw}T00:00:00Z` : raw);
+  if (!Number.isFinite(started)) return { active: false, day: 0, dailyCap: null };
+
+  // Day 1 is the start date itself; a start date in the future is treated as
+  // day 1 rather than as a negative day, so a typo cannot lift the ceiling.
+  const day = Math.max(1, Math.floor((now.getTime() - started) / DAY_MS) + 1);
+  const step = WARMUP_STEPS.find((s) => day <= s.throughDay);
+  if (!step) return { active: false, day, dailyCap: null };
+  return { active: true, day, dailyCap: step.cap };
 }
 
 /**

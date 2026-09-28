@@ -8,8 +8,8 @@ import { AssistantChatModal, type ChatViewer } from "./AssistantChatModal";
  * The one assistant chatbot, on the home page (`/`). Usable without signing
  * in (the API routes are open to guests, rate limited).
  *
- * Opens as a single modal on arrival; closing collapses it to a small live
- * launcher in the lower-left so it stays reachable while scrolling.
+ * Nothing opens on arrival: the page shows only a small launcher in the
+ * lower-left, and the modal appears when the visitor presses it.
  */
 export function LandingChatbot({
   fallbackLabId,
@@ -21,7 +21,7 @@ export function LandingChatbot({
   historyScope: string;
   viewer: ChatViewer;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   return (
     <>

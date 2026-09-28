@@ -111,11 +111,21 @@ export interface SendingCapacity {
   resetsAt: string | null;
   /** False until the rate-governor migration has been applied. */
   ledgerReady: boolean;
+  /** Warm-up ceiling for the day, or null when the ramp no longer applies. */
+  dailyCap: number | null;
+  /** Addresses reached in the last 24 hours. */
+  dailyUsed: number;
+  /** Day number in the sending domain's warm-up, 0 when none is configured. */
+  warmupDay: number;
+  /** How mail leaves: the SMTP mailbox, or the sending API. */
+  provider: EmailProvider;
+  /** Addresses that will be skipped - opt-outs and bounces. Null: no table yet. */
+  suppressed: number | null;
 }
 
 export async function loadSendingCapacity(): Promise<SendingCapacity> {
   await platformAdmin();
-  const budget = await readBudget();
+  const [budget, suppressed] = await Promise.all([readBudget(), suppressionCount()]);
   const perMessage = maxRecipientsPerMessage();
   return {
     messagesPerHour: budget.perHour,

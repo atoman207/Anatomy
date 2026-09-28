@@ -41,9 +41,10 @@ import "server-only";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import {
   chunk, isRateLimitError, isTransientError, maxMessagesPerHour, maxRecipientsPerHour,
-  maxRecipientsPerMessage,
+  maxRecipientsPerMessage, warmupState,
 } from "@/lib/email/limits";
 import { htmlToText } from "@/lib/email/compose";
+import { bulkCompliance, suppress, suppressedAmong } from "@/lib/email/suppressions";
 import {
   sendTransaction, type BulkRecipient, type DeliveryMode, type TransactionMessage,
 } from "@/lib/email/smtp";
@@ -123,13 +124,23 @@ function recordInMemory(recipients: number): void {
   inMemorySends.push({ at: Date.now(), recipients });
 }
 
-function countInMemory(): { messages: number; recipients: number; oldest: number | null } {
-  const cutoff = Date.now() - 60 * 60 * 1000;
-  while (inMemorySends.length > 0 && inMemorySends[0].at < cutoff) inMemorySends.shift();
+function countInMemory(): {
+  messages: number;
+  recipients: number;
+  oldest: number | null;
+  dailyRecipients: number;
+} {
+  // Kept for a day rather than an hour: the warm-up ceiling is a 24-hour
+  // figure, so the record has to reach back that far to mean anything.
+  const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+  while (inMemorySends.length > 0 && inMemorySends[0].at < dayAgo) inMemorySends.shift();
+  const hourAgo = Date.now() - 60 * 60 * 1000;
+  const inHour = inMemorySends.filter((s) => s.at >= hourAgo);
   return {
-    messages: inMemorySends.length,
-    recipients: inMemorySends.reduce((sum, s) => sum + s.recipients, 0),
-    oldest: inMemorySends[0]?.at ?? null,
+    messages: inHour.length,
+    recipients: inHour.reduce((sum, s) => sum + s.recipients, 0),
+    oldest: inHour[0]?.at ?? null,
+    dailyRecipients: inMemorySends.reduce((sum, s) => sum + s.recipients, 0),
   };
 }
 
@@ -158,6 +169,18 @@ export interface RateBudget {
    * quietly presenting a number that resets whenever the server does.
    */
   ledgerReady: boolean;
+  /**
+   * Addresses allowed in 24 hours while the sending domain is warming up, or
+   * null once the ramp is over (or was never configured). A new domain is
+   * filtered on volume however correct its DNS is - see `warmupState`.
+   */
+  dailyCap: number | null;
+  /** Addresses reached in the last 24 hours. */
+  dailyUsed: number;
+  /** Addresses still allowed today, or null when no ramp applies. */
+  dailyRemaining: number | null;
+  /** Day number in the warm-up, 0 when none is configured. */
+  warmupDay: number;
 }
 
 /**
@@ -170,14 +193,25 @@ export interface RateBudget {
 export async function readBudget(): Promise<RateBudget> {
   const perHour = maxMessagesPerHour();
   const recipientsPerHour = maxRecipientsPerHour();
+  const warmup = warmupState();
   const admin = createAdminSupabase();
-  const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const now = Date.now();
+  const hourAgo = now - 60 * 60 * 1000;
 
+  // One read covering the whole day: the hourly window is the tail of it, and
+  // the warm-up ceiling needs the rest.
   const { data, error } = await admin
     .from("admin_email_rate_log")
     .select("sent_at, recipients")
-    .gte("sent_at", since)
+    .gte("sent_at", new Date(now - 24 * 60 * 60 * 1000).toISOString())
     .order("sent_at", { ascending: true });
+
+  const daily = (used: number) => ({
+    dailyCap: warmup.dailyCap,
+    dailyUsed: used,
+    dailyRemaining: warmup.dailyCap === null ? null : Math.max(0, warmup.dailyCap - used),
+    warmupDay: warmup.day,
+  });
 
   // No ledger yet: fall back to the process-local record rather than
   // reporting zero capacity, which would look like a permanent throttle and
@@ -195,13 +229,16 @@ export async function readBudget(): Promise<RateBudget> {
         ? new Date(local.oldest + 60 * 60 * 1000).toISOString()
         : null,
       ledgerReady: false,
+      ...daily(local.dailyRecipients),
     };
   }
 
   const rows = data ?? [];
-  const used = rows.length;
-  const recipientsUsed = rows.reduce((sum, r) => sum + (r.recipients ?? 1), 0);
-  const oldest = rows[0]?.sent_at ?? null;
+  const inHour = rows.filter((r) => new Date(r.sent_at).getTime() >= hourAgo);
+  const used = inHour.length;
+  const recipientsUsed = inHour.reduce((sum, r) => sum + (r.recipients ?? 1), 0);
+  const dailyUsed = rows.reduce((sum, r) => sum + (r.recipients ?? 1), 0);
+  const oldest = inHour[0]?.sent_at ?? null;
   return {
     perHour,
     used,
@@ -211,6 +248,7 @@ export async function readBudget(): Promise<RateBudget> {
     recipientsRemaining: Math.max(0, recipientsPerHour - recipientsUsed),
     resetsAt: oldest ? new Date(new Date(oldest).getTime() + 60 * 60 * 1000).toISOString() : null,
     ledgerReady: true,
+    ...daily(dailyUsed),
   };
 }
 
@@ -236,6 +274,8 @@ export interface DispatchResult {
   sent: number;
   /** Recipients that failed permanently in this run. */
   failed: number;
+  /** Recipients not mailed because they had unsubscribed or bounced before. */
+  skipped: number;
   /** Recipients still waiting after this run. */
   pending: number;
   /** SMTP transactions this run used. */
@@ -278,7 +318,7 @@ export async function dispatchMessage(messageId: string): Promise<DispatchResult
     .order("created_at", { ascending: true });
   if (pendingError) throw new Error(pendingError.message);
 
-  const queue = (pendingRows ?? []).map((r) => ({
+  const allPending = (pendingRows ?? []).map((r) => ({
     id: r.id as string,
     email: r.email as string,
     attempts: (r.attempts ?? 0) as number,
@@ -291,6 +331,25 @@ export async function dispatchMessage(messageId: string): Promise<DispatchResult
     } satisfies BulkRecipient,
   }));
 
+  // Checked here, not only when the campaign was composed: a queued campaign
+  // can be resumed hours later, and someone who unsubscribed in between must
+  // not receive the rest of it. That is the difference between honouring an
+  // opt-out and merely offering one.
+  const suppressed = await suppressedAmong(allPending.map((r) => r.email));
+  const blocked = allPending.filter((r) => suppressed.has(r.email.toLowerCase()));
+  const queue = allPending.filter((r) => !suppressed.has(r.email.toLowerCase()));
+
+  if (blocked.length > 0) {
+    await admin
+      .from("admin_email_recipients")
+      .update({
+        status: "skipped",
+        ok: false,
+        error: "配信停止済みのため送信しませんでした。",
+      })
+      .in("id", blocked.map((b) => b.id));
+  }
+
   const budget = await readBudget();
   const payload: TransactionMessage = {
     subject: message.subject,
@@ -298,9 +357,10 @@ export async function dispatchMessage(messageId: string): Promise<DispatchResult
     html: message.body_format === "html" ? message.body : undefined,
     replyTo: message.reply_to ?? message.from_address ?? undefined,
     fromName: FROM_NAME,
-    // Bulk mail needs a documented way out; receiving providers weigh its
-    // absence, and an opt-in list implies an opt-out path.
-    unsubscribeMailto: message.reply_to ?? message.from_address ?? undefined,
+    // One-click unsubscribe headers plus the footer that names the sender -
+    // what Gmail's bulk rules and 特定電子メール法 each require. See
+    // src/lib/email/suppressions.ts.
+    ...bulkCompliance(),
   };
 
   const batches = chunk(queue, perMessage);
@@ -312,12 +372,18 @@ export async function dispatchMessage(messageId: string): Promise<DispatchResult
   let usedBudget = budget.used;
   let usedRecipients = budget.recipientsUsed;
 
+  let usedDaily = budget.dailyUsed;
+
   for (const batch of batches) {
     if (usedBudget >= budget.perHour) break;
     // The recipient ceiling binds independently of the message ceiling: a
     // batched campaign spends few messages but many addresses, so checking
     // only the message count would sail past it.
     if (usedRecipients + batch.length > budget.recipientsPerHour) break;
+    // And the warm-up ceiling binds independently of both: a new domain that
+    // sends its whole allowance on day one gets filtered on volume, which no
+    // amount of correct DNS undoes.
+    if (budget.dailyCap !== null && usedDaily + batch.length > budget.dailyCap) break;
     if (Date.now() - startedAt > MAX_RUN_MS) break;
     if (messages > 0 && GAP_MS > 0) {
       await new Promise((resolve) => setTimeout(resolve, GAP_MS));
@@ -327,6 +393,7 @@ export async function dispatchMessage(messageId: string): Promise<DispatchResult
     messages++;
     usedBudget++;
     usedRecipients += batch.length;
+    usedDaily += batch.length;
 
     // Logged whether or not it succeeded: a rejected attempt still counted
     // against the mailbox as far as the provider is concerned, and treating
@@ -370,6 +437,17 @@ export async function dispatchMessage(messageId: string): Promise<DispatchResult
         .from("admin_email_recipients")
         .update({ status: "failed", ok: false, error, attempts: MAX_ATTEMPTS })
         .in("id", exhausted.map((b) => b.id));
+
+      // A permanent rejection is the address telling us it does not exist.
+      // Continuing to mail it is one of the fastest ways to lose a sending
+      // reputation, so it joins the suppression list - but only when the
+      // rejection can be pinned on one address: a Bcc batch fails as a whole
+      // and says nothing about which of its 45 recipients was refused.
+      if (!retryable && mode === "individual") {
+        for (const item of exhausted) {
+          await suppress(item.email, "bounce", error.slice(0, 300));
+        }
+      }
     }
     for (const item of keepPending) {
       await admin
@@ -398,6 +476,7 @@ export async function dispatchMessage(messageId: string): Promise<DispatchResult
   return {
     sent,
     failed,
+    skipped: blocked.length,
     pending: totals.pending,
     messages,
     rateLimited,
@@ -409,10 +488,10 @@ export async function dispatchMessage(messageId: string): Promise<DispatchResult
 
 async function countRecipients(
   messageId: string,
-): Promise<{ sent: number; failed: number; pending: number }> {
+): Promise<{ sent: number; failed: number; pending: number; skipped: number }> {
   const admin = createAdminSupabase();
-  const counts = { sent: 0, failed: 0, pending: 0 };
-  for (const status of ["sent", "failed", "pending"] as const) {
+  const counts = { sent: 0, failed: 0, pending: 0, skipped: 0 };
+  for (const status of ["sent", "failed", "pending", "skipped"] as const) {
     const { count } = await admin
       .from("admin_email_recipients")
       .select("id", { count: "exact", head: true })
@@ -454,6 +533,8 @@ export async function listPendingCampaigns(limit = 20): Promise<
 export interface DirectSendResult {
   sent: number;
   failed: number;
+  /** Recipients skipped because they had unsubscribed or previously bounced. */
+  skipped: number;
   /** Recipients deliberately not attempted, because the hour cannot carry them. */
   deferred: number;
   messages: number;
@@ -486,15 +567,22 @@ export async function sendCampaignDirect(
   const perMessage = mode === "bcc" ? maxRecipientsPerMessage() : 1;
   const budget = await readBudget();
 
+  // Opt-outs are honoured before capacity is even counted: an address that
+  // must not be mailed should not be occupying this hour's allowance.
+  const suppressed = await suppressedAmong(recipients.map((r) => r.email));
+  const sendable = recipients.filter((r) => !suppressed.has(r.email.toLowerCase()));
+  const skipped = recipients.length - sendable.length;
+
   // Only as many recipients as the hour can carry, under whichever of the
-  // two ceilings binds first. Trimming up front is what keeps every recorded
+  // ceilings binds first. Trimming up front is what keeps every recorded
   // row honest: each one was really attempted, and the rest are reported as
   // untouched rather than failed.
   const capacity = Math.min(
     Math.max(0, budget.remaining) * perMessage,
     Math.max(0, budget.recipientsRemaining),
+    budget.dailyRemaining ?? Number.POSITIVE_INFINITY,
   );
-  const attempted = recipients.slice(0, capacity);
+  const attempted = sendable.slice(0, capacity);
 
   const outcomes: DirectSendResult["outcomes"] = [];
   const batches = chunk(attempted, perMessage);
@@ -529,13 +617,21 @@ export async function sendCampaignDirect(
     for (const recipient of batch) {
       outcomes.push({ recipient, ok: false, error: result.error });
     }
+    // Same reasoning as in dispatchMessage: a permanently rejected address
+    // stops being mailed, and only individual mode can name which one.
+    if (!isTransientError(result.error) && mode === "individual") {
+      for (const recipient of batch) {
+        await suppress(recipient.email, "bounce", result.error.slice(0, 300));
+      }
+    }
   }
 
   const after = await readBudget();
-  const untried = recipients.length - sent - failed;
+  const untried = sendable.length - sent - failed;
   return {
     sent,
     failed,
+    skipped,
     deferred: untried,
     messages,
     rateLimited,

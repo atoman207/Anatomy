@@ -444,6 +444,19 @@ export type AdminEmailRecipientRow = {
   created_at: string;
 }
 
+/**
+ * An address that must not be mailed again: an opt-out, a hard bounce or a
+ * spam complaint. The address itself is the key - suppression follows the
+ * address, not the account, so a re-registration cannot undo it.
+ */
+export type EmailSuppressionRow = {
+  email: string;
+  /** "unsubscribe" | "bounce" | "complaint" | "manual". */
+  reason: string;
+  note: string | null;
+  created_at: string;
+}
+
 /** One row per SMTP transaction, for the trailing-hour rate budget. */
 export type AdminEmailRateLogRow = {
   id: string;
@@ -619,6 +632,10 @@ export type Database = {
       admin_email_rate_log: TableDef<
         AdminEmailRateLogRow,
         Insert<AdminEmailRateLogRow, "recipients" | "sent_at">
+      >;
+      email_suppressions: TableDef<
+        EmailSuppressionRow,
+        Insert<EmailSuppressionRow, "reason" | "note" | "created_at">
       >;
     };
     Views: Record<string, never>;
