@@ -3360,3 +3360,46 @@ create policy assistant_answer_cache_admin on public.assistant_answer_cache
   for all using (public.is_platform_admin()) with check (public.is_platform_admin());
 
 notify pgrst, 'reload schema';
+
+-- ============================================================================
+-- Email suppression list (unsubscribes, bounces, complaints)
+--
+-- Gmail and Yahoo's bulk-sender rules require a working one-click unsubscribe
+-- (RFC 8058), and the Japanese 特定電子メール法 requires an opt-out that is
+-- actually honoured. Both need somewhere to record "never mail this address
+-- again" that outlives the campaign it came from - a header alone unsubscribes
+-- nobody.
+--
+-- Keyed by the address itself rather than by user id: an opt-out follows the
+-- address, so deleting and re-creating an account cannot resurrect it, and a
+-- typed-in address with no account can be suppressed too.
+--
+-- Written by:
+--   * /api/email/unsubscribe  - one-click and the confirmation page
+--   * src/lib/email/campaign.ts - a permanently rejected address (hard bounce),
+--     which is the other half of protecting a sending reputation.
+--
+-- Read before every batch, including when a queued campaign resumes hours
+-- later, so somebody who opted out in the meantime is dropped from the rest of
+-- it. Recipient rows skipped that way are marked status = 'skipped'.
+--
+-- RLS on with no client-facing policy, like the admin_email_* tables: the
+-- service-role client behind a platform-admin check is the only reader.
+-- ============================================================================
+
+create table if not exists public.email_suppressions (
+  email      text primary key,
+  reason     text not null default 'unsubscribe'
+             check (reason in ('unsubscribe', 'bounce', 'complaint', 'manual')),
+  -- Why, in whatever words the source had: the provider's rejection text for a
+  -- bounce, or how the opt-out arrived.
+  note       text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists email_suppressions_created_idx
+  on public.email_suppressions (created_at desc);
+
+alter table public.email_suppressions enable row level security;
+
+notify pgrst, 'reload schema';

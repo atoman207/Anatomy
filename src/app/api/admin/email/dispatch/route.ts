@@ -71,6 +71,8 @@ export async function POST(request: Request) {
     id: string;
     sent: number;
     failed: number;
+    /** Recipients dropped because they had unsubscribed or hard-bounced. */
+    skipped: number;
     pending: number;
     messages: number;
     rateLimited: boolean;
@@ -82,6 +84,7 @@ export async function POST(request: Request) {
       id: campaign.id,
       sent: result.sent,
       failed: result.failed,
+      skipped: result.skipped,
       pending: result.pending,
       messages: result.messages,
       rateLimited: result.rateLimited,

@@ -33,12 +33,15 @@ import {
   type BulkRecipient, type DeliveryMode,
 } from "@/lib/email/smtp";
 import { EMAIL_RE, htmlToText, parseAddressList } from "@/lib/email/compose";
+import { lintMessage } from "@/lib/email/compliance";
+import { bulkCompliance, suppressedAmong, suppressionCount } from "@/lib/email/suppressions";
 import {
   dispatchMessage, readBudget, readEmailSchema, sendCampaignDirect, FROM_NAME,
   type DispatchResult,
 } from "@/lib/email/campaign";
 import {
-  isRateLimitError, maxRecipientsPerMessage, messagesNeeded,
+  emailProvider, isRateLimitError, maxRecipientsPerMessage, messagesNeeded,
+  type EmailProvider,
 } from "@/lib/email/limits";
 import type { AdminEmailMessageRow } from "@/lib/supabase/types";
 
@@ -134,12 +137,22 @@ export async function loadSendingCapacity(): Promise<SendingCapacity> {
     recipientsPerMessage: perMessage,
     recipientsPerHour: budget.recipientsPerHour,
     recipientsUsed: budget.recipientsUsed,
-    // Two ceilings apply at once - messages and addresses - so what is
-    // actually reachable is the lower of the two, not the message figure.
-    reachableNow: Math.min(budget.remaining * perMessage, budget.recipientsRemaining),
+    // Three ceilings can apply at once - messages, addresses, and the
+    // warm-up ramp - so what is actually reachable is the lowest of them,
+    // not the message figure.
+    reachableNow: Math.min(
+      budget.remaining * perMessage,
+      budget.recipientsRemaining,
+      budget.dailyRemaining ?? Number.POSITIVE_INFINITY,
+    ),
     reachablePerHour: Math.min(budget.perHour * perMessage, budget.recipientsPerHour),
     resetsAt: budget.resetsAt,
     ledgerReady: budget.ledgerReady,
+    dailyCap: budget.dailyCap,
+    dailyUsed: budget.dailyUsed,
+    warmupDay: budget.warmupDay,
+    provider: emailProvider(),
+    suppressed,
   };
 }
 
@@ -341,7 +354,7 @@ function readComposed(formData: FormData): ComposedMessage | string {
  */
 async function resolveRecipients(
   formData: FormData,
-): Promise<{ recipients: BulkRecipient[]; audience: string } | string> {
+): Promise<{ recipients: BulkRecipient[]; audience: string; suppressed: number } | string> {
   const userIds = formData
     .getAll("user_ids")
     .map((v) => String(v))
@@ -378,10 +391,19 @@ async function resolveRecipients(
     byEmail.set(email, { email, name: null, userId: null });
   }
 
-  const recipients = [...byEmail.values()];
-  if (recipients.length === 0) return "宛先を1件以上選択または入力してください。";
-  if (recipients.length > RECIPIENTS_MAX) {
-    return `一度に送信できる宛先は${RECIPIENTS_MAX}件までです（現在 ${recipients.length} 件）。`;
+  const selected = [...byEmail.values()];
+  if (selected.length === 0) return "宛先を1件以上選択または入力してください。";
+  if (selected.length > RECIPIENTS_MAX) {
+    return `一度に送信できる宛先は${RECIPIENTS_MAX}件までです（現在 ${selected.length} 件）。`;
+  }
+
+  // Opt-outs and previously bounced addresses are removed before the campaign
+  // is even recorded, so they never appear as queued recipients that someone
+  // could later "resume" into being mailed anyway.
+  const blocked = await suppressedAmong(selected.map((r) => r.email));
+  const recipients = selected.filter((r) => !blocked.has(r.email.toLowerCase()));
+  if (recipients.length === 0) {
+    return "選択された宛先はすべて配信停止済みです。送信する宛先がありません。";
   }
 
   // Derived here rather than trusted from the form - it is a record of what
@@ -394,7 +416,7 @@ async function resolveRecipients(
         ? "all"
         : "selected";
 
-  return { recipients, audience };
+  return { recipients, audience, suppressed: selected.length - recipients.length };
 }
 
 /**
@@ -429,9 +451,12 @@ export async function sendAdminEmailAction(
 
     const resolved = await resolveRecipients(formData);
     if (typeof resolved === "string") return fail(resolved);
-    const { recipients, audience } = resolved;
+    const { recipients, audience, suppressed } = resolved;
 
     const fromAddress = emailSenderAddress() ?? "";
+    // Advisory, never blocking: an announcement that legitimately says 無料
+    // should be sent with a warning, not refused. See compliance.ts.
+    const notes = draftNotes(composed, fromAddress, suppressed);
     const admin = createAdminSupabase();
 
     // Bcc batching is the only way a few hundred recipients fit inside the
@@ -452,7 +477,7 @@ export async function sendAdminEmailAction(
     const schema = await readEmailSchema();
     if (!schema.queue) {
       return await sendWithoutQueue(ctx.user.id, {
-        composed, recipients, audience, mode, fromAddress,
+        composed, recipients, audience, mode, fromAddress, notes,
       });
     }
 
@@ -504,16 +529,46 @@ export async function sendAdminEmailAction(
         messages: result.messages,
         sent: result.sent,
         failed: result.failed,
+        skipped: result.skipped,
         pending: result.pending,
         rate_limited: result.rateLimited,
       },
     });
 
     revalidatePath("/admin/email");
-    return summarize(recipients.length, result);
+    const summary = summarize(recipients.length, result);
+    return { ...summary, message: summary.message + notes };
   } catch (e) {
     return fail(e instanceof Error ? e.message : "メールを送信できませんでした。");
   }
+}
+
+/**
+ * What the administrator should know about this draft before it goes out,
+ * appended to whatever the send itself reports.
+ *
+ * Two kinds of note: addresses removed because they had opted out, and the
+ * things a receiving filter is likely to hold against the wording. Neither
+ * stops a send - the first is already handled, and the second is a judgement
+ * the person writing the mail is better placed to make.
+ */
+function draftNotes(
+  composed: ComposedMessage,
+  fromAddress: string,
+  suppressed: number,
+): string {
+  const parts: string[] = [];
+  if (suppressed > 0) {
+    parts.push(`配信停止済み・宛先不明の ${suppressed} 件は除外しました。`);
+  }
+  const warnings = lintMessage({
+    subject: composed.subject,
+    body: composed.body,
+    format: composed.format,
+    senderAddress: fromAddress || null,
+  });
+  for (const warning of warnings) parts.push(`【確認】${warning.message}`);
+  return parts.length > 0 ? ` ${parts.join(" ")}` : "";
 }
 
 /**
@@ -534,9 +589,10 @@ async function sendWithoutQueue(
     audience: string;
     mode: DeliveryMode;
     fromAddress: string;
+    notes: string;
   },
 ): Promise<ActionResult> {
-  const { composed, recipients, audience, mode, fromAddress } = input;
+  const { composed, recipients, audience, mode, fromAddress, notes } = input;
   const admin = createAdminSupabase();
 
   const result = await sendCampaignDirect(
@@ -547,7 +603,7 @@ async function sendWithoutQueue(
       html: composed.format === "html" ? composed.body : undefined,
       replyTo: composed.replyTo ?? (fromAddress || undefined),
       fromName: FROM_NAME,
-      unsubscribeMailto: composed.replyTo ?? (fromAddress || undefined),
+      ...bulkCompliance(),
     },
     mode,
   );
@@ -610,21 +666,23 @@ async function sendWithoutQueue(
       : "";
 
   if (result.sent === 0 && result.failed === 0) {
-    return fail(`送信上限に達しているため、まだ送信できていません。${deferredNote}`);
+    return fail(`送信上限に達しているため、まだ送信できていません。${deferredNote}${notes}`);
   }
   if (result.failed === 0) {
     return done(
-      `${result.sent} 件に送信しました（${result.messages} 通に分割）。${deferredNote}`,
+      `${result.sent} 件に送信しました（${result.messages} 通に分割）。${deferredNote}${notes}`,
     );
   }
   return fail(
     `${result.sent} 件に送信し、${result.failed} 件は失敗しました。${deferredNote}` +
-      "失敗した宛先は下の送信履歴で確認できます。",
+      `失敗した宛先は下の送信履歴で確認できます。${notes}`,
   );
 }
 
 /** Turns a dispatch outcome into the one sentence the administrator sees. */
 function summarize(requested: number, result: DispatchResult): ActionResult {
+  const skippedNote =
+    result.skipped > 0 ? `配信停止済みの ${result.skipped} 件は送信していません。` : "";
   const resumeNote = result.resetsAt
     ? `送信上限に達したため、残り ${result.pending} 件は待機中です。` +
       `${new Date(result.resetsAt).toLocaleTimeString("ja-JP")} 以降に「残りを送信」で続けられます。`
@@ -634,21 +692,21 @@ function summarize(requested: number, result: DispatchResult): ActionResult {
 
   if (result.pending === 0 && result.failed === 0) {
     return done(
-      requested === 1
+      (requested === 1 && result.skipped === 0
         ? "メールを送信しました。"
-        : `${result.sent} 件すべてに送信しました（${result.messages} 通に分割）。`,
+        : `${result.sent} 件すべてに送信しました（${result.messages} 通に分割）。`) + skippedNote,
     );
   }
   if (result.sent === 0 && result.failed === 0 && result.pending > 0) {
     return fail(
-      `送信上限に達しているため、まだ送信できていません。${resumeNote}`,
+      `送信上限に達しているため、まだ送信できていません。${resumeNote}${skippedNote}`,
     );
   }
   if (result.failed === 0) {
-    return done(`${result.sent} 件に送信しました。${resumeNote}`);
+    return done(`${result.sent} 件に送信しました。${resumeNote}${skippedNote}`);
   }
   return fail(
-    `${result.sent} 件に送信し、${result.failed} 件は失敗しました。${resumeNote}` +
+    `${result.sent} 件に送信し、${result.failed} 件は失敗しました。${resumeNote}${skippedNote}` +
       "失敗した宛先は下の送信履歴で確認できます。",
   );
 }
@@ -727,6 +785,11 @@ async function sendTest(
   // administrator's own inbox. Sent in individual mode so `{{name}}` is
   // substituted, which is half of what a test is for. It still costs one
   // message against the hourly budget, so it is logged like any other.
+  //
+  // Carries the real unsubscribe headers and footer: a test that omitted them
+  // could not be used to check the one thing that most often decides whether
+  // a broadcast reaches inboxes. This is the message to forward to
+  // mail-tester.com, or to open in Gmail and inspect Authentication-Results.
   const outcome = await sendTransaction(
     [self],
     {
@@ -735,6 +798,7 @@ async function sendTest(
       html: composed.format === "html" ? composed.body : undefined,
       replyTo: composed.replyTo ?? (fromAddress || undefined),
       fromName: FROM_NAME,
+      ...bulkCompliance(),
     },
     "individual",
   );

@@ -218,6 +218,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 /** Landing-site routes that own their own chrome (no sidebar / app header). */
 function isPublicSitePath(pathname: string): boolean {
   if (pathname === "/") return true;
-  const publicRoots = ["/contact", "/help", "/terms", "/link-to-us", "/login", "/register", "/auth"];
+  const publicRoots = [
+    "/contact", "/help", "/terms", "/link-to-us", "/login", "/register", "/auth",
+    // Reached from a link in an email, by people who may have no account at
+    // all - and it brings its own site header and footer.
+    "/unsubscribe",
+  ];
   return publicRoots.some((root) => pathname === root || pathname.startsWith(`${root}/`));
 }

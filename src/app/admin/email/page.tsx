@@ -6,8 +6,9 @@ import { InlineActionForm } from "@/components/admin/ActionForm";
 import {
   loadEmailAudience, listSentEmails, loadSendingCapacity, resumeAdminEmailAction,
 } from "@/lib/email/adminActions";
-import { isEmailConfigured } from "@/lib/email/smtp";
+import { emailSenderAddress, isEmailConfigured } from "@/lib/email/smtp";
 import { DEFAULT_MAX_MESSAGES_PER_HOUR } from "@/lib/email/limits";
+import { checkEmailAuth, type CheckState } from "@/lib/email/authCheck";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +51,7 @@ export default async function AdminEmailPage() {
   let audience;
   let history;
   let capacity;
+  let auth;
   try {
     // Independent reads - the audience list pages through auth.users, so
     // waiting for it before touching the history would double the page's
@@ -59,6 +61,9 @@ export default async function AdminEmailPage() {
       listSentEmails(20),
       loadSendingCapacity(),
     ]);
+    // DNS only - no credentials, no third party - and cached for a few
+    // minutes inside checkEmailAuth, so it costs nothing to show every visit.
+    auth = await checkEmailAuth(emailSenderAddress());
   } catch (e) {
     const detail = e instanceof Error ? e.message : "不明なエラーです。";
     return (
@@ -99,7 +104,7 @@ export default async function AdminEmailPage() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <StatTile
           label="1時間の送信上限"
           value={`${capacity.messagesPerHour} 通`}
@@ -123,7 +128,83 @@ export default async function AdminEmailPage() {
           value={totalFailed}
           tone={totalFailed ? "warn" : "good"}
         />
+        {capacity.dailyCap === null ? (
+          <StatTile
+            label="配信停止・宛先不明"
+            value={capacity.suppressed === null ? "—" : capacity.suppressed.toLocaleString("ja-JP")}
+            hint={
+              capacity.suppressed === null
+                ? "テーブル未適用"
+                : "これらの宛先は自動的に除外されます"
+            }
+            tone="accent"
+          />
+        ) : (
+          <StatTile
+            label={`ウォームアップ ${capacity.warmupDay}日目`}
+            value={`${capacity.dailyUsed.toLocaleString("ja-JP")} / ${capacity.dailyCap.toLocaleString("ja-JP")}`}
+            hint="24時間あたりの上限（新しい送信ドメインを守るため）"
+            tone={capacity.dailyUsed >= capacity.dailyCap ? "warn" : "good"}
+          />
+        )}
       </div>
+
+      {/* Item 6 of "reaching the inbox": the three DNS records a receiving
+          provider checks before anything else. Read live, because they live
+          outside this repository and break silently. */}
+      <Card
+        title="送信ドメインの認証状況"
+        subtitle={
+          auth.domain
+            ? `${auth.domain} のDNSを確認しました（${new Date(auth.checkedAt).toLocaleTimeString("ja-JP")} 時点・5分間キャッシュ）`
+            : "差出人アドレスが未設定です"
+        }
+      >
+        <div className="flex flex-col gap-2">
+          {auth.checks.map((check) => (
+            <div key={check.name} className="flex gap-3 border-b border-line/60 pb-2 last:border-0">
+              <Badge tone={AUTH_TONE[check.state]}>{check.name}</Badge>
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] leading-relaxed text-ink-2">{check.detail}</p>
+                {check.value && (
+                  <p className="mt-1 break-all font-mono text-[11px] text-ink-3">{check.value}</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-[12px] leading-relaxed text-ink-3">
+          DNSに公開鍵があっても、実際に署名されているかまではここでは分かりません。
+          「テスト送信」で自分宛に送り、Gmailの「メッセージのソースを表示」で{" "}
+          <code className="font-mono">spf=pass</code>・
+          <code className="font-mono">dkim=pass</code>・
+          <code className="font-mono">dmarc=pass</code>{" "}
+          の3つを確認してください（mail-tester.com に転送すると点数で確認できます）。
+        </p>
+      </Card>
+
+      {/* Not an optimisation like the rate-log warning below: without this
+          table an unsubscribe cannot be recorded, so the one-click endpoint
+          answers with an error and Gmail sees a broken opt-out button - which
+          is worse for delivery than not offering one. */}
+      {capacity.suppressed === null && (
+        <Callout tone="danger" title="配信停止を保存できません（データベースの更新が必要です）">
+          <code className="font-mono text-[12px]">supabase/migrations/all.sql</code>{" "}
+          の末尾にある「Email suppression list」の節を、Supabase の SQL
+          エディタで実行してください。
+          <br />
+          このテーブルがないと、受信者が「配信停止」を押しても記録できず、
+          ワンクリック配信停止はエラーを返します。Gmail
+          から見ると「配信停止が壊れている送信者」となり、迷惑メール判定が強まります。
+        </Callout>
+      )}
+
+      {auth.overall === "fail" && (
+        <Callout tone="danger" title="この状態では迷惑メールに振り分けられます">
+          上の「送信ドメインの認証状況」で失敗している項目を、DNSに追加してください。
+          SPF・DKIM・DMARCの3つが揃っていない送信者は、Gmail・Yahoo の一括送信者要件を満たしません。
+        </Callout>
+      )}
 
       {/* An optional upgrade, not a blocker: without these tables the send
           still batches and still stops on the first throttle, it just cannot
@@ -251,6 +332,14 @@ export default async function AdminEmailPage() {
     </div>
   );
 }
+
+/** DNS check state -> badge colour. `unknown` is "nothing to check yet". */
+const AUTH_TONE: Record<CheckState, "good" | "warn" | "danger" | "neutral"> = {
+  pass: "good",
+  warn: "warn",
+  fail: "danger",
+  unknown: "neutral",
+};
 
 const AUDIENCE_LABELS: Record<string, string> = {
   all: "全ユーザー",

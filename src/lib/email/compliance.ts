@@ -54,6 +54,31 @@ export interface SenderIdentity {
 const RULE = "──────────────────────────────";
 
 /**
+ * `List-Unsubscribe`, and its one-click companion.
+ *
+ * Both headers, not one: mail clients show the "unsubscribe" button from
+ * `List-Unsubscribe`, while `List-Unsubscribe-Post` is the promise that the
+ * HTTPS entry can be POSTed with nobody watching (RFC 8058) - which is what
+ * Gmail and Yahoo's bulk-sender rules ask for. It is only ever sent when the
+ * URL identifies one recipient: promising one-click for a page that has to
+ * ask "which address?" would break the button rather than satisfy the rule.
+ */
+export function unsubscribeHeaders(
+  links: UnsubscribeLinks,
+): Record<string, string> | undefined {
+  const entries: string[] = [];
+  if (links.url) entries.push(`<${links.url}>`);
+  if (links.mailto) entries.push(`<mailto:${links.mailto}?subject=unsubscribe>`);
+  if (entries.length === 0) return undefined;
+
+  const headers: Record<string, string> = { "List-Unsubscribe": entries.join(", ") };
+  if (links.oneClick && links.url) {
+    headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
+  }
+  return headers;
+}
+
+/**
  * The plain-text footer.
  *
  * Kept short and unadorned: this is the part a filter reads for the sender's

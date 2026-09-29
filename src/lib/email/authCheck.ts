@@ -20,7 +20,7 @@ import "server-only";
  * button is how that gets verified.
  */
 
-import { resolveMx, resolveTxt } from "node:dns/promises";
+import { Resolver } from "node:dns/promises";
 
 export type CheckState = "pass" | "warn" | "fail" | "unknown";
 
@@ -59,18 +59,71 @@ const DKIM_SELECTORS = [
   "mail",
 ];
 
-async function txt(name: string): Promise<string[]> {
-  try {
-    // Each record arrives as an array of strings (long records are split at
-    // 255 bytes), so the chunks are joined before anything is matched.
-    return (await resolveTxt(name)).map((chunks) => chunks.join(""));
-  } catch {
-    return [];
+/**
+ * Public resolvers to fall back to.
+ *
+ * The distinction this exists for: "this domain publishes no DMARC record"
+ * and "I could not ask" look identical if every failure is swallowed, and
+ * reporting the second as the first sends someone off to fix DNS that is
+ * already correct. So a query that fails for any reason other than an
+ * authoritative "no such record" is retried against a resolver that is known
+ * to work - container images and locked-down hosts frequently ship a
+ * resolver that refuses outbound queries.
+ */
+const PUBLIC_RESOLVERS = ["1.1.1.1", "8.8.8.8"];
+
+/** An authoritative "there is no such record", as opposed to a failed query. */
+const ABSENT = new Set(["ENODATA", "ENOTFOUND"]);
+
+interface Lookup<T> {
+  records: T[];
+  /** True when no resolver could answer - the caller must not read absence into it. */
+  failed: boolean;
+}
+
+async function lookup<T>(run: (resolver: Resolver) => Promise<T[]>): Promise<Lookup<T>> {
+  const attempts: Resolver[] = [new Resolver({ timeout: 3_000, tries: 2 })];
+  for (const server of PUBLIC_RESOLVERS) {
+    const resolver = new Resolver({ timeout: 3_000, tries: 2 });
+    resolver.setServers([server]);
+    attempts.push(resolver);
   }
+
+  for (const resolver of attempts) {
+    try {
+      return { records: await run(resolver), failed: false };
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code ?? "";
+      // The domain really has no such record: an answer, not a failure.
+      if (ABSENT.has(code)) return { records: [], failed: false };
+    }
+  }
+  return { records: [], failed: true };
+}
+
+async function txt(name: string): Promise<Lookup<string>> {
+  // Each record arrives as an array of strings (long records are split at
+  // 255 bytes), so the chunks are joined before anything is matched.
+  const result = await lookup((r) => r.resolveTxt(name));
+  return { records: result.records.map((chunks) => chunks.join("")), failed: result.failed };
+}
+
+/** The check to show when DNS itself could not be consulted. */
+function unreachable(name: string): AuthCheck {
+  return {
+    name,
+    state: "unknown",
+    value: null,
+    detail:
+      "DNSを参照できませんでした（ネットワークまたはリゾルバの問題）。" +
+      "レコードの有無は判定していません。時間をおいて再読み込みしてください。",
+  };
 }
 
 async function checkSpf(domain: string): Promise<AuthCheck> {
-  const records = (await txt(domain)).filter((r) => r.toLowerCase().startsWith("v=spf1"));
+  const lookedUp = await txt(domain);
+  if (lookedUp.failed) return unreachable("SPF");
+  const records = lookedUp.records.filter((r) => r.toLowerCase().startsWith("v=spf1"));
   if (records.length === 0) {
     return {
       name: "SPF",
@@ -119,9 +172,13 @@ async function checkDkim(domain: string): Promise<AuthCheck> {
   const configured = (process.env.EMAIL_DKIM_SELECTOR ?? "").trim();
   const selectors = configured ? [configured, ...DKIM_SELECTORS] : DKIM_SELECTORS;
 
+  let anyReached = false;
   for (const selector of selectors) {
-    const records = await txt(`${selector}._domainkey.${domain}`);
-    const key = records.find((r) => r.toLowerCase().includes("v=dkim1") || r.includes("p="));
+    const lookedUp = await txt(`${selector}._domainkey.${domain}`);
+    if (!lookedUp.failed) anyReached = true;
+    const key = lookedUp.records.find(
+      (r) => r.toLowerCase().includes("v=dkim1") || r.includes("p="),
+    );
     if (key) {
       return {
         name: "DKIM",
@@ -133,6 +190,7 @@ async function checkDkim(domain: string): Promise<AuthCheck> {
       };
     }
   }
+  if (!anyReached) return unreachable("DKIM");
   return {
     name: "DKIM",
     state: "fail",
@@ -144,9 +202,9 @@ async function checkDkim(domain: string): Promise<AuthCheck> {
 }
 
 async function checkDmarc(domain: string): Promise<AuthCheck> {
-  const records = (await txt(`_dmarc.${domain}`)).filter((r) =>
-    r.toLowerCase().startsWith("v=dmarc1"),
-  );
+  const lookedUp = await txt(`_dmarc.${domain}`);
+  if (lookedUp.failed) return unreachable("DMARC");
+  const records = lookedUp.records.filter((r) => r.toLowerCase().startsWith("v=dmarc1"));
   if (records.length === 0) {
     return {
       name: "DMARC",
@@ -189,16 +247,9 @@ async function checkDmarc(domain: string): Promise<AuthCheck> {
 }
 
 async function checkMx(domain: string): Promise<AuthCheck> {
-  try {
-    const records = await resolveMx(domain);
-    if (records.length === 0) throw new Error("no mx");
-    return {
-      name: "MX",
-      state: "pass",
-      value: records.map((r) => r.exchange).join(", "),
-      detail: "返信を受け取れる状態です。",
-    };
-  } catch {
+  const lookedUp = await lookup((r) => r.resolveMx(domain));
+  if (lookedUp.failed) return unreachable("MX");
+  if (lookedUp.records.length === 0) {
     return {
       name: "MX",
       state: "warn",
@@ -208,6 +259,12 @@ async function checkMx(domain: string): Promise<AuthCheck> {
         "受信側からも不自然に見えます。",
     };
   }
+  return {
+    name: "MX",
+    state: "pass",
+    value: lookedUp.records.map((r) => r.exchange).join(", "),
+    detail: "返信を受け取れる状態です。",
+  };
 }
 
 const RANK: Record<CheckState, number> = { pass: 0, unknown: 1, warn: 2, fail: 3 };
