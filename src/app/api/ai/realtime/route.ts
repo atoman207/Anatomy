@@ -37,6 +37,8 @@ export async function POST(request: Request) {
     const secret = await createRealtimeClientSecret({
       // Persona only; knowledge is attached per question (fewer tokens per turn).
       instructions: realtimeSessionInstructions(audience),
+      // The Anam avatar is live: the model writes the reply, the avatar voices it.
+      textOnly: body?.avatar === true,
     });
     return NextResponse.json(
       {

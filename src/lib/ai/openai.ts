@@ -41,6 +41,11 @@ export interface AiConfig {
   speechVoice: string;
   /** Speech-to-speech model for the live assistant conversation. */
   realtimeChat: string;
+  /**
+   * Realtime model when the Anam avatar speaks the replies: it hears the
+   * user and writes the answer as text, which the avatar voices.
+   */
+  realtimeAvatarChat: string;
 }
 
 export function aiConfig(): AiConfig {
@@ -58,6 +63,12 @@ export function aiConfig(): AiConfig {
     // gpt-realtime: ~0.45s to first audio (2.1 measured ~0.8s), which is what
     // keeps replies inside a second of the user finishing.
     realtimeChat: process.env.OPENAI_MODEL_REALTIME_CHAT || "gpt-realtime",
+    // Measured in text mode with the assistant prompt (2026-10): 2.1 gave the
+    // most accurate, natural Japanese with no stock filler (~0.85s to first
+    // text); gpt-realtime was faster (~0.4s) but tacked 「詳しくお話ししましょうか？」
+    // onto every answer, and the minis slipped on facts or grammar. The
+    // avatar's own TTS adds latency either way, so answer quality wins here.
+    realtimeAvatarChat: process.env.OPENAI_MODEL_REALTIME_AVATAR || "gpt-realtime-2.1",
   };
 }
 
@@ -81,9 +92,15 @@ export async function createRealtimeClientSecret(session: {
   voice?: string;
   maxOutputTokens?: number;
   silenceMs?: number;
+  /**
+   * Replies as text only (no OpenAI voice): the Anam avatar speaks them, so
+   * there is exactly one voice and it is lip-synced.
+   */
+  textOnly?: boolean;
 }): Promise<RealtimeClientSecret> {
   const key = requireKey();
   const cfg = aiConfig();
+  const model = session.textOnly ? cfg.realtimeAvatarChat : cfg.realtimeChat;
 
   const res = await post(
     "/realtime/client_secrets",
@@ -97,12 +114,14 @@ export async function createRealtimeClientSecret(session: {
         expires_after: { anchor: "created_at", seconds: 600 },
         session: {
           type: "realtime",
-          model: cfg.realtimeChat,
+          model,
           instructions: session.instructions,
+          ...(session.textOnly ? { output_modalities: ["text"] } : {}),
           // Audio counts toward this cap (~20 tokens per spoken second), so a
           // tight cap cuts the voice off mid-sentence. Brevity comes from the
-          // instructions; this only stops a runaway reply (~45s).
-          max_output_tokens: session.maxOutputTokens ?? 1200,
+          // instructions; this only stops a runaway reply (~45s). Text-only
+          // replies are a few hundred tokens at most.
+          max_output_tokens: session.maxOutputTokens ?? (session.textOnly ? 600 : 1200),
           audio: {
             input: {
               noise_reduction: { type: "near_field" },
@@ -118,7 +137,7 @@ export async function createRealtimeClientSecret(session: {
                 interrupt_response: true,
               },
             },
-            output: { voice: session.voice ?? cfg.speechVoice },
+            ...(session.textOnly ? {} : { output: { voice: session.voice ?? cfg.speechVoice } }),
           },
         },
       }),
@@ -129,7 +148,7 @@ export async function createRealtimeClientSecret(session: {
   if (!res.ok) throw await failure(res);
   const body = await res.json();
   if (!body?.value) throw new AiError("リアルタイム接続キーを取得できませんでした。", 502);
-  return { value: body.value, expiresAt: body.expires_at ?? 0, model: cfg.realtimeChat };
+  return { value: body.value, expiresAt: body.expires_at ?? 0, model };
 }
 
 export function isAiEnabled(): boolean {

@@ -22,6 +22,7 @@
     "stripe:reset-mock": "node scripts/stripe-reset-mock.mjs"
   },
   "dependencies": {
+    "@anam-ai/js-sdk": "^4.29.1",
     "@epicgames-ps/lib-pixelstreamingfrontend-ue5.6": "^0.3.1",
     "@react-three/drei": "^10.7.8",
     "@react-three/fiber": "^9.7.0",

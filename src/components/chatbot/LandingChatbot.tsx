@@ -1,15 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import { AssistantChatModal, type ChatViewer } from "./AssistantChatModal";
+import { PersonaLoop } from "./avatar/PersonaMedia";
 
 /**
  * The one assistant chatbot, on the home page (`/`). Usable without signing
  * in (the API routes are open to guests, rate limited).
  *
  * Nothing opens on arrival: the page shows only a small launcher in the
- * lower-left, and the modal appears when the visitor presses it.
+ * lower-left - her idle loop, loaded after the page itself - and the modal
+ * (with her live video) appears when the visitor presses it.
  */
 export function LandingChatbot({
   fallbackLabId,
@@ -40,13 +41,9 @@ export function LandingChatbot({
           onClick={() => setOpen(true)}
         >
           <span className="relative block h-12 w-12">
-            <Image
-              src="/chatbot.png"
-              alt=""
-              width={96}
-              height={96}
-              className="h-12 w-12 rounded-full object-cover object-top"
-            />
+            <span className="relative block h-12 w-12 overflow-hidden rounded-full bg-slate-100">
+              <PersonaLoop deferred className="object-[50%_22%]" />
+            </span>
             <span
               aria-hidden
               className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-white"

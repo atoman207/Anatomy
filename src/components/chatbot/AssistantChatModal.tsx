@@ -1,15 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
 import { Icon } from "@/components/icons";
 import { Avatar } from "@/components/chat/Avatar";
 import { useAvatarController } from "./avatar/useAvatarController";
+import { useAnamPersona } from "./avatar/useAnamPersona";
+import { PersonaLoop, PersonaThumb } from "./avatar/PersonaMedia";
 import { useRealtimeAssistant, type AssistantStatus } from "./useRealtimeAssistant";
-
-/** Her portrait: one still image, used both full-size and as the chat avatar. */
-const PORTRAIT = "/chatbot.png";
 
 export interface ChatViewer {
   signedIn: boolean;
@@ -27,14 +25,15 @@ const STATUS_LABEL: Record<AssistantStatus, string> = {
 };
 
 /**
- * The assistant chat: one modal with her portrait on one side and the
+ * The assistant chat: one modal with her live video on one side and the
  * conversation on the other.
  *
- * The portrait is a still image - no 3D renderer - so the page stays light
- * and the panel looks the same on every device. Voice is unchanged: press the
- * mic and talk; the moment you stop, the mic mutes itself and she answers
- * aloud, her words appearing in the thread as she says them. Typing is the
- * fallback.
+ * She is the Anam clone persona, streamed in real time: opening the modal
+ * starts her stream (her idle loop plays until the first live frame), and
+ * every reply - written by the OpenAI realtime model - is spoken by her with
+ * lip-synced video. Press the mic and talk; the moment you stop, the mic mutes
+ * itself and she answers, her words appearing in the thread. Typing works the
+ * same way. If the avatar cannot connect, the model's own voice answers.
  */
 export function AssistantChatModal({
   open,
@@ -50,8 +49,18 @@ export function AssistantChatModal({
   viewer: ChatViewer;
 }) {
   const avatar = useAvatarController();
+  const {
+    start: startPersona,
+    stop: stopPersona,
+    status: personaStatus,
+    videoId,
+    videoRef,
+    needsTap,
+    unmute,
+    speaker,
+  } = useAnamPersona({ labId: fallbackLabId });
   const { status, messages, liveCaption, error, lastLatencyMs, startListening, stopListening, sendText, clear, close } =
-    useRealtimeAssistant({ labId: fallbackLabId, historyScope, avatar });
+    useRealtimeAssistant({ labId: fallbackLabId, historyScope, avatar, speaker });
   const [draft, setDraft] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -59,6 +68,34 @@ export function AssistantChatModal({
   useEffect(() => {
     if (!open) close();
   }, [open, close]);
+
+  // Her stream runs while the chat is open, so she is ready before the first question.
+  useEffect(() => {
+    if (!open) return;
+    void startPersona();
+    return () => {
+      void stopPersona();
+    };
+  }, [open, startPersona, stopPersona]);
+
+  /**
+   * Before a turn, make sure she can speak it: reconnect after an idle
+   * timeout, or wait for a connect still in progress. A failed avatar is not
+   * retried on every turn - the model's own voice answers instead.
+   */
+  const ensurePersona = useCallback(async () => {
+    if (personaStatus === "live" || personaStatus === "failed") return;
+    await startPersona();
+  }, [personaStatus, startPersona]);
+
+  const onMic = useCallback(async () => {
+    if (status === "listening") {
+      stopListening();
+      return;
+    }
+    await ensurePersona();
+    await startListening();
+  }, [ensurePersona, startListening, status, stopListening]);
 
   useEffect(() => {
     if (!open) return;
@@ -81,8 +118,11 @@ export function AssistantChatModal({
   if (!open) return null;
 
   const listening = status === "listening";
+  const personaConnecting = personaStatus === "connecting";
   const busy = status === "connecting" || status === "thinking";
   const visible = messages.filter((m) => m.content.trim());
+  const live = personaStatus === "live";
+  const statusLabel = personaConnecting && (status === "idle" || status === "ready") ? "接続しています" : STATUS_LABEL[status];
 
   return (
     <div
@@ -100,14 +140,7 @@ export function AssistantChatModal({
       >
         <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-line/70 px-4 sm:px-5">
           <div className="flex min-w-0 items-center gap-3">
-            <Image
-              src={PORTRAIT}
-              alt=""
-              width={72}
-              height={72}
-              className="h-9 w-9 shrink-0 rounded-full object-cover object-top"
-              priority
-            />
+            <PersonaThumb size={36} />
             <div className="min-w-0 leading-tight">
               <p className="truncate text-[14px] font-semibold text-ink">研究アシスタント</p>
               <p className="flex items-center gap-1.5 truncate text-[11.5px] text-ink-3" aria-live="polite">
@@ -115,10 +148,14 @@ export function AssistantChatModal({
                   aria-hidden
                   className={cx(
                     "h-1.5 w-1.5 rounded-full transition-colors duration-500",
-                    listening ? "bg-rose-500" : status === "connecting" ? "bg-amber-400" : "bg-emerald-500",
+                    listening
+                      ? "bg-rose-500"
+                      : status === "connecting" || personaConnecting
+                        ? "bg-amber-400"
+                        : "bg-emerald-500",
                   )}
                 />
-                {STATUS_LABEL[status]}
+                {statusLabel}
               </p>
             </div>
           </div>
@@ -129,16 +166,51 @@ export function AssistantChatModal({
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-          {/* Portrait: still image, with the mic control resting on it */}
-          <div className="relative h-[42%] shrink-0 overflow-hidden bg-surface-2 md:h-auto md:w-[40%]">
-            <Image
-              src={PORTRAIT}
-              alt="研究アシスタント"
-              fill
-              sizes="(min-width: 768px) 24rem, 100vw"
-              className="object-cover object-top"
-              priority
+          {/* Her live video (Anam), with the mic control resting on it */}
+          <div className="relative h-[50%] min-h-[14rem] shrink-0 overflow-hidden bg-slate-100 md:h-auto md:min-h-0 md:w-[44%]">
+            {/* Idle loop until the first live frame (and if the stream cannot connect). */}
+            <PersonaLoop
+              className={cx(
+                "absolute inset-0 object-[50%_28%] transition-opacity duration-700",
+                live ? "opacity-0" : "opacity-100",
+              )}
             />
+            <video
+              id={videoId}
+              ref={videoRef}
+              autoPlay
+              playsInline
+              aria-label="研究アシスタント"
+              className={cx(
+                "absolute inset-0 h-full w-full object-cover object-[50%_28%] transition-opacity duration-700",
+                live ? "opacity-100" : "opacity-0",
+              )}
+            />
+            {(personaConnecting || personaStatus === "failed") && (
+              <p
+                aria-live="polite"
+                className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full bg-slate-900/55 px-2.5 py-1 text-[11.5px] text-white backdrop-blur-sm"
+              >
+                {personaConnecting ? (
+                  <>
+                    <TypingDots light />
+                    <span>映像に接続しています</span>
+                  </>
+                ) : (
+                  <span>映像に接続できませんでした（音声で応答します）</span>
+                )}
+              </p>
+            )}
+            {needsTap && live && (
+              <button
+                type="button"
+                onClick={unmute}
+                className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full bg-slate-900/65 px-3 py-1.5 text-[12px] font-medium text-white backdrop-blur-sm transition hover:bg-slate-900/80"
+              >
+                <Icon name="play" className="h-3.5 w-3.5" />
+                タップして音声をオン
+              </button>
+            )}
             <div
               aria-hidden
               className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-slate-900/55 to-transparent"
@@ -154,7 +226,7 @@ export function AssistantChatModal({
               )}
               <button
                 type="button"
-                onClick={() => void (listening ? stopListening() : startListening())}
+                onClick={() => void onMic()}
                 disabled={busy}
                 aria-pressed={listening}
                 aria-label={listening ? "話し終える" : "マイクで話しかける"}
@@ -166,7 +238,11 @@ export function AssistantChatModal({
                 {listening && (
                   <span aria-hidden className="absolute inset-0 animate-ping rounded-full bg-rose-500/40 [animation-duration:1.8s]" />
                 )}
-                {busy ? <TypingDots light /> : <Icon name={listening ? "stop" : "mic"} className="relative h-6 w-6" />}
+                {busy || (personaConnecting && !listening) ? (
+                  <TypingDots light />
+                ) : (
+                  <Icon name={listening ? "stop" : "mic"} className="relative h-6 w-6" />
+                )}
               </button>
             </div>
           </div>
@@ -215,7 +291,7 @@ export function AssistantChatModal({
                 e.preventDefault();
                 const text = draft;
                 setDraft("");
-                void sendText(text);
+                void ensurePersona().then(() => sendText(text));
               }}
             >
               <div className="flex items-center gap-2 rounded-full bg-surface-1 py-1.5 pl-4 pr-1.5 ring-1 ring-line transition focus-within:ring-2 focus-within:ring-accent/50">
@@ -272,15 +348,7 @@ function TypingDots({ light = false }: { light?: boolean }) {
 }
 
 function AssistantAvatar() {
-  return (
-    <Image
-      src={PORTRAIT}
-      alt=""
-      width={64}
-      height={64}
-      className="h-8 w-8 shrink-0 rounded-full object-cover object-top ring-1 ring-line/70"
-    />
-  );
+  return <PersonaThumb size={32} className="ring-1 ring-line/70" />;
 }
 
 function ViewerAvatar({ viewer }: { viewer: ChatViewer }) {

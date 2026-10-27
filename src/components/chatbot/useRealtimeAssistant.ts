@@ -6,6 +6,7 @@ import { createAnalyserLipSync, type LiveLipSync } from "@/lib/voice/liveLipSync
 import type { VisemeFrame } from "@/lib/voice/lipSync";
 import type { AvatarController } from "./avatar/useAvatarController";
 import type { ChatbotMessage } from "./useChatbotConversation";
+import type { AvatarSpeaker } from "./avatar/useAnamPersona";
 
 /**
  * Live voice conversation with the assistant over OpenAI's realtime API.
@@ -22,6 +23,11 @@ import type { ChatbotMessage } from "./useChatbotConversation";
  * hears the end of the utterance the mic mutes itself and the reply plays.
  * Press the mic again for the next question (pressing it while the assistant
  * talks interrupts her).
+ *
+ * With the Anam avatar live (`speaker`), the session is opened text-only:
+ * the realtime model still hears the user and writes every reply, and the
+ * text streams into the avatar, which speaks it with lip-synced video - one
+ * voice, hers. Without the avatar, the model's own voice answers as before.
  */
 
 export type AssistantStatus = "idle" | "connecting" | "ready" | "listening" | "thinking" | "speaking";
@@ -81,10 +87,13 @@ export function useRealtimeAssistant({
   labId,
   historyScope,
   avatar,
+  speaker = null,
 }: {
   labId: string | null;
   historyScope: string;
   avatar: AvatarController;
+  /** The live avatar that voices replies; null = the model's own voice. */
+  speaker?: AvatarSpeaker | null;
 }) {
   const [status, setStatus] = useState<AssistantStatus>("idle");
   const [messages, setMessages] = useState<ChatbotMessage[]>([]);
@@ -119,10 +128,18 @@ export function useRealtimeAssistant({
   const itemToMessage = useRef(new Map<string, string>());
   const messagesRef = useRef<ChatbotMessage[]>([]);
   const avatarRef = useRef(avatar);
+  const speakerRef = useRef<AvatarSpeaker | null>(speaker);
+  /** The current session replies in text for the avatar to speak. */
+  const textModeRef = useRef(false);
+  /** item_id of the text reply currently streaming into the avatar. */
+  const textReplyRef = useRef<string | null>(null);
 
   useEffect(() => {
     avatarRef.current = avatar;
   }, [avatar]);
+  useEffect(() => {
+    speakerRef.current = speaker;
+  }, [speaker]);
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
@@ -214,6 +231,16 @@ export function useRealtimeAssistant({
     avatarRef.current.dispatch({ type: "SPEECH_FINISHED" });
   }, []);
 
+  /** Stops whatever is answering right now: cached replay, avatar, model. */
+  const interruptReply = useCallback(() => {
+    stopReplay();
+    speakerRef.current?.interrupt();
+    textReplyRef.current = null;
+    send({ type: "response.cancel" });
+    // There is no model audio to clear in a text-only session.
+    if (!textModeRef.current) send({ type: "output_audio_buffer.clear" });
+  }, [send, stopReplay]);
+
   /** Asks the realtime model to answer the question already in the conversation. */
   const respondLive = useCallback(
     (instructions?: string) => {
@@ -250,6 +277,23 @@ export function useRealtimeAssistant({
 
       const ctx = ctxRef.current;
       const { answer, audioUrl, instructions } = decision;
+
+      const sp = speakerRef.current;
+      if (textModeRef.current && sp?.isLive()) {
+        if (!decision.hit || !answer) {
+          respondLive(instructions);
+          return;
+        }
+        // Cached text, her voice: no model call, and the stored OpenAI audio is not used.
+        send({
+          type: "conversation.item.create",
+          item: { type: "message", role: "assistant", content: [{ type: "output_text", text: answer }] },
+        });
+        upsert(newId(), "assistant", () => answer, true);
+        sp.say(answer);
+        return;
+      }
+
       if (!decision.hit || !answer || !audioUrl || !ctx) {
         respondLive(instructions);
         return;
@@ -366,6 +410,44 @@ export function useRealtimeAssistant({
           if (id) upsert(id, "assistant", (prev) => text || prev, true);
           break;
         }
+        case "response.output_text.delta": {
+          // Text-only session: the reply streams into the avatar as it is written.
+          const itemId = String(ev.item_id ?? "");
+          let id = itemToMessage.current.get(itemId);
+          if (!id) {
+            id = newId();
+            itemToMessage.current.set(itemId, id);
+          }
+          const delta = String(ev.delta ?? "");
+          upsert(id, "assistant", (prev) => prev + delta);
+          const sp = speakerRef.current;
+          if (sp?.isLive()) {
+            if (textReplyRef.current !== itemId) {
+              textReplyRef.current = itemId;
+              sp.begin();
+            }
+            sp.push(delta);
+          }
+          break;
+        }
+        case "response.output_text.done": {
+          const itemId = String(ev.item_id ?? "");
+          const id = itemToMessage.current.get(itemId);
+          const text = String(ev.text ?? "");
+          if (id) upsert(id, "assistant", (prev) => text || prev, true);
+          const sp = speakerRef.current;
+          if (textReplyRef.current === itemId) {
+            textReplyRef.current = null;
+            sp?.end();
+          } else if (sp?.isLive() && text.trim()) {
+            sp.say(text);
+          } else if (statusRef.current === "thinking") {
+            // The avatar dropped mid-reply: the text is on screen, nothing will play.
+            setStatusBoth("ready");
+            av.dispatch({ type: "REPLY_FAILED" });
+          }
+          break;
+        }
         case "output_audio_buffer.started": {
           speakingRef.current = true;
           speakStartRef.current = performance.now() / 1000;
@@ -391,9 +473,17 @@ export function useRealtimeAssistant({
             av.dispatch({ type: "REPLY_FAILED" });
             if (statusRef.current === "thinking") setStatusBoth("ready");
           } else if (statusRef.current === "thinking" && !speakingRef.current) {
-            // Text-only or empty response: nothing will play.
-            setStatusBoth("ready");
-            av.dispatch({ type: "REPLY_FAILED" });
+            const output = (ev.response as { output?: { content?: { text?: string; transcript?: string }[] }[] } | undefined)
+              ?.output;
+            const wroteText = (output ?? []).some((item) =>
+              (item.content ?? []).some((c) => (c.text ?? c.transcript ?? "").trim()),
+            );
+            // Text mode with an answer: the avatar starts speaking shortly.
+            // Otherwise (empty, or cancelled) nothing will play.
+            if (!(textModeRef.current && wroteText && response?.status === "completed")) {
+              setStatusBoth("ready");
+              av.dispatch({ type: "REPLY_FAILED" });
+            }
           }
           break;
         }
@@ -436,11 +526,50 @@ export function useRealtimeAssistant({
     connectingRef.current = null;
     speakingRef.current = false;
     speechActiveRef.current = false;
+    textModeRef.current = false;
+    textReplyRef.current = null;
     itemToMessage.current.clear();
   }, [clearNoSpeech]);
 
+  /* ---- the avatar's speech drives "speaking" in text mode ---- */
+  useEffect(() => {
+    if (!speaker) return;
+    return speaker.subscribe({
+      onSpeakingStart: () => {
+        if (!textModeRef.current) return;
+        speakingRef.current = true;
+        speakStartRef.current = performance.now() / 1000;
+        if (turnEndedAtRef.current) {
+          setLastLatencyMs(Math.round(performance.now() - turnEndedAtRef.current));
+          turnEndedAtRef.current = 0;
+        }
+        setStatusBoth("speaking");
+        avatarRef.current.dispatch({ type: "SPEECH_STARTED" });
+      },
+      onSpeakingEnd: () => {
+        if (!textModeRef.current) return;
+        const wasSpeaking = speakingRef.current;
+        speakingRef.current = false;
+        if (statusRef.current === "speaking" || statusRef.current === "thinking") setStatusBoth("ready");
+        avatarRef.current.dispatch({ type: wasSpeaking ? "SPEECH_FINISHED" : "REPLY_FAILED" });
+      },
+      onUnavailable: () => {
+        // This session only writes text; without the avatar nobody would hear it.
+        // Drop it so the next turn reconnects with the model's own voice.
+        if (!textModeRef.current) return;
+        disconnect();
+        setStatusBoth("idle");
+      },
+    });
+  }, [disconnect, setStatusBoth, speaker]);
+
   const connect = useCallback((): Promise<boolean> => {
-    if (pcRef.current && dcRef.current?.readyState === "open") return Promise.resolve(true);
+    const wantText = Boolean(speakerRef.current?.isLive());
+    if (pcRef.current && dcRef.current?.readyState === "open") {
+      if (textModeRef.current === wantText) return Promise.resolve(true);
+      // The avatar came or went: the reply channel changed, open a new session.
+      disconnect();
+    }
     if (connectingRef.current) return connectingRef.current;
 
     // Created inside the click that started this, so playback is allowed.
@@ -458,7 +587,7 @@ export function useRealtimeAssistant({
         const res = await fetch("/api/ai/realtime", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ labId: labId ?? "" }),
+          body: JSON.stringify({ labId: labId ?? "", avatar: wantText }),
         });
         const json = (await res.json().catch(() => ({}))) as {
           clientSecret?: string;
@@ -468,6 +597,7 @@ export function useRealtimeAssistant({
         };
         if (!res.ok || !json.clientSecret) throw new Error(json.error || `接続に失敗しました（${res.status}）`);
         answerTokenRef.current = json.answerToken ?? "";
+        textModeRef.current = wantText;
 
         const pc = new RTCPeerConnection();
         pcRef.current = pc;
@@ -564,11 +694,7 @@ export function useRealtimeAssistant({
   const startListening = useCallback(async () => {
     const av = avatarRef.current;
     // Interrupting: stop her voice before opening the mic.
-    if (speakingRef.current) {
-      stopReplay();
-      send({ type: "response.cancel" });
-      send({ type: "output_audio_buffer.clear" });
-    }
+    if (speakingRef.current) interruptReply();
     av.dispatch({ type: "USER_STARTED" });
     if (!(await connect())) {
       av.dispatch({ type: "USER_STOPPED" });
@@ -589,7 +715,7 @@ export function useRealtimeAssistant({
       av.dispatch({ type: "USER_STOPPED" });
       setError("声が聞こえませんでした。もう一度マイクを押して話してください。");
     }, NO_SPEECH_MS);
-  }, [clearNoSpeech, connect, muteMic, send, setStatusBoth, stopReplay]);
+  }, [clearNoSpeech, connect, interruptReply, muteMic, send, setStatusBoth]);
 
   /** Mic pressed again while listening: end the turn now. */
   const stopListening = useCallback(() => {
@@ -613,11 +739,7 @@ export function useRealtimeAssistant({
       const text = raw.trim();
       if (!text) return;
       const av = avatarRef.current;
-      if (speakingRef.current) {
-        stopReplay();
-        send({ type: "response.cancel" });
-        send({ type: "output_audio_buffer.clear" });
-      }
+      if (speakingRef.current) interruptReply();
       if (!(await connect())) return;
       muteMic();
       const id = newId();
@@ -631,15 +753,11 @@ export function useRealtimeAssistant({
       av.dispatch({ type: "REQUEST_SENT" });
       await answerQuestion(text);
     },
-    [answerQuestion, connect, muteMic, send, setStatusBoth, stopReplay, upsert],
+    [answerQuestion, connect, interruptReply, muteMic, send, setStatusBoth, upsert],
   );
 
   const clear = useCallback(() => {
-    if (speakingRef.current) {
-      stopReplay();
-      send({ type: "response.cancel" });
-      send({ type: "output_audio_buffer.clear" });
-    }
+    if (speakingRef.current) interruptReply();
     setMessages([]);
     setLiveCaption("");
     setError(null);
@@ -647,7 +765,7 @@ export function useRealtimeAssistant({
     // A fresh session so the model forgets the cleared turns too.
     disconnect();
     setStatusBoth("idle");
-  }, [disconnect, historyScope, send, setStatusBoth, stopReplay]);
+  }, [disconnect, historyScope, interruptReply, setStatusBoth]);
 
   const close = useCallback(() => {
     disconnect();

@@ -45,6 +45,11 @@ const limiters = {
     { limit: 6, windowMs: 10 * MINUTE },
     { limit: 30, windowMs: 24 * 60 * MINUTE },
   ]),
+  // One Anam avatar stream per chat opened (billed per streamed minute).
+  avatar: new SlidingWindowLimiter([
+    { limit: 6, windowMs: 10 * MINUTE },
+    { limit: 30, windowMs: 24 * 60 * MINUTE },
+  ]),
 };
 
 export async function requireChatbotAccess(
